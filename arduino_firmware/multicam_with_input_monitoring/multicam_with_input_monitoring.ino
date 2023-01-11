@@ -4,8 +4,8 @@
 const int SERIAL_START_DELAY = 100;
 
 // camera trigger pins
-int num_cams = 1;
-int trigger_pins [1] = {A1, A2, A3, A4, A5};
+int num_cams = 5;
+int trigger_pins [5] = {A1, A2, A3, A4, A5};
 
 // Define the input GPIOs
 int num_input = 4;
@@ -31,7 +31,7 @@ void checkInputPins(int current_cycle) {
   // compare the buttonState to its previous state
   if (state_change == true)
       {
-        Serial.print("new state change: ");
+        Serial.print("input: ");
         for (int pin_i = 0; pin_i < 4; pin_i++) {
           Serial.print(input_state[pin_i]);
           Serial.print(",");
@@ -41,11 +41,11 @@ void checkInputPins(int current_cycle) {
         Serial.println(millis());  
 
         // TEST CODE
-        for (int pin_i = 0; pin_i < 4; pin_i++) {
-          Serial.print(digitalRead(input_pins[pin_i]));
-          Serial.print(",");
-        
-      }
+        //for (int pin_i = 0; pin_i < 4; pin_i++) {
+        //  Serial.print(digitalRead(input_pins[pin_i]));
+        //  Serial.print(",");
+        //
+      //}
   }
 }
 

@@ -1,62 +1,8 @@
-import numpy as np
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 import PySpin
 
-class CameraError(Exception):
-    pass
-
-
-
-class Camera:
-    '''
-    A class used to encapsulate a PySpin camera.
-    Attributes
-    ----------
-    cam : PySpin Camera
-    running : bool
-        True if acquiring images
-    camera_attributes : dictionary
-        Contains links to all of the camera nodes which are settable
-        attributes.
-    camera_methods : dictionary
-        Contains links to all of the camera nodes which are executable
-        functions.
-    camera_node_types : dictionary
-        Contains the type (as a string) of each camera node.
-    lock : bool
-        If True, attribute access is locked down; after the camera iacquisition_loopss
-        initialized, attempts to set new attributes will raise an error.  This
-        is to prevent setting misspelled attributes, which would otherwise
-        silently fail to acheive their intended goal.
-    intialized : bool
-        If True, init() has been called.
-    In addition, many more virtual attributes are created to allow access to
-    the camera properties.  A list of available names can be found as the keys
-    of `camera_attributes` dictionary, and a documentation file for a specific
-    camera can be genereated with the `document` method.
-    Methods
-    -------
-    init()
-        Initializes the camera.  Automatically called if the camera is opened
-        using a `with` clause.
-    close()
-        Closes the camera and cleans up.  Automatically called if the camera
-        is opening using a `with` clause.
-    start()
-        Start recording images.
-    stop()
-        Stop recording images.
-    get_image()
-        Return an image using PySpin's internal format.
-    get_array()
-        Return an image as a Numpy array.
-    get_info(node)
-        Return info about a camera node (an attribute or method).
-    document()
-        Create a Markdown documentation file with info about all camera
-        attributes and methods.
-    '''
-
-    def __init__(self, index=0, lock=True):
+class FlirCamera(BaseCamera):
+    def __init__(self,index=0, lock=True, **kwargs):
         '''
         Parameters
         ----------
@@ -67,16 +13,18 @@ class Camera:
             If True, setting new attributes after initialization results in
             an error.
         '''
-        self.__setattr__("camera_attributes", {})
-        self.__setattr__("camera_methods", {})
-        self.__setattr__("camera_node_types", {})
-        self.__setattr__("initialized", False)
-        self.__setattr__("lock", lock)
+        #super().__init__(**kwargs)
+        
+        super().__setattr__("camera_attributes", {})
+        super().__setattr__("camera_methods", {})
+        super().__setattr__("camera_node_types", {})
+        super().__setattr__("initialized", False)
+        super().__setattr__("lock", lock)
 
         self.system = PySpin.System.GetInstance()
         cam_list = self.system.GetCameras()
-        
-        # if debug: print('Found %d camera(s)' % cam_list.GetSize())
+
+        debug: print('Found %d camera(s)' % cam_list.GetSize())
         
         if not cam_list.GetSize():
             raise CameraError("No cameras detected.")
@@ -86,6 +34,9 @@ class Camera:
             self.cam = cam_list.GetBySerial(index)
         cam_list.Clear()
         self.running = False
+
+        
+
 
     _rw_modes = {
         PySpin.RO: "read only",
@@ -111,6 +62,7 @@ class Camera:
         PySpin.intfICommand: 'command',
     }
 
+
     def init(self):
         '''Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause.'''
@@ -128,24 +80,6 @@ class Camera:
 
         self.initialized = True
 
-    def __enter__(self):
-        self.init()
-        return self
-
-    def close(self):
-        '''Closes the camera and cleans up.  Automatically called if the camera
-        is opening using a `with` clause.'''
-
-        self.stop()
-        del self.cam
-        self.camera_attributes = {}
-        self.camera_methods = {}
-        self.camera_node_types = {}
-        self.initialized = False
-        # self.system.ReleaseInstance()
-
-    def __exit__(self, type, value, traceback):
-        self.close()
 
     def start(self):
         'Start recording images.'
@@ -172,31 +106,24 @@ class Camera:
         '''
         return self.cam.GetNextImage(timeout if timeout else PySpin.EVENT_TIMEOUT_INFINITE)
 
-    def get_array(self, timeout=None, get_chunk=False, get_timestamp=False):
+    def get_array(self, timeout=None, get_timestamp=False):
         '''Get an image from the camera, and convert it to a numpy array.
         Parameters
         ----------
         timeout : int (default: None)
             Wait up to timeout milliseconds for an image if not None.
                 Otherwise, wait indefinitely.
-        get_chunk : bool (default: False)
-            If True, returns chunk data from image frame.
         get_timestamp : bool (default: False)
             If True, returns timestamp of frame f(camera timestamp)
         Returns
         -------
         img : Numpy array
-        chunk : PySpin (only if get_chunk == True)
+        tstamp : int
         '''
-        img = self.cam.GetNextImage(timeout if timeout else PySpin.EVENT_TIMEOUT_INFINITE)
+        img = self.get_image(timeout)
         
         if not img.IsIncomplete():
             img_array = img.GetNDArray()
-            
-            if get_chunk:
-                chunk = img.GetChunkData()
-            else:
-                chunk = None
             
             if get_timestamp:
                 tstamp = img.GetTimeStamp()
@@ -204,23 +131,17 @@ class Camera:
                 tstamp = None
         else:
             img_array = None
-            chunk = None
             tstamp = None
 
         img.Release()
 
-        if not get_chunk and not get_timestamp:
-            return img_array
-        elif get_chunk and not get_timestamp:
-            return img_array, chunk
-        elif not get_chunk and get_timestamp:
+        if get_timestamp:
             return img_array, tstamp
-        elif get_chunk and get_timestamp:
-            return img_array, chunk, tstamp
         else:
-            assert False
+            return img_array
 
     def __getattr__(self, attr):
+        '''Get the value of a camera attribute or method.'''
         if attr in self.camera_attributes:
 
             prop = self.camera_attributes[attr]
@@ -238,8 +159,8 @@ class Camera:
         else:
             raise AttributeError(attr)
 
-
     def __setattr__(self, attr, val):
+        '''Set the value of a camera attribute.'''
         if attr in self.camera_attributes:
 
             prop = self.camera_attributes[attr]
@@ -248,8 +169,6 @@ class Camera:
 
             if hasattr(prop, 'SetValue'):
                 prop.SetValue(val)
-#             elif hasattr(prop, 'SetIntValue') and isinstance(val,int):
-#                 prop.SetIntValue(val)
             else:
                 prop.FromString(val)
 
@@ -317,7 +236,6 @@ class Camera:
 
         return info
 
-
     def document(self):
         '''Creates a MarkDown documentation string for the camera.'''
         lines = [self.DeviceVendorName.strip() + ' ' + self.DeviceModelName.strip()]
@@ -376,3 +294,5 @@ class Camera:
             lines.append('')
 
         return '\n'.join(lines)
+
+
