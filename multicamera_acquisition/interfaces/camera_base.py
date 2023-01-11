@@ -5,10 +5,9 @@ class CameraError(Exception):
     pass
 
 
-
 class BaseCamera(object):
-    '''
-    A class used to encapsulate a Camera. 
+    """
+    A class used to encapsulate a Camera.
     Attributes
     ----------
     cam : PySpin Camera
@@ -54,10 +53,10 @@ class BaseCamera(object):
     document()
         Create a Markdown documentation file with info about all camera
         attributes and methods.
-    '''
+    """
 
     def __init__(self, index=0, lock=True):
-        '''
+        """
         Parameters
         ----------
         index : int or str (default: 0)
@@ -66,11 +65,11 @@ class BaseCamera(object):
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
-        '''
+        """
 
     def init(self):
-        '''Initializes the camera.  Automatically called if the camera is opened
-        using a `with` clause.'''
+        """Initializes the camera.  Automatically called if the camera is opened
+        using a `with` clause."""
         raise NotImplementedError
 
     def __enter__(self):
@@ -78,8 +77,8 @@ class BaseCamera(object):
         return self
 
     def close(self):
-        '''Closes the camera and cleans up.  Automatically called if the camera
-        is opening using a `with` clause.'''
+        """Closes the camera and cleans up.  Automatically called if the camera
+        is opening using a `with` clause."""
 
         self.stop()
         del self.cam
@@ -93,18 +92,18 @@ class BaseCamera(object):
         self.close()
 
     def start(self):
-        'Start recording images.'
+        "Start recording images."
         raise NotImplementedError
 
     def stop(self):
-        'Stop recording images.'
+        "Stop recording images."
         raise NotImplementedError
 
     def get_image(self, timeout=None):
         raise NotImplementedError
 
     def get_array(self, timeout=None, get_chunk=False, get_timestamp=False):
-        '''Get an image from the camera, and convert it to a numpy array.
+        """Get an image from the camera, and convert it to a numpy array.
         Parameters
         ----------
         timeout : int (default: None)
@@ -116,22 +115,19 @@ class BaseCamera(object):
         -------
         img : Numpy array
         tstamp : int
-        '''
+        """
         raise NotImplementedError
 
-    #def __getattr__(self, attr):
+    # def __getattr__(self, attr):
     #    '''Get the value of a camera attribute or method.'''
     #    raise NotImplementedError
 
-
-    #def __setattr__(self, attr, val):
+    # def __setattr__(self, attr, val):
     #    '''Set the value of a camera attribute.'''
     #    raise NotImplementedError
 
-
-
     def get_info(self, name):
-        '''Gen information on a camera node (attribute or method).
+        """Gen information on a camera node (attribute or method).
         Parameters
         ----------
         name : string
@@ -145,39 +141,10 @@ class BaseCamera(object):
                 - `'value'`: the current value.
                 - `'unit'`: the unit of the value (as a string).
                 - `'min'` and `'max'`: the min/max value.
-        '''
+        """
         raise NotImplementedError
-
 
     def document(self):
-        '''Creates a MarkDown documentation string for the camera.'''
+        """Creates a MarkDown documentation string for the camera."""
         raise NotImplementedError
 
-
-def get_timing_params(duration, framerate, exposure_time, buffer=50):
-    '''Get the timing parameters for a camera.
-    Parameters
-    ----------
-    duration : float
-        The duration of the experiment, in seconds.
-    framerate : float
-        The framerate of the camera, in Hz.
-    exposure_time : float
-        The exposure time of the camera, in microseconds.
-    buffer : int
-        The number of frames to buffer before starting the experiment.
-    Returns
-    -------
-    params : tuple
-        A tuple of the form (num_cycles, exposure_time, inv_framerate).
-    '''
-    inv_framerate = int(1e6 / framerate)
-    num_cycles = int(duration * framerate / 2)
-
-    params = (
-        num_cycles,
-        exposure_time,
-        inv_framerate,
-    )
-
-    return params
