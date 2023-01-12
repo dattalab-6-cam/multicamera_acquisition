@@ -105,15 +105,6 @@ void runAcquisition(
       // Check to see if the pin states have changed
       checkInputPins(current_cycle);
     }
-
-    // TODO check if input pins have flipped
-    for (int pin : trigger_pins)
-    {
-      if (digitalRead(pin))
-      {
-        Serial.println("Input pin flipped");
-      }
-    }
   }
 }
 

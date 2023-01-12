@@ -29,19 +29,43 @@ class AcquisitionLoop(mp.Process):
     def __init__(
         self,
         write_queue,
+        display_queue,
         brand="flir",
         frame_timeout=1000,
+        display_frames=False,
+        display_frequency=1,
         **camera_params,
     ):
+        """
+        Parameters
+        ----------
+        write_queue : multiprocessing.Queue
+            A queue to which frames will be written.
+        display_queue : multiprocessing.Queue
+            A queue from which frames will be read for display.
+        brand : str
+            The brand of camera to use.  Currently 'flir' and 'basler' are supported.
+        frame_timeout : int
+            The number of milliseconds to wait for a frame before timing out.
+        display_frames : bool
+            If True, frames will be displayed.
+        display_frequency : int
+            The number of frames to skip between displaying frames.
+        **camera_params
+            Keyword arguments to pass to the camera interface.
+        """
         super().__init__()
 
         self.ready = mp.Event()
         self.primed = mp.Event()
         self.stopped = mp.Event()
         self.write_queue = write_queue
+        self.display_queue = display_queue
         self.camera_params = camera_params
         self.brand = brand
         self.frame_timeout = frame_timeout
+        self.display_frames = display_frames
+        self.display_frequency = display_frequency
 
     def stop(self):
         self.stopped.set()
@@ -51,6 +75,7 @@ class AcquisitionLoop(mp.Process):
         self.primed.set()
 
     def run(self):
+
         cam = get_camera(brand=self.brand, **self.camera_params)
 
         self.ready.set()
@@ -66,6 +91,9 @@ class AcquisitionLoop(mp.Process):
                 if len(data) != 0:
                     data = data + tuple([current_frame])
                 self.write_queue.put(data)
+                if self.display_frames:
+                    if current_frame % self.display_frequency == 0:
+                        self.display_queue.put(data)
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
                 if type(e).__name__ == "SpinnakerException":
@@ -82,6 +110,9 @@ class AcquisitionLoop(mp.Process):
             current_frame += 1
 
         self.write_queue.put(tuple())
+        if self.display_frames:
+            self.display_queue.put(tuple())
+
         if cam is not None:
             cam.close()
 
@@ -149,8 +180,10 @@ def acquire_video(
     camera_list,
     recording_duration_s,
     framerate=30,
+    display_framerate=30,
     exposure_time=2000,
     serial_timeout_duration_s=0.1,
+    display_downsample=4,
     overwrite=False,
     append_datetime=True,
     verbose=True,
@@ -180,6 +213,11 @@ def acquire_video(
             # swap the order of the cameras so that flir cameras are before basler cameras
             camera_list = [camera_list[i] for i in np.argsort(camera_brands)[::-1]]
 
+    # determine the frequency at which to output frames to the display
+    display_frequency = int(framerate / display_framerate)
+    if display_frequency < 1:
+        display_frequency = 1
+
     # get Path of save location
     if type(save_location) != Path:
         save_location = Path(save_location)
@@ -201,6 +239,7 @@ def acquire_video(
     # initialize cameras
     writers = []
     acquisition_loops = []
+    displays = []
 
     # create acquisition loops
     for camera_dict in camera_list:
@@ -208,6 +247,11 @@ def acquire_video(
         serial_number = camera_dict["serial"]
         brand = camera_dict["brand"]
         gain = camera_dict["gain"]
+
+        if "display" in camera_dict.keys():
+            display_frames = camera_dict["display"]
+        else:
+            display_frames = False
 
         if verbose:
             logging.log(logging.INFO, f"Camera {name}...")
@@ -229,18 +273,36 @@ def acquire_video(
             camera_name=name,
         )
 
+        display_queue = None
+        if display_frames:
+            # create a writer queue
+            display_queue = mp.Queue()
+            disp = Display(
+                display_queue,
+                name,
+                display_downsample=display_downsample,
+            )
+
         # prepare the acuqisition loop in a separate thread
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
+            display_queue=display_queue,
             brand=brand,
+            display_frames=display_frames,
             serial_number=serial_number,
             exposure_time=exposure_time,
+            display_frequency=display_frequency,
             gain=gain,
         )
 
         # initialize acquisition
         writer.start()
         writers.append(writer)
+
+        if display_frames:
+            # initialize display
+            disp.start()
+            writers.append(disp)
 
         acquisition_loop.start()
         acquisition_loop.ready.wait()
@@ -341,6 +403,10 @@ def acquire_video(
     # end writers
     for writer in writers:
         writer.join()
+
+    # end writers
+    for disp in displays:
+        disp.join()
 
     if verbose:
         # count each frame

@@ -1,65 +1,46 @@
-import cv2
 import multiprocessing as mp
-import numpy as np
 
-
-def display_images(display_queue, display_fcn):
-
-    if display_fcn is None:
-        display_fcn = lambda x: x
-
-    try:
-        while True:
-            data = display_queue.get()
-            if len(data) == 0:
-                cv2.destroyAllWindows()
-                break
-            else:
-                frame = data[0]
-                frame = display_fcn(frame)
-                cv2.imshow("ir", frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-    except KeyboardInterrupt:
-        cv2.destroyAllWindows()
-
-
-def disp_img(frame, window_name):
-    cv2.imshow(window_name, frame)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        cv2.destroyAllWindows()
+import tkinter as tk
+import PIL
+from PIL import Image, ImageTk
+import cv2
 
 
 class Display(mp.Process):
-    def __init__(self, queue, camera_name):
+    def __init__(self, queue, camera_name, display_downsample=4):
         super().__init__()
         self.pipe = None
         self.queue = queue
         self.camera_name = camera_name
         self.display_fcn = lambda x: x
-        # cv2.imshow(self.camera_name, (np.random.rand(10, 10, 3)))
+        self.downsample = display_downsample
 
     def run(self):
         """Displays an image to a window."""
+
+        root = tk.Tk()
+        root.title(self.camera_name)
+        root.geometry("640x480")
+
+        # create a label to hold the image
+        label = tk.Label(root)
+        label.pack(fill=tk.BOTH, expand=True)
+
         while True:
             data = self.queue.get()
             if len(data) == 0:
-                cv2.destroyAllWindows()
                 break
 
-            frame = data[0]
-            frame = frame[::4, ::4]
-            frame = self.display_fcn(frame)
-            self.append(frame)
-            # cv2.imshow(self.camera_name, frame)
-            # if cv2.waitKey(1) & 0xFF == ord("q"):
-            #    break
-        self.close()
+            # retrieve frame
+            frame = data[0][:: self.downsample, :: self.downsample]
+            frame = cv2.resize(frame, (640, 480))
 
-    def append(self, frame):
-        self.pipe = disp_img(frame, self.camera_name)
+            # convert frame to PhotoImage
+            img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
 
-    def close(self):
-        cv2.destroyAllWindows()
-        if self.pipe is not None:
-            self.pipe.stdin.close()
+            # update label with new image
+            label.config(image=img)
+            label.image = img
+
+            # update tkinter window
+            root.update()
