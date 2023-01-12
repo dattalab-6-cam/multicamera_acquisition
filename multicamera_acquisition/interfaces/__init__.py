@@ -5,7 +5,7 @@ import struct
 
 
 def get_camera(
-    brand="flir", serial_number=None, exposure_time=2000, gain=15, trigger="arduino"
+    brand="flir", serial_number=None, exposure_time=2000, gain=12, trigger="arduino"
 ):
     """Get a camera object.
     Parameters
@@ -34,12 +34,19 @@ def get_camera(
 
         cam.init()
 
+        # set gain
         cam.GainAuto = "Off"
         cam.Gain = gain
+
+        # set exposure
         cam.ExposureAuto = "Off"
         cam.ExposureTime = exposure_time
 
+        # set trigger
         if trigger == "arduino":
+            # TODO - many of these settings are not related to the trigger and should
+            # be redistributed
+            # TODO - remove hardcoding
             cam.AcquisitionMode = "Continuous"
             cam.AcquisitionFrameRateEnable = True
             max_fps = cam.get_info("AcquisitionFrameRate")["max"]
@@ -56,6 +63,35 @@ def get_camera(
             cam.V3_3Enable = True
 
     if brand == "basler":
-        raise NotImplementedError
+        from multicamera_acquisition.interfaces.camera_basler import (
+            BaslerCamera as Camera,
+        )
+
+        cam = Camera(index=str(serial_number))
+        cam.init()
+
+        # set gain
+        cam.cam.GainAuto.SetValue("Off")
+        cam.cam.Gain.SetValue(gain)
+
+        # Tset exposure time
+        cam.cam.ExposureAuto.SetValue("Off")
+        cam.cam.ExposureTime.SetValue(exposure_time)
+
+        # set trigger
+        if trigger == "arduino":
+            # see https://github.com/basler/pypylon/issues/119
+            # set external trigger / input line
+            # Acquisition mode
+            cam.cam.AcquisitionMode.SetValue("Continuous")
+            # cam.AcquisitionFrameRateEnable.SetValue('On')
+            cam.cam.TriggerSource.SetValue("Line3")
+            cam.cam.TriggerMode.SetValue("On")
+            cam.cam.TriggerSelector.SetValue("FrameStart")
+            cam.cam.TriggerActivation.SetValue("RisingEdge")
+
+        else:
+            # TODO - implement software trigger
+            raise NotImplementedError
 
     return cam

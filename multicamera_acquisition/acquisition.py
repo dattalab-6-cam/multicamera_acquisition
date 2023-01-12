@@ -24,7 +24,7 @@ from multicamera_acquisition.videowriter import count_frames
 class AcquisitionLoop(mp.Process):
     """A process that acquires images from a camera and writes them to a queue."""
 
-    def __init__(self, write_queue, brand="flir", **camera_params):
+    def __init__(self, write_queue, brand="flir", frame_timeout=1000, **camera_params):
         super().__init__()
 
         self.ready = mp.Event()
@@ -33,6 +33,7 @@ class AcquisitionLoop(mp.Process):
         self.write_queue = write_queue
         self.camera_params = camera_params
         self.brand = brand
+        self.frame_timeout = frame_timeout
 
     def stop(self):
         self.stopped.set()
@@ -53,13 +54,15 @@ class AcquisitionLoop(mp.Process):
         current_frame = 0
         while not self.stopped.is_set():
             try:
-                data = cam.get_array(timeout=1000, get_timestamp=True)
+                data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
                 if len(data) != 0:
                     data = data + tuple([current_frame])
                 self.write_queue.put(data)
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
                 if type(e).__name__ == "SpinnakerException":
+                    pass
+                elif type(e).__name__ == "TimeoutException":
                     pass
                 else:
                     raise e
@@ -198,7 +201,7 @@ def acquire_video(
             brand=brand,
             serial_number=serial_number,
             exposure_time=exposure_time,
-            gain=15,
+            gain=12,
         )
 
         # initialize acquisition
