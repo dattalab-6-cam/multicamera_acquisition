@@ -84,11 +84,14 @@ def get_camera(
             # set external trigger / input line
             # Acquisition mode
             cam.cam.AcquisitionMode.SetValue("Continuous")
-            # cam.AcquisitionFrameRateEnable.SetValue('On')
+            # cam.cam.AcquisitionFrameRateEnable.SetValue('On')
+            max_fps = cam.cam.AcquisitionFrameRate.GetMax()
+            cam.cam.AcquisitionFrameRate.SetValue(max_fps)
+            cam.cam.TriggerMode.SetValue("Off")
             cam.cam.TriggerSource.SetValue("Line3")
-            cam.cam.TriggerMode.SetValue("On")
             cam.cam.TriggerSelector.SetValue("FrameStart")
             cam.cam.TriggerActivation.SetValue("RisingEdge")
+            cam.cam.TriggerMode.SetValue("On")
 
         else:
             # TODO - implement software trigger

@@ -1,10 +1,11 @@
 from multicamera_acquisition.interfaces import get_camera
-from multicamera_acquisition.videowriter import write_frames
+from multicamera_acquisition.video_io import write_frames
 from multicamera_acquisition.paths import ensure_dir
 from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
 )
+from multicamera_acquisition.visualization import Display
 
 import multiprocessing as mp
 import csv
@@ -15,16 +16,23 @@ from datetime import datetime, timedelta
 import glob
 import logging
 from tqdm import tqdm
+import numpy as np
 
 import serial
 from pathlib2 import Path
-from multicamera_acquisition.videowriter import count_frames
+from multicamera_acquisition.video_io import count_frames
 
 
 class AcquisitionLoop(mp.Process):
     """A process that acquires images from a camera and writes them to a queue."""
 
-    def __init__(self, write_queue, brand="flir", frame_timeout=1000, **camera_params):
+    def __init__(
+        self,
+        write_queue,
+        brand="flir",
+        frame_timeout=1000,
+        **camera_params,
+    ):
         super().__init__()
 
         self.ready = mp.Event()
@@ -67,8 +75,8 @@ class AcquisitionLoop(mp.Process):
                 else:
                     raise e
                 warnings.warn(
-                    "Dropped {} frame on #{}: \n{}:{}".format(
-                        current_frame, cam.serial_number, type(e).__name__, str(e)
+                    "Dropped {} frame on #{}: \n{}".format(
+                        current_frame, cam.serial_number, type(e).__name__  # , str(e)
                     )
                 )
             current_frame += 1
@@ -140,7 +148,6 @@ def acquire_video(
     save_location,
     camera_list,
     recording_duration_s,
-    brand="flir",
     framerate=30,
     exposure_time=2000,
     serial_timeout_duration_s=0.1,
@@ -150,8 +157,28 @@ def acquire_video(
     n_input_trigger_states=4,
 ):
 
-    if brand not in ["flir", "basler"]:
-        raise NotImplementedError
+    if verbose:
+        logging.log(logging.INFO, "Checking cameras...")
+
+    camera_brands = np.array([i["brand"] for i in camera_list])
+    # if there are cameras that are not flir or basler, raise an error
+    for i in camera_brands:
+        if i not in ["flir", "basler"]:
+            raise ValueError(
+                "Camera brand must be either 'flir' or 'basler', not {}".format(i)
+            )
+    # if there are both flir and basler cameras, make sure that the basler cameras are initialized after the flir cameras
+    if "flir" in camera_brands and "basler" in camera_brands:
+        if np.any(
+            np.where(camera_brands == "basler")[0][0]
+            < np.max(np.where(camera_brands == "flir")[0])
+        ):
+            warnings.warn(
+                """A bug in the code requies Basler cameras to be initialized after Flir cameras. Rearranging camera order.
+                """
+            )
+            # swap the order of the cameras so that flir cameras are before basler cameras
+            camera_list = [camera_list[i] for i in np.argsort(camera_brands)[::-1]]
 
     # get Path of save location
     if type(save_location) != Path:
@@ -169,6 +196,8 @@ def acquire_video(
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
 
+    if verbose:
+        logging.log(logging.INFO, "Initializing cameras...")
     # initialize cameras
     writers = []
     acquisition_loops = []
@@ -177,9 +206,14 @@ def acquire_video(
     for camera_dict in camera_list:
         name = camera_dict["name"]
         serial_number = camera_dict["serial"]
+        brand = camera_dict["brand"]
+        gain = camera_dict["gain"]
+
+        if verbose:
+            logging.log(logging.INFO, f"Camera {name}...")
 
         video_file = save_location / f"{name}.{serial_number}.avi"
-        metadata_file = save_location / f"{name}.{serial_number}.triggerdata.csv"
+        metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
 
         if video_file.exists() and (overwrite == False):
             raise FileExistsError(f"Video file {video_file} already exists")
@@ -197,26 +231,33 @@ def acquire_video(
 
         # prepare the acuqisition loop in a separate thread
         acquisition_loop = AcquisitionLoop(
-            write_queue,
+            write_queue=write_queue,
             brand=brand,
             serial_number=serial_number,
             exposure_time=exposure_time,
-            gain=12,
+            gain=gain,
         )
 
         # initialize acquisition
         writer.start()
         writers.append(writer)
+
         acquisition_loop.start()
         acquisition_loop.ready.wait()
         acquisition_loops.append(acquisition_loop)
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
 
+    if verbose:
+        logging.log(logging.INFO, f"Preparing acquisition loops")
+
     # prepare acquisition loops
     for acquisition_loop in acquisition_loops:
         acquisition_loop.prime()
         acquisition_loop.ready.wait()
+
+    if verbose:
+        logging.log(logging.INFO, f"Initializing Arduino...")
 
     # prepare communication with arduino
     serial_ports = glob.glob("/dev/ttyACM*")
@@ -239,7 +280,7 @@ def acquire_video(
 
     # Tell the arduino to start recording by sending along the recording parameters
     inv_framerate = int(1e6 / framerate)
-    num_cycles = int(recording_duration_s * framerate / 2)
+    num_cycles = int(recording_duration_s * framerate)
     msg = b"".join(
         map(
             packIntAsLong,
@@ -251,6 +292,9 @@ def acquire_video(
         )
     )
     arduino.write(msg)
+
+    if verbose:
+        logging.log(logging.INFO, f"Starting Acquisition...")
 
     # Run acquision
     confirmation = wait_for_serial_confirmation(arduino, "Start")
@@ -286,12 +330,15 @@ def acquire_video(
     if confirmation != "Finished":
         confirmation = wait_for_serial_confirmation(arduino, "Finished")
 
+    if verbose:
+        logging.log(logging.INFO, f"Closing")
+
     # end acquisition loops
     for acquisition_loop in acquisition_loops:
         acquisition_loop.stop()
         acquisition_loop.join()
 
-    # @CALEB: what is the purpose of this?
+    # end writers
     for writer in writers:
         writer.join()
 
