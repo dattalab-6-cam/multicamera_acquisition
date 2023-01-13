@@ -14,6 +14,28 @@ Sources:
     - [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) is the basis for the camera object. 
     - [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
 
+
+### Basic usage 
+```{python}
+from multicamera_acquisition.acquisition import acquire_video
+
+camera_list = [
+    {'name': 'top', 'serial': 24535665, 'brand':'basler', 'gain': 12, 'display': False},
+    {'name': 'side1', 'serial': 24548223, 'brand':'basler', 'gain': 12, 'display': False},
+    {'name': 'side2', 'serial': 22181547, 'brand':'flir', 'gain': 12, 'display': False},
+    {'name': 'side3', 'serial': 22181612, 'brand':'flir', 'gain': 12, 'display': False},
+]
+
+acquire_video(
+    'your/save/location/',
+    camera_list,
+    framerate = 30,
+    exposure_time = 2000,
+    recording_duration_s = 10,
+    append_datetime=True,
+)
+```
+
 Project Organization
 ------------
 
