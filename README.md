@@ -14,7 +14,9 @@ Sources:
     - [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) is the basis for the camera object. 
     - [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
 
-### installation
+### Installation
+
+Before installation: You should install pylon and pypylon if you are using Basler cameras, and spinnaker and pypin if you are using Flir cameras. 
 
 You are most likely going to want to customize this code, so just install it with `python setup.py develop` in the main directory. 
 
