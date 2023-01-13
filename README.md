@@ -51,7 +51,7 @@ Project Organization
     ├── setup.py           <- makes project pip installable (pip install -e .) so src can be imported
     ├── multicamera_acquisition                <- Source code for use in this project.
     │   ├── __init__.py    <- Makes src a Python module
-    ...
+    ... TODO
 
 --------
 
