@@ -5,7 +5,7 @@ from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
 )
-from multicamera_acquisition.visualization import Display
+from multicamera_acquisition.visualization import Display, MultiDisplay
 
 import multiprocessing as mp
 import csv
@@ -239,7 +239,8 @@ def acquire_video(
     # initialize cameras
     writers = []
     acquisition_loops = []
-    displays = []
+    display_queues = []
+    camera_names = []
 
     # create acquisition loops
     for camera_dict in camera_list:
@@ -277,11 +278,8 @@ def acquire_video(
         if display_frames:
             # create a writer queue
             display_queue = mp.Queue()
-            disp = Display(
-                display_queue,
-                name,
-                display_downsample=display_downsample,
-            )
+            camera_names.append(name)
+            display_queues.append(display_queue)
 
         # prepare the acuqisition loop in a separate thread
         acquisition_loop = AcquisitionLoop(
@@ -299,16 +297,20 @@ def acquire_video(
         writer.start()
         writers.append(writer)
 
-        if display_frames:
-            # initialize display
-            disp.start()
-            writers.append(disp)
-
         acquisition_loop.start()
         acquisition_loop.ready.wait()
         acquisition_loops.append(acquisition_loop)
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
+
+    if len(display_queues) > 0:
+        # create a display process which recieves frames from the acquisition loops
+        disp = MultiDisplay(
+            display_queues,
+            camera_names,
+            display_downsample=display_downsample,
+        )
+        disp.start()
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
@@ -404,8 +406,8 @@ def acquire_video(
     for writer in writers:
         writer.join()
 
-    # end writers
-    for disp in displays:
+    # end display
+    if len(display_queues) > 0:
         disp.join()
 
     if verbose:
