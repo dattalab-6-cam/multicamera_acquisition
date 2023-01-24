@@ -188,6 +188,7 @@ def acquire_video(
     append_datetime=True,
     verbose=True,
     n_input_trigger_states=4,
+    arduino_args=[],
 ):
 
     if verbose:
@@ -352,10 +353,12 @@ def acquire_video(
                 num_cycles,
                 exposure_time,
                 inv_framerate,
+                *arduino_args,
             ),
         )
     )
     arduino.write(msg)
+    print('WROTE')
 
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
