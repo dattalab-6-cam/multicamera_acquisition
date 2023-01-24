@@ -174,6 +174,21 @@ class Writer(mp.Process):
         if self.pipe is not None:
             self.pipe.stdin.close()
 
+def end_processes(acquisition_loops, writers, disp):
+
+    # end acquisition loops
+    for acquisition_loop in acquisition_loops:
+        acquisition_loop.stop()
+        acquisition_loop.join()
+
+    # end writers
+    for writer in writers:
+        writer.join()
+
+    # end display
+    if disp is not None:
+        disp.join()
+
 
 def acquire_video(
     save_location,
@@ -304,6 +319,7 @@ def acquire_video(
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
 
+
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
         disp = MultiDisplay(
@@ -312,6 +328,8 @@ def acquire_video(
             display_downsample=display_downsample,
         )
         disp.start()
+    else:
+        disp=None
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
@@ -358,16 +376,18 @@ def acquire_video(
         )
     )
     arduino.write(msg)
-    print('WROTE')
 
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
 
     # Run acquision
-    confirmation = wait_for_serial_confirmation(arduino, "Start")
+    try: confirmation = wait_for_serial_confirmation(arduino, "Start")
+    except: end_processes(acquisition_loops, writers, disp)
+
     # how long to record
     datetime_prev = datetime.now()
     endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+
     # while current time is less than initial time + recording_duration_s
     pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
     while datetime.now() < endtime:
@@ -400,18 +420,8 @@ def acquire_video(
     if verbose:
         logging.log(logging.INFO, f"Closing")
 
-    # end acquisition loops
-    for acquisition_loop in acquisition_loops:
-        acquisition_loop.stop()
-        acquisition_loop.join()
+    end_processes(acquisition_loops, writers, disp)
 
-    # end writers
-    for writer in writers:
-        writer.join()
-
-    # end display
-    if len(display_queues) > 0:
-        disp.join()
 
     if verbose:
         # count each frame
