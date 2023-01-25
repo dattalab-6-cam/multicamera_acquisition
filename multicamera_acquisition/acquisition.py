@@ -34,6 +34,7 @@ class AcquisitionLoop(mp.Process):
         frame_timeout=1000,
         display_frames=False,
         display_frequency=1,
+        dropped_frame_warnings=False,
         **camera_params,
     ):
         """
@@ -51,6 +52,8 @@ class AcquisitionLoop(mp.Process):
             If True, frames will be displayed.
         display_frequency : int
             The number of frames to skip between displaying frames.
+        dropped_frame_warnings: bool
+            Whether to issue a warning when frame grabbing times out
         **camera_params
             Keyword arguments to pass to the camera interface.
         """
@@ -66,6 +69,7 @@ class AcquisitionLoop(mp.Process):
         self.frame_timeout = frame_timeout
         self.display_frames = display_frames
         self.display_frequency = display_frequency
+        self.dropped_frame_warnings = dropped_frame_warnings
 
     def stop(self):
         self.stopped.set()
@@ -102,11 +106,12 @@ class AcquisitionLoop(mp.Process):
                     pass
                 else:
                     raise e
-                warnings.warn(
-                    "Dropped {} frame on #{}: \n{}".format(
-                        current_frame, cam.serial_number, type(e).__name__  # , str(e)
+                if dropped_frame_warnings:
+                    warnings.warn(
+                        "Dropped {} frame on #{}: \n{}".format(
+                            current_frame, cam.serial_number, type(e).__name__  # , str(e)
+                        )
                     )
-                )
             current_frame += 1
 
         self.write_queue.put(tuple())
