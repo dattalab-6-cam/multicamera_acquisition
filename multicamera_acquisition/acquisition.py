@@ -208,6 +208,7 @@ def acquire_video(
     append_datetime=True,
     verbose=True,
     n_input_trigger_states=4,
+    ffmpeg_options={},
     arduino_args=[],
 ):
 
@@ -293,6 +294,7 @@ def acquire_video(
             fps=framerate,
             camera_serial=serial_number,
             camera_name=name,
+            **ffmpeg_options
         )
 
         display_queue = None
