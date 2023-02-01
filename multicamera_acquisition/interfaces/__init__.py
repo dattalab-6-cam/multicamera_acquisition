@@ -5,7 +5,7 @@ import struct
 
 
 def get_camera(
-    brand="flir", serial_number=None, exposure_time=2000, gain=12, trigger="arduino"
+    brand="flir", serial_number=None, exposure_time=2000, gain=12, trigger="arduino", readout_mode='Fast',
 ):
     """Get a camera object.
     Parameters
@@ -21,6 +21,9 @@ def get_camera(
         The exposure time in microseconds.
     gain : int (default: 15)
         The gain for the camera.
+    readout_mode: str (default='Fast')
+        Readout mode for Basler sensor. Options are 'Fast' and 'Normal'. 'Fast' is required for >160 fps but might lead to lower image quality.
+
     Returns
     -------
     cam : Camera object
@@ -74,10 +77,13 @@ def get_camera(
         cam.cam.GainAuto.SetValue("Off")
         cam.cam.Gain.SetValue(gain)
 
-        # Tset exposure time
+        # set exposure time
         cam.cam.ExposureAuto.SetValue("Off")
         cam.cam.ExposureTime.SetValue(exposure_time)
-
+        
+        # set readout mode
+        cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        
         # set trigger
         if trigger == "arduino":
             # see https://github.com/basler/pypylon/issues/119

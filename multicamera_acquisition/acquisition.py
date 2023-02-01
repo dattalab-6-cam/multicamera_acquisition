@@ -106,7 +106,7 @@ class AcquisitionLoop(mp.Process):
                     pass
                 else:
                     raise e
-                if dropped_frame_warnings:
+                if self.dropped_frame_warnings:
                     warnings.warn(
                         "Dropped {} frame on #{}: \n{}".format(
                             current_frame, cam.serial_number, type(e).__name__  # , str(e)
