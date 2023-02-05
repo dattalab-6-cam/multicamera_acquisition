@@ -1,5 +1,5 @@
 from multicamera_acquisition.interfaces import get_camera
-from multicamera_acquisition.video_io import write_frames
+from multicamera_acquisition.video_io import write_frame
 from multicamera_acquisition.paths import ensure_dir
 from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
@@ -130,7 +130,7 @@ class Writer(mp.Process):
         metadata_file_name,
         camera_serial,
         camera_name,
-        **ffmpeg_options,
+        ffmpeg_options,
     ):
         super().__init__()
         self.pipe = None
@@ -171,8 +171,8 @@ class Writer(mp.Process):
             self.close()
 
     def append(self, data):
-        self.pipe = write_frames(
-            self.video_file_name, data[None], pipe=self.pipe, **self.ffmpeg_options
+        self.pipe = write_frame(
+            self.video_file_name, data, pipe=self.pipe, **self.ffmpeg_options
         )
 
     def close(self):
@@ -201,7 +201,6 @@ def acquire_video(
     recording_duration_s,
     framerate=30,
     display_framerate=30,
-    exposure_time=2000,
     serial_timeout_duration_s=0.1,
     display_downsample=4,
     overwrite=False,
@@ -268,8 +267,11 @@ def acquire_video(
     for camera_dict in camera_list:
         name = camera_dict["name"]
         serial_number = camera_dict["serial"]
-        brand = camera_dict["brand"]
-        gain = camera_dict["gain"]
+
+        ffmpeg_options = {}
+        for key in ['use_gpu','quality']:
+            if key in camera_dict:
+                ffmpeg_options[key] = camera_dict[key]
 
         if "display" in camera_dict.keys():
             display_frames = camera_dict["display"]
@@ -289,13 +291,12 @@ def acquire_video(
         write_queue = mp.Queue()
         writer = Writer(
             write_queue,
-            video_file_name=video_file,
-            metadata_file_name=metadata_file,
-            fps=framerate,
-            camera_serial=serial_number,
-            camera_name=name,
-            **ffmpeg_options
-        )
+            video_file,
+            metadata_file,
+            serial_number,
+            name,
+            ffmpeg_options,
+            )
 
         display_queue = None
         if display_frames:
@@ -308,12 +309,9 @@ def acquire_video(
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
             display_queue=display_queue,
-            brand=brand,
             display_frames=display_frames,
-            serial_number=serial_number,
-            exposure_time=exposure_time,
             display_frequency=display_frequency,
-            gain=gain,
+            **camera_dict
         )
 
         # initialize acquisition
@@ -376,7 +374,6 @@ def acquire_video(
             packIntAsLong,
             (
                 num_cycles,
-                exposure_time,
                 inv_framerate,
                 *arduino_args,
             ),
@@ -437,3 +434,5 @@ def acquire_video(
             serial_number = camera_dict["serial"]
             video_file = save_location / f"{name}.{serial_number}.avi"
             print(f"Frames ({name}):", count_frames(video_file.as_posix()))
+
+    return 
