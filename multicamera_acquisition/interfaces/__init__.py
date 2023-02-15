@@ -5,7 +5,7 @@ import struct
 
 
 def get_camera(
-    brand="flir", serial_number=None, exposure_time=2000, gain=12, trigger="arduino"
+    brand="flir", serial=None, exposure_time=2000, gain=12, trigger="arduino", readout_mode='Fast', roi=None, **kwargs
 ):
     """Get a camera object.
     Parameters
@@ -14,23 +14,28 @@ def get_camera(
         The brand of camera to use.  Currently only 'flir' is supported. If
         'flir', the software PySpin is used. if 'basler', the software pypylon
         is used.
-    serial_number : string (default: None)
+    serial : string (default: None)
         The serial number of the camera to use.  If None, the first camera
         found will be used.
     exposure_time : int (default: 2000)
         The exposure time in microseconds.
     gain : int (default: 15)
         The gain for the camera.
+    readout_mode: str (default='Fast')
+        Readout mode for Basler sensor. Options are 'Fast' and 'Normal'. 'Fast' is required for >160 fps but might lead to lower image quality.
+    roi: tuple (offsetX, offsetY, width, height)
+
     Returns
     -------
     cam : Camera object
         The camera object, specific to the brand.
 
     """
+
     if brand == "flir":
         from multicamera_acquisition.interfaces.camera_flir import FlirCamera as Camera
 
-        cam = Camera(index=str(serial_number))
+        cam = Camera(index=str(serial))
 
         cam.init()
 
@@ -67,17 +72,29 @@ def get_camera(
             BaslerCamera as Camera,
         )
 
-        cam = Camera(index=str(serial_number))
+        cam = Camera(index=str(serial))
         cam.init()
 
         # set gain
         cam.cam.GainAuto.SetValue("Off")
         cam.cam.Gain.SetValue(gain)
 
-        # Tset exposure time
+        # set exposure time
         cam.cam.ExposureAuto.SetValue("Off")
         cam.cam.ExposureTime.SetValue(exposure_time)
+        
+        # set readout mode
+        cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        
+        # set roi
+        if roi is not None:
+            cam.cam.Width.SetValue(roi[2])
+            cam.cam.Height.SetValue(roi[3])
+            cam.cam.OffsetX.SetValue(roi[0])
+            cam.cam.OffsetY.SetValue(roi[1])
 
+
+        
         # set trigger
         if trigger == "arduino":
             # see https://github.com/basler/pypylon/issues/119

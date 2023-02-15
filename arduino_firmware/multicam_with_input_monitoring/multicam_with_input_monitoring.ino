@@ -75,13 +75,13 @@ void toggle_camera_triggers(int pins[], byte state, int num)
 
 void runAcquisition(
     long num_cycles,
-    long exposure_time,
     long inv_framerate)
 {
 
   unsigned long current_cycle = 0;
   unsigned long previous_micros = 0;
   unsigned long current_micros;
+    
 
   while (current_cycle < num_cycles)
   {
@@ -97,8 +97,8 @@ void runAcquisition(
 
       // trigger the cameras shutter
       toggle_camera_triggers(trigger_pins, HIGH, num_cams);
-      // wait for the duration of the exposure
-      delayMicroseconds(exposure_time);
+      // wait for half the interframe period
+      delayMicroseconds(inv_framerate/2);
       // close the camera shutter
       toggle_camera_triggers(trigger_pins, LOW, num_cams);
 
@@ -131,21 +131,19 @@ void setup()
 void loop()
 {
 
-  // run acquisition when 3 params have been sent (each param is 4 bytes)
-  // params are num_cycles, exposure_time, inv_framerate
-  if (Serial.available() == 12)
+  // run acquisition when 2 params have been sent (each param is 4 bytes)
+  // params are num_cycles, inv_framerate
+  if (Serial.available() == 8)
   {
 
     Serial.println("Start");
     // Serial.println(micros());
 
     long num_cycles = readLongFromSerial();
-    long exposure_time = readLongFromSerial();
     long inv_framerate = readLongFromSerial();
 
     runAcquisition(
         num_cycles,
-        exposure_time,
         inv_framerate);
 
     // send message that recording is finished

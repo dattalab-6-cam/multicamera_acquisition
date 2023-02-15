@@ -10,6 +10,6 @@ setup(
     install_requires=["tqdm", "numpy", "pyserial", "pathlib2", "opencv-python"],
     extras_require={
         "pypylon": ["pypylon"],
-        "pyspin": [";pyspin"],
+        "pyspin": ["pyspin"],
     },
 )
