@@ -18,7 +18,7 @@ def write_frame(
     frame,
     fps=30,
     quality=15,
-    use_gpu=False,
+    gpu=None,
     pipe=None,
 ):
     """
@@ -31,8 +31,8 @@ def write_frame(
         The frame to write.
     fps : int (default: 30)
         The number of frames per second to write.
-    use_gpu: bool (default=False)
-        Whether to use hardware acceleration.
+    gpu: int (default=False)
+        Which GPU to use for encoding. If None, the CPU is used.
     pipe (subprocess.Popen, optional): The current pipe to write frames. If None,
         creates a pipe. Defaults to None.
     Returns
@@ -59,13 +59,13 @@ def write_frame(
         "-",
         "-an"]
 
-    if use_gpu: command += [
+    if gpu is not None: command += [
         "-c:v",
         "h264_nvenc",
         "-preset",
         'fast',
         "-qp", str(quality),
-        "-bf:v", "0",
+        "-gpu", str(gpu),
         "-vsync", "0",
         "-2pass", "0",
         "-pix_fmt",

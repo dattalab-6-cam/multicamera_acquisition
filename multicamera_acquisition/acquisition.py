@@ -143,7 +143,7 @@ class Writer(mp.Process):
 
         with open(self.metadata_file_name, "w") as metadata_f:
             metadata_writer = csv.writer(metadata_f)
-            metadata_writer.writerow(["frame_id", "frame_timestamp", "frame_image_uid"])
+            metadata_writer.writerow(["frame_id", "frame_timestamp", "frame_image_uid","queue_size"])
 
     def run(self):
         frame_id = 0
@@ -157,6 +157,7 @@ class Writer(mp.Process):
                     # get the computer datetime of the frame
                     frame_image_uid = str(round(time.time(), 5)).zfill(5)
                     img, camera_timestamp, current_frame = data
+                    qsize = self.queue.qsize()
                     # if the frame is corrupted
                     if img is None:
                         continue
@@ -165,6 +166,7 @@ class Writer(mp.Process):
                             current_frame,
                             camera_timestamp,
                             frame_image_uid,
+                            str(qsize)
                         ]
                     )
                     self.append(img)
@@ -269,7 +271,7 @@ def acquire_video(
         serial_number = camera_dict["serial"]
 
         ffmpeg_options = {}
-        for key in ['use_gpu','quality']:
+        for key in ['gpu','quality']:
             if key in camera_dict:
                 ffmpeg_options[key] = camera_dict[key]
 
@@ -435,4 +437,4 @@ def acquire_video(
             video_file = save_location / f"{name}.{serial_number}.avi"
             print(f"Frames ({name}):", count_frames(video_file.as_posix()))
 
-    return 
+    return save_location
