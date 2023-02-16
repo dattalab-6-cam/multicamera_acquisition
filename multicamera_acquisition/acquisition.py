@@ -109,7 +109,9 @@ class AcquisitionLoop(mp.Process):
                 if self.dropped_frame_warnings:
                     warnings.warn(
                         "Dropped {} frame on #{}: \n{}".format(
-                            current_frame, cam.serial_number, type(e).__name__  # , str(e)
+                            current_frame,
+                            cam.serial_number,
+                            type(e).__name__,  # , str(e)
                         )
                     )
             current_frame += 1
@@ -131,6 +133,7 @@ class Writer(mp.Process):
         camera_serial,
         camera_name,
         ffmpeg_options,
+        max_video_frames=60 * 60,
     ):
         super().__init__()
         self.pipe = None
@@ -140,10 +143,19 @@ class Writer(mp.Process):
         self.metadata_file_name = metadata_file_name
         self.camera_name = camera_name
         self.camera_serial = camera_serial
+        self.orig_stem = self.video_file_name.stem
+        self.orig_stem_metadata = self.metadata_file_name.stem
+        self.max_video_frames = max_video_frames
+
+        self.initialize_metadata()
+
+    def initialize_metadata(self):
 
         with open(self.metadata_file_name, "w") as metadata_f:
             metadata_writer = csv.writer(metadata_f)
-            metadata_writer.writerow(["frame_id", "frame_timestamp", "frame_image_uid","queue_size"])
+            metadata_writer.writerow(
+                ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
+            )
 
     def run(self):
         frame_id = 0
@@ -162,14 +174,29 @@ class Writer(mp.Process):
                     if img is None:
                         continue
                     metadata_writer.writerow(
-                        [
-                            current_frame,
-                            camera_timestamp,
-                            frame_image_uid,
-                            str(qsize)
-                        ]
+                        [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
                     )
                     self.append(img)
+
+                    frame_id += 1
+
+                    # if the current frame is greater than the max, create a new video and metadata file
+                    if frame_id > self.max_video_frames:
+                        self.close()
+                        self.video_file_name = (
+                            self.video_file_name.parent
+                            / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
+                        )
+
+                        # self.metadata_file_name = (
+                        #    self.metadata_file_name.parent
+                        #    / f"{self.orig_stem_metadata}.{current_frame}{self.metadata_file_name.suffix}"
+                        # )
+                        # self.initialize_metadata()
+
+                        self.pipe = None
+                        frame_id = 0
+
             self.close()
 
     def append(self, data):
@@ -180,6 +207,7 @@ class Writer(mp.Process):
     def close(self):
         if self.pipe is not None:
             self.pipe.stdin.close()
+
 
 def end_processes(acquisition_loops, writers, disp):
 
@@ -209,9 +237,17 @@ def acquire_video(
     append_datetime=True,
     verbose=True,
     n_input_trigger_states=4,
+    max_video_frames=None,  # after this many frames, a new video file will be created
     ffmpeg_options={},
     arduino_args=[],
 ):
+
+    if max_video_frames is None:
+        # set max video frames to 1 hour
+        max_video_frames = framerate * 60 * 60
+
+    if "framerate" not in ffmpeg_options:
+        ffmpeg_options["framerate"] = framerate
 
     if verbose:
         logging.log(logging.INFO, "Checking cameras...")
@@ -271,7 +307,7 @@ def acquire_video(
         serial_number = camera_dict["serial"]
 
         ffmpeg_options = {}
-        for key in ['gpu','quality']:
+        for key in ["gpu", "quality"]:
             if key in camera_dict:
                 ffmpeg_options[key] = camera_dict[key]
 
@@ -297,8 +333,9 @@ def acquire_video(
             metadata_file,
             serial_number,
             name,
-            ffmpeg_options,
-            )
+            max_video_frames=max_video_frames,
+            ffmpeg_options=ffmpeg_options,
+        )
 
         display_queue = None
         if display_frames:
@@ -313,7 +350,7 @@ def acquire_video(
             display_queue=display_queue,
             display_frames=display_frames,
             display_frequency=display_frequency,
-            **camera_dict
+            **camera_dict,
         )
 
         # initialize acquisition
@@ -326,7 +363,6 @@ def acquire_video(
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
 
-
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
         disp = MultiDisplay(
@@ -336,7 +372,7 @@ def acquire_video(
         )
         disp.start()
     else:
-        disp=None
+        disp = None
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
@@ -368,6 +404,9 @@ def acquire_video(
             + [f"flag_{i}" for i in range(n_input_trigger_states)]
         )
 
+    if verbose:
+        logging.log(logging.INFO, f"Telling arduino to start recording")
+
     # Tell the arduino to start recording by sending along the recording parameters
     inv_framerate = int(1e6 / framerate)
     num_cycles = int(recording_duration_s * framerate)
@@ -383,12 +422,17 @@ def acquire_video(
     )
     arduino.write(msg)
 
+    # delay recording to allow serial connection to connect
+    time.sleep(1.0)
+
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
 
     # Run acquision
-    try: confirmation = wait_for_serial_confirmation(arduino, "Start")
-    except: end_processes(acquisition_loops, writers, disp)
+    try:
+        confirmation = wait_for_serial_confirmation(arduino, "Start")
+    except:
+        end_processes(acquisition_loops, writers, disp)
 
     # how long to record
     datetime_prev = datetime.now()
@@ -403,7 +447,7 @@ def acquire_video(
             datetime_prev = datetime.now()
         # save input data flags
         if len(confirmation) > 0:
-            print(confirmation)
+            # print(confirmation)
             if confirmation[:7] == "input: ":
                 with open(triggerdata_file, "a") as triggerdata_f:
                     triggerdata_writer = csv.writer(triggerdata_f)
@@ -412,7 +456,7 @@ def acquire_video(
                     arduino_clock = confirmation[7:].split(",")[-1]
                     triggerdata_writer.writerow([frame_num, arduino_clock] + states)
             if verbose:
-                print(confirmation)
+                logging.log(logging.INFO, f"confirmation")
 
         if confirmation == "Finished":
             print("End Acquisition")
@@ -427,7 +471,6 @@ def acquire_video(
         logging.log(logging.INFO, f"Closing")
 
     end_processes(acquisition_loops, writers, disp)
-
 
     if verbose:
         # count each frame

@@ -5,7 +5,14 @@ import struct
 
 
 def get_camera(
-    brand="flir", serial=None, exposure_time=2000, gain=12, trigger="arduino", readout_mode='Fast', roi=None, **kwargs
+    brand="flir",
+    serial=None,
+    exposure_time=2000,
+    gain=12,
+    trigger="arduino",
+    readout_mode="Fast",
+    roi=None,
+    **kwargs
 ):
     """Get a camera object.
     Parameters
@@ -65,7 +72,14 @@ def get_camera(
 
         else:
             cam.LineSelector = "Line2"
+            cam.AcquisitionMode = "Continuous"
+            cam.TriggerMode = "Off"
+            cam.TriggerSource = "Software"
             cam.V3_3Enable = True
+            cam.TriggerOverlap = "ReadOut"
+
+        if roi is not None:
+            raise NotImplementedError("ROI not implemented for FLIR cameras")
 
     if brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import (
@@ -82,10 +96,10 @@ def get_camera(
         # set exposure time
         cam.cam.ExposureAuto.SetValue("Off")
         cam.cam.ExposureTime.SetValue(exposure_time)
-        
+
         # set readout mode
         cam.cam.SensorReadoutMode.SetValue(readout_mode)
-        
+
         # set roi
         if roi is not None:
             cam.cam.Width.SetValue(roi[2])
@@ -93,8 +107,6 @@ def get_camera(
             cam.cam.OffsetX.SetValue(roi[0])
             cam.cam.OffsetY.SetValue(roi[1])
 
-
-        
         # set trigger
         if trigger == "arduino":
             # see https://github.com/basler/pypylon/issues/119
