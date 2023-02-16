@@ -84,7 +84,7 @@ def write_frame(
         filename]
 
     if not pipe:
-        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
     pipe.stdin.write(frame.astype(np.uint8).tobytes())
     return pipe
 
