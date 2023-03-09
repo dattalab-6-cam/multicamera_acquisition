@@ -408,14 +408,14 @@ def acquire_video(
         logging.log(logging.INFO, f"Telling arduino to start recording")
 
     # Tell the arduino to start recording by sending along the recording parameters
-    inv_framerate = int(1e6 / framerate)
+    # inv_framerate = int(1e6 / framerate)
     num_cycles = int(recording_duration_s * framerate)
     msg = b"".join(
         map(
             packIntAsLong,
             (
                 num_cycles,
-                inv_framerate,
+                # inv_framerate,
                 *arduino_args,
             ),
         )
