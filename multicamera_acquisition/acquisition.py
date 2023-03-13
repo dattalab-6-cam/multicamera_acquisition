@@ -229,7 +229,8 @@ def acquire_video(
     save_location,
     camera_list,
     recording_duration_s,
-    framerate=30,
+    basler_framerate=120,
+    azure_framerate=30,
     display_framerate=30,
     serial_timeout_duration_s=0.1,
     display_downsample=4,
@@ -244,10 +245,10 @@ def acquire_video(
 
     if max_video_frames is None:
         # set max video frames to 1 hour
-        max_video_frames = framerate * 60 * 60
+        max_video_frames = basler_framerate * 60 * 60
 
     if "framerate" not in ffmpeg_options:
-        ffmpeg_options["framerate"] = framerate
+        ffmpeg_options["framerate"] = basler_framerate
 
     if verbose:
         logging.log(logging.INFO, "Checking cameras...")
@@ -273,7 +274,7 @@ def acquire_video(
             camera_list = [camera_list[i] for i in np.argsort(camera_brands)[::-1]]
 
     # determine the frequency at which to output frames to the display
-    display_frequency = int(framerate / display_framerate)
+    display_frequency = int(basler_framerate / display_framerate)
     if display_frequency < 1:
         display_frequency = 1
 
@@ -409,7 +410,7 @@ def acquire_video(
 
     # Tell the arduino to start recording by sending along the recording parameters
     # inv_framerate = int(1e6 / framerate)
-    num_cycles = int(recording_duration_s * framerate)
+    num_cycles = int(recording_duration_s * azure_framerate)
     msg = b"".join(
         map(
             packIntAsLong,
@@ -447,7 +448,7 @@ def acquire_video(
             datetime_prev = datetime.now()
         # save input data flags
         if len(confirmation) > 0:
-            # print(confirmation)
+            print(confirmation)
             if confirmation[:7] == "input: ":
                 with open(triggerdata_file, "a") as triggerdata_f:
                     triggerdata_writer = csv.writer(triggerdata_f)
@@ -465,7 +466,14 @@ def acquire_video(
     pbar.close()
 
     if confirmation != "Finished":
-        confirmation = wait_for_serial_confirmation(arduino, "Finished")
+
+        # JP added try/except here
+        try:
+            confirmation = wait_for_serial_confirmation(arduino, "Finished")
+        except ValueError as e:
+            print(e)
+            end_processes(acquisition_loops, writers, disp)
+
 
     if verbose:
         logging.log(logging.INFO, f"Closing")
