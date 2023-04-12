@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: multicamera-acquisition
+Version: 0.1.0
+Summary: Python packaamera acquisition with Flir and Basler cameras.
+Author: dattalab
+License: MIT
+Provides-Extra: pypylon
+Provides-Extra: pyspin
+License-File: LICENSE

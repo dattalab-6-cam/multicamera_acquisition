@@ -7,7 +7,7 @@ setup(
     description="Python packaamera acquisition with Flir and Basler cameras.",
     author="dattalab",
     license="MIT",
-    install_requires=["tqdm", "numpy", "pyserial", "pathlib2", "opencv-python"],
+    install_requires=["tqdm", "numpy", "pyserial", "pathlib2", "opencv-python", "av"],
     extras_require={
         "pypylon": ["pypylon"],
         "pyspin": ["pyspin"],

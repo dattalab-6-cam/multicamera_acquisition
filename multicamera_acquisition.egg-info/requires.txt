@@ -1,0 +1,11 @@
+tqdm
+numpy
+pyserial
+pathlib2
+opencv-python
+
+[pypylon]
+pypylon
+
+[pyspin]
+pyspin
