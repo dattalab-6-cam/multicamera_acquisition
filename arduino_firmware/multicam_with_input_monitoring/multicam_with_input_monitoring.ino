@@ -4,37 +4,32 @@
 const int SERIAL_START_DELAY = 100;
 
 // camera trigger pins
-int num_cams = 5;
-int trigger_pins[5] = {A1, A2, A3, A4, A5};
+int num_cams = 10;
+int trigger_pins[10] = { A1, A2, A3, A4, A5, 1,2,3,4,5 };
 
-// Define the input GPIOs
+// Define the input GPIOs (from external sync device)
 int num_input = 4;
-const int input_pins[4] = {22, 24, 26, 28};
+const int input_pins[4] = { 22, 24, 26, 28 };
 
 // Set the initial state of input pins
-int input_state[4] = {0, 0, 0, 0};
-int input_state_prev[4] = {0, 0, 0, 0};
+int input_state[4] = { 0, 0, 0, 0 };
+int input_state_prev[4] = { 0, 0, 0, 0 };
 
 // check if input pins have flipped and print to serial
-void checkInputPins(int current_cycle)
-{
+void checkInputPins(int current_cycle) {
   bool state_change = false;
-  for (int pin_i = 0; pin_i < 4; pin_i++)
-  {
+  for (int pin_i = 0; pin_i < 4; pin_i++) {
     input_state[pin_i] = digitalRead(input_pins[pin_i]);
-    if (input_state[pin_i] != input_state_prev[pin_i])
-    {
+    if (input_state[pin_i] != input_state_prev[pin_i]) {
       state_change = true;
       input_state_prev[pin_i] = input_state[pin_i];
     }
   }
 
   // compare the buttonState to its previous state
-  if (state_change == true)
-  {
+  if (state_change == true) {
     Serial.print("input: ");
-    for (int pin_i = 0; pin_i < 4; pin_i++)
-    {
+    for (int pin_i = 0; pin_i < 4; pin_i++) {
       Serial.print(input_state[pin_i]);
       Serial.print(",");
     }
@@ -51,10 +46,8 @@ void checkInputPins(int current_cycle)
   }
 }
 
-long readLongFromSerial()
-{
-  union u_tag
-  {
+long readLongFromSerial() {
+  union u_tag {
     byte b[4];
     long lval;
   } u;
@@ -65,32 +58,27 @@ long readLongFromSerial()
   return u.lval;
 }
 
-void toggle_camera_triggers(int pins[], byte state, int num)
-{
-  for (int i = 0; i < num; i++)
-  {
+void toggle_camera_triggers(int pins[], byte state, int num) {
+  for (int i = 0; i < num; i++) {
     digitalWrite(pins[i], state);
   }
 }
 
 void runAcquisition(
-    long num_cycles,
-    long inv_framerate)
-{
+  long num_cycles,
+  long inv_framerate) {
 
   unsigned long current_cycle = 0;
   unsigned long previous_micros = 0;
   unsigned long current_micros;
-    
 
-  while (current_cycle < num_cycles)
-  {
+
+  while (current_cycle < num_cycles) {
 
     current_micros = micros();
 
     // trigger camera
-    if (current_micros - previous_micros >= inv_framerate)
-    {
+    if (current_micros - previous_micros >= inv_framerate) {
 
       current_cycle += 1;
       previous_micros = current_micros;
@@ -98,7 +86,7 @@ void runAcquisition(
       // trigger the cameras shutter
       toggle_camera_triggers(trigger_pins, HIGH, num_cams);
       // wait for half the interframe period
-      delayMicroseconds(inv_framerate/2);
+      delayMicroseconds(inv_framerate / 2);
       // close the camera shutter
       toggle_camera_triggers(trigger_pins, LOW, num_cams);
 
@@ -108,17 +96,14 @@ void runAcquisition(
   }
 }
 
-void setup()
-{
+void setup() {
 
   // set up camera triggers
-  for (int pin : trigger_pins)
-  {
+  for (int pin : trigger_pins) {
     pinMode(pin, OUTPUT);
   }
   // set up input pins
-  for (int pin : input_pins)
-  {
+  for (int pin : input_pins) {
     pinMode(pin, INPUT);
   }
 
@@ -128,13 +113,11 @@ void setup()
   delay(SERIAL_START_DELAY);
 }
 
-void loop()
-{
+void loop() {
 
   // run acquisition when 2 params have been sent (each param is 4 bytes)
   // params are num_cycles, inv_framerate
-  if (Serial.available() == 8)
-  {
+  if (Serial.available() == 8) {
 
     Serial.println("Start");
     // Serial.println(micros());
@@ -143,8 +126,8 @@ void loop()
     long inv_framerate = readLongFromSerial();
 
     runAcquisition(
-        num_cycles,
-        inv_framerate);
+      num_cycles,
+      inv_framerate);
 
     // send message that recording is finished
     // Serial.println(micros());

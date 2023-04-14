@@ -9,6 +9,7 @@ def get_camera(
     serial=None,
     exposure_time=2000,
     gain=12,
+    trigger_line = "Line3",
     trigger="arduino",
     readout_mode="Fast",
     roi=None,
@@ -64,14 +65,14 @@ def get_camera(
             max_fps = cam.get_info("AcquisitionFrameRate")["max"]
             cam.AcquisitionFrameRate = max_fps
             cam.TriggerMode = "Off"
-            cam.TriggerSource = "Line3"
+            cam.TriggerSource = trigger_line
             cam.TriggerOverlap = "ReadOut"
             cam.TriggerSelector = "FrameStart"
             cam.TriggerActivation = "RisingEdge"
             cam.TriggerMode = "On"
 
         else:
-            cam.LineSelector = "Line2"
+            cam.LineSelector = trigger_line
             cam.AcquisitionMode = "Continuous"
             cam.TriggerMode = "Off"
             cam.TriggerSource = "Software"
@@ -98,8 +99,11 @@ def get_camera(
         cam.cam.ExposureTime.SetValue(exposure_time)
 
         # set readout mode
-        cam.cam.SensorReadoutMode.SetValue(readout_mode)
-
+        # TODO this is only available for certain cameras...
+        try:
+            cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        except:
+            pass
         # set roi
         if roi is not None:
             cam.cam.Width.SetValue(roi[2])
@@ -117,7 +121,7 @@ def get_camera(
             max_fps = cam.cam.AcquisitionFrameRate.GetMax()
             cam.cam.AcquisitionFrameRate.SetValue(max_fps)
             cam.cam.TriggerMode.SetValue("Off")
-            cam.cam.TriggerSource.SetValue("Line3")
+            cam.cam.TriggerSource.SetValue(trigger_line)
             cam.cam.TriggerSelector.SetValue("FrameStart")
             cam.cam.TriggerActivation.SetValue("RisingEdge")
             cam.cam.TriggerMode.SetValue("On")

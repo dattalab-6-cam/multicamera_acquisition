@@ -236,6 +236,7 @@ def acquire_video(
     overwrite=False,
     append_datetime=True,
     verbose=True,
+    dropped_frame_warnings=False,
     n_input_trigger_states=4,
     max_video_frames=None,  # after this many frames, a new video file will be created
     ffmpeg_options={},
@@ -350,6 +351,7 @@ def acquire_video(
             display_queue=display_queue,
             display_frames=display_frames,
             display_frequency=display_frequency,
+            dropped_frame_warnings=dropped_frame_warnings,
             **camera_dict,
         )
 
