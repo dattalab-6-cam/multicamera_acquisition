@@ -85,19 +85,28 @@ class AcquisitionLoop(mp.Process):
         self.ready.set()
         self.primed.wait()
 
+        # tell the camera to start grabbing
         cam.start()
+        # once the camera is started grabbing, allow the main
+        # process to continue
         self.ready.set()
 
         current_frame = 0
+        initialized = False
         while not self.stopped.is_set():
             try:
-                data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
+                if initialized:
+                    data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
+                else:
+                    # if this is the first frame, give time for serial to connect
+                    data = cam.get_array(timeout=10000, get_timestamp=True)
                 if len(data) != 0:
                     data = data + tuple([current_frame])
                 self.write_queue.put(data)
                 if self.display_frames:
                     if current_frame % self.display_frequency == 0:
                         self.display_queue.put(data)
+                initialized = True
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
                 if type(e).__name__ == "SpinnakerException":
@@ -115,7 +124,7 @@ class AcquisitionLoop(mp.Process):
                         )
                     )
             current_frame += 1
-
+            
         self.write_queue.put(tuple())
         if self.display_frames:
             self.display_queue.put(tuple())
@@ -193,7 +202,6 @@ class Writer(mp.Process):
                         #    / f"{self.orig_stem_metadata}.{current_frame}{self.metadata_file_name.suffix}"
                         # )
                         # self.initialize_metadata()
-
                         self.pipe = None
                         frame_id = 0
 
@@ -205,6 +213,7 @@ class Writer(mp.Process):
         )
 
     def close(self):
+        print('Closing')
         if self.pipe is not None:
             self.pipe.stdin.close()
 
@@ -236,6 +245,7 @@ def acquire_video(
     overwrite=False,
     append_datetime=True,
     verbose=True,
+    dropped_frame_warnings=False,
     n_input_trigger_states=4,
     max_video_frames=None,  # after this many frames, a new video file will be created
     ffmpeg_options={},
@@ -350,6 +360,7 @@ def acquire_video(
             display_queue=display_queue,
             display_frames=display_frames,
             display_frequency=display_frequency,
+            dropped_frame_warnings=dropped_frame_warnings,
             **camera_dict,
         )
 
@@ -374,17 +385,10 @@ def acquire_video(
     else:
         disp = None
 
-    if verbose:
-        logging.log(logging.INFO, f"Preparing acquisition loops")
-
-    # prepare acquisition loops
-    for acquisition_loop in acquisition_loops:
-        acquisition_loop.prime()
-        acquisition_loop.ready.wait()
-
+        
     if verbose:
         logging.log(logging.INFO, f"Initializing Arduino...")
-
+    
     # prepare communication with arduino
     serial_ports = glob.glob("/dev/ttyACM*")
     # check that there is an arduino available
@@ -394,7 +398,9 @@ def acquire_video(
     arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
 
     # delay recording to allow serial connection to connect
-    time.sleep(1.0)
+    sleep_duration = 1
+    logging.log(logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect...")
+    time.sleep(sleep_duration)
 
     # create a triggerdata file
     with open(triggerdata_file, "w") as triggerdata_f:
@@ -403,7 +409,17 @@ def acquire_video(
             ["pulse_id", "arduino_ms"]
             + [f"flag_{i}" for i in range(n_input_trigger_states)]
         )
+        
+    if verbose:
+        logging.log(logging.INFO, f"Preparing acquisition loops")
 
+    # prepare acquisition loops
+    for acquisition_loop in acquisition_loops:
+        # set camera state to ready and primed
+        acquisition_loop.prime()
+        # Don't initialize until all cameras are ready
+        acquisition_loop.ready.wait()
+    
     if verbose:
         logging.log(logging.INFO, f"Telling arduino to start recording")
 
@@ -423,16 +439,16 @@ def acquire_video(
     arduino.write(msg)
 
     # delay recording to allow serial connection to connect
-    time.sleep(1.0)
-
-    if verbose:
-        logging.log(logging.INFO, f"Starting Acquisition...")
+    #time.sleep(1.0)
 
     # Run acquision
     try:
         confirmation = wait_for_serial_confirmation(arduino, "Start")
     except:
         end_processes(acquisition_loops, writers, disp)
+        
+    if verbose:
+        logging.log(logging.INFO, f"Starting Acquisition...")
 
     # how long to record
     datetime_prev = datetime.now()
@@ -442,6 +458,8 @@ def acquire_video(
     pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
     while datetime.now() < endtime:
         confirmation = arduino.readline().decode("utf-8").strip("\r\n")
+        if confirmation == "Finished":
+            break
         if (datetime.now() - datetime_prev).seconds > 0:
             pbar.update((datetime.now() - datetime_prev).seconds)
             datetime_prev = datetime.now()
@@ -458,20 +476,16 @@ def acquire_video(
             if verbose:
                 logging.log(logging.INFO, f"confirmation")
 
-        if confirmation == "Finished":
-            print("End Acquisition")
-            break
-
-    pbar.close()
-
     if confirmation != "Finished":
         confirmation = wait_for_serial_confirmation(arduino, "Finished")
 
+    end_processes(acquisition_loops, writers, disp)
+    
     if verbose:
         logging.log(logging.INFO, f"Closing")
-
-    end_processes(acquisition_loops, writers, disp)
-
+    
+    pbar.close()
+    
     if verbose:
         # count each frame
         for camera_dict in camera_list:

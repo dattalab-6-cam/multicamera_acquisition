@@ -37,7 +37,7 @@ class BaslerCamera(BaseCamera):
                 raise CameraError("Camera with serial number %s not found." % index)
             index = np.where(camera_serials == index)[0][0]
             self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[index]))
-
+            
         del devices
 
         self.running = False
@@ -46,6 +46,10 @@ class BaslerCamera(BaseCamera):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
         self.cam.Open()
+        
+        # reset to default settings
+        self.cam.UserSetSelector = "Default"
+        self.cam.UserSetLoad.Execute()
 
     def start(self):
         "Start recording images."

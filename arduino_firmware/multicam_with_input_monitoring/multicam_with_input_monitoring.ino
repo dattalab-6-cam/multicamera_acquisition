@@ -1,11 +1,11 @@
 
 // #include <Arduino.h>
 
-const int SERIAL_START_DELAY = 100;
+const int SERIAL_START_DELAY = 1000;
 
 // camera trigger pins
-int num_cams = 5;
-int trigger_pins[5] = {A1, A2, A3, A4, A5};
+int num_cams = 8;
+int trigger_pins[8] = {A0, A2, A3, A4, A5, 27, 33, 53};
 
 // Define the input GPIOs
 int num_input = 4;

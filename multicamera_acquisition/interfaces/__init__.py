@@ -39,6 +39,11 @@ def get_camera(
 
     """
 
+    if "trigger_line" in kwargs:
+        trigger_line = kwargs["trigger_line"]
+    else:
+        trigger_line = "Line3"
+
     if brand == "flir":
         from multicamera_acquisition.interfaces.camera_flir import FlirCamera as Camera
 
@@ -53,6 +58,8 @@ def get_camera(
         # set exposure
         cam.ExposureAuto = "Off"
         cam.ExposureTime = exposure_time
+        
+
 
         # set trigger
         if trigger == "arduino":
@@ -64,14 +71,14 @@ def get_camera(
             max_fps = cam.get_info("AcquisitionFrameRate")["max"]
             cam.AcquisitionFrameRate = max_fps
             cam.TriggerMode = "Off"
-            cam.TriggerSource = "Line3"
+            cam.TriggerSource = trigger_line
             cam.TriggerOverlap = "ReadOut"
             cam.TriggerSelector = "FrameStart"
-            cam.TriggerActivation = "RisingEdge"
+            cam.TriggerActivation = "FallingEdge"
             cam.TriggerMode = "On"
 
         else:
-            cam.LineSelector = "Line2"
+            cam.LineSelector = trigger_line
             cam.AcquisitionMode = "Continuous"
             cam.TriggerMode = "Off"
             cam.TriggerSource = "Software"
@@ -98,7 +105,7 @@ def get_camera(
         cam.cam.ExposureTime.SetValue(exposure_time)
 
         # set readout mode
-        cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        #cam.cam.SensorReadoutMode.SetValue(readout_mode)
 
         # set roi
         if roi is not None:
@@ -117,9 +124,9 @@ def get_camera(
             max_fps = cam.cam.AcquisitionFrameRate.GetMax()
             cam.cam.AcquisitionFrameRate.SetValue(max_fps)
             cam.cam.TriggerMode.SetValue("Off")
-            cam.cam.TriggerSource.SetValue("Line3")
+            cam.cam.TriggerSource.SetValue(trigger_line)
             cam.cam.TriggerSelector.SetValue("FrameStart")
-            cam.cam.TriggerActivation.SetValue("RisingEdge")
+            cam.cam.TriggerActivation.SetValue("FallingEdge")
             cam.cam.TriggerMode.SetValue("On")
 
         else:

@@ -88,4 +88,3 @@ def write_frame(
     pipe.stdin.write(frame.astype(np.uint8).tobytes())
     return pipe
 
-

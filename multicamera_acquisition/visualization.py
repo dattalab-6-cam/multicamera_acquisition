@@ -61,30 +61,38 @@ class MultiDisplay(mp.Process):
 
         while True:
             quit = False
+            # initialized checks to see if recording has started
+            initialized = np.zeros(len(self.queues)).astype(bool)
             for qi, queue in enumerate(self.queues):
                 try:
                     data = queue.get(timeout=0.1)
                 except Exception as error:
-                    logging.info(
-                        "{}: Timeout occurred {}".format(
-                            self.camera_names[qi], str(error)
+                    if initialized[qi]:
+                        logging.info(
+                            "{}: Timeout occurred {}".format(
+                                self.camera_names[qi], str(error)
+                            )
                         )
-                    )
                     continue
                 if len(data) == 0:
                     quit = True
                     break
 
                 # retrieve frame
-                frame = data[0][:: self.downsample, :: self.downsample]
-                frame = cv2.resize(frame, self.display_size)
+                if data[0] is not None:
+                    initialized[qi] = True
+                    frame = data[0][:: self.downsample, :: self.downsample] 
+                    frame = cv2.resize(frame, self.display_size)
 
-                # convert frame to PhotoImage
-                img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
+                    # convert frame to PhotoImage
+                    img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
 
-                # update label with new image
-                labels[qi].config(image=img)
-                labels[qi].image = img
+                    # update label with new image
+                    labels[qi].config(image=img)
+                    labels[qi].image = img
+                else:
+                    continue
+                    #print(f"No data: {self.camera_names[qi]}")
 
             if quit:
                 break
