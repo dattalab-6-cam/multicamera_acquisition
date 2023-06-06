@@ -68,24 +68,21 @@ def write_frame(
         "-gpu", str(gpu),
         "-vsync", "0",
         "-2pass", "0",
-        "-pix_fmt",
-        "yuv420p",
-        filename]
+        ]
 
     else: command += [   
         "-c:v",
-        'hevc',
+        'libx264',
         "-preset",
         'ultrafast',
         "-crf",
-        str(quality),
+        str(quality),]
+    command += [   
         "-pix_fmt",
         "yuv420p",
         filename]
 
     if not pipe:
         pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    print(f'Writing to pipe, {type(frame)} {pipe.poll()}')
     pipe.stdin.write(frame.astype(np.uint8).tobytes())
     return pipe
-
