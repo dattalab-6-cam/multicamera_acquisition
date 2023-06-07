@@ -7,8 +7,11 @@ import datetime
 
 def count_frames(file_name):
     if os.path.exists(file_name):
-        with av.open(file_name, "r") as reader:
-            return reader.streams.video[0].frames
+        try:
+            with av.open(file_name, "r") as reader:
+                return reader.streams.video[0].frames
+        except Exception as e:
+            print(e)
     else:
         print("File does not exist")
 
@@ -41,48 +44,55 @@ def write_frame(
         The pipe to write frames.
     """
     
-    frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
-    command = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "rawvideo",
-        "-vcodec",
-        "rawvideo",
-        "-pix_fmt",
-        "gray",
-        "-s",
-        frame_size,
-        "-r",
-        str(fps),
-        "-i",
-        "-",
-        "-an"]
-
-    if gpu is not None: command += [
-        "-c:v",
-        "h264_nvenc",
-        "-preset",
-        'fast',
-        "-qp", str(quality),
-        "-gpu", str(gpu),
-        "-vsync", "0",
-        "-2pass", "0",
-        ]
-
-    else: command += [   
-        "-c:v",
-        'libx264',
-        "-preset",
-        'ultrafast',
-        "-crf",
-        str(quality),]
-    command += [   
-        "-pix_fmt",
-        "yuv420p",
-        filename]
-
     if not pipe:
+        frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-s",
+            frame_size,
+            "-r",
+            str(fps),
+            "-i",
+            "-",
+            "-an"]
+
+        if gpu is not None: 
+            command += [
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                'fast',
+                "-qp", str(quality),
+                "-gpu", str(gpu),
+                "-vsync", "0",
+                "-2pass", "0",
+                ]
+
+        else: 
+            command += [   
+                "-c:v",
+                'libx264',
+                "-preset",
+                'ultrafast',
+                "-crf",
+                str(quality),
+                ]
+        command += [   
+            "-threads",
+            "4",
+            "-pix_fmt",
+            "yuv420p",
+            str(filename)
+            ]
+        print(' '.join(command))
+        print(frame.shape)
         pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
     pipe.stdin.write(frame.astype(np.uint8).tobytes())
     return pipe

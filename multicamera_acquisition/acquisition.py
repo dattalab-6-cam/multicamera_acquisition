@@ -213,7 +213,6 @@ class Writer(mp.Process):
         )
 
     def close(self):
-        print('Closing')
         if self.pipe is not None:
             self.pipe.stdin.close()
 
@@ -247,17 +246,17 @@ def acquire_video(
     verbose=True,
     dropped_frame_warnings=False,
     n_input_trigger_states=4,
-    max_video_frames=None,  # after this many frames, a new video file will be created
+    max_video_frames='default',  # after this many frames, a new video file will be created
     ffmpeg_options={},
     arduino_args=[],
 ):
 
-    if max_video_frames is None:
+    if max_video_frames is 'default':
         # set max video frames to 1 hour
         max_video_frames = framerate * 60 * 60
 
-    if "framerate" not in ffmpeg_options:
-        ffmpeg_options["framerate"] = framerate
+    if "fps" not in ffmpeg_options:
+        ffmpeg_options["fps"] = framerate
 
     if verbose:
         logging.log(logging.INFO, "Checking cameras...")
