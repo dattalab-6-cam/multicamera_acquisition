@@ -79,7 +79,6 @@ class AcquisitionLoop(mp.Process):
         self.primed.set()
 
     def run(self):
-
         cam = get_camera(brand=self.brand, **self.camera_params)
 
         self.ready.set()
@@ -124,7 +123,7 @@ class AcquisitionLoop(mp.Process):
                         )
                     )
             current_frame += 1
-            
+
         self.write_queue.put(tuple())
         if self.display_frames:
             self.display_queue.put(tuple())
@@ -141,6 +140,7 @@ class Writer(mp.Process):
         metadata_file_name,
         camera_serial,
         camera_name,
+        camera_brand,
         ffmpeg_options,
         max_video_frames=60 * 60,
     ):
@@ -155,11 +155,11 @@ class Writer(mp.Process):
         self.orig_stem = self.video_file_name.stem
         self.orig_stem_metadata = self.metadata_file_name.stem
         self.max_video_frames = max_video_frames
+        self.camera_brand = camera_brand
 
         self.initialize_metadata()
 
     def initialize_metadata(self):
-
         with open(self.metadata_file_name, "w") as metadata_f:
             metadata_writer = csv.writer(metadata_f)
             metadata_writer.writerow(
@@ -177,7 +177,11 @@ class Writer(mp.Process):
                 else:
                     # get the computer datetime of the frame
                     frame_image_uid = str(round(time.time(), 5)).zfill(5)
-                    img, camera_timestamp, current_frame = data
+                    if self.camera_brand == "azure":
+                        depth, ir, camera_timestamp, current_frame = data
+                        img = ir
+                    else:
+                        img, camera_timestamp, current_frame = data
                     qsize = self.queue.qsize()
                     # if the frame is corrupted
                     if img is None:
@@ -197,11 +201,6 @@ class Writer(mp.Process):
                             / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
                         )
 
-                        # self.metadata_file_name = (
-                        #    self.metadata_file_name.parent
-                        #    / f"{self.orig_stem_metadata}.{current_frame}{self.metadata_file_name.suffix}"
-                        # )
-                        # self.initialize_metadata()
                         self.pipe = None
                         frame_id = 0
 
@@ -218,7 +217,6 @@ class Writer(mp.Process):
 
 
 def end_processes(acquisition_loops, writers, disp):
-
     # end acquisition loops
     for acquisition_loop in acquisition_loops:
         acquisition_loop.stop()
@@ -237,7 +235,9 @@ def acquire_video(
     save_location,
     camera_list,
     recording_duration_s,
+    azure_recording=False,
     framerate=30,
+    azure_framerate=30,
     display_framerate=30,
     serial_timeout_duration_s=0.1,
     display_downsample=4,
@@ -246,12 +246,23 @@ def acquire_video(
     verbose=True,
     dropped_frame_warnings=False,
     n_input_trigger_states=4,
-    max_video_frames='default',  # after this many frames, a new video file will be created
+    max_video_frames="default",  # after this many frames, a new video file will be created
     ffmpeg_options={},
     arduino_args=[],
 ):
+    if azure_framerate != 30:
+        raise ValueError("Azure framerate must be 30")
 
-    if max_video_frames is 'default':
+    if azure_recording:
+        # ensure that framerate is a multiple of azure_framerate
+        if framerate % azure_framerate != 0:
+            raise ValueError("Framerate must be a multiple of azure_framerate")
+
+    # ensure that framerate is a multiple of display_framerate
+    if framerate % display_framerate != 0:
+        raise ValueError("Framerate must be a multiple of display_framerate")
+
+    if max_video_frames == "default":
         # set max video frames to 1 hour
         max_video_frames = framerate * 60 * 60
 
@@ -264,9 +275,11 @@ def acquire_video(
     camera_brands = np.array([i["brand"] for i in camera_list])
     # if there are cameras that are not flir or basler, raise an error
     for i in camera_brands:
-        if i not in ["flir", "basler"]:
+        if i not in ["flir", "basler", "azure"]:
             raise ValueError(
-                "Camera brand must be either 'flir' or 'basler', not {}".format(i)
+                "Camera brand must be either 'flir' or 'basler', azure, not {}".format(
+                    i
+                )
             )
     # if there are both flir and basler cameras, make sure that the basler cameras are initialized after the flir cameras
     if "flir" in camera_brands and "basler" in camera_brands:
@@ -337,11 +350,12 @@ def acquire_video(
         # create a writer queue
         write_queue = mp.Queue()
         writer = Writer(
-            write_queue,
-            video_file,
-            metadata_file,
-            serial_number,
-            name,
+            queue=write_queue,
+            video_file_name=video_file,
+            metadata_file_name=metadata_file,
+            camera_serial=serial_number,
+            camera_name=name,
+            camera_brand=camera_dict["brand"],
             max_video_frames=max_video_frames,
             ffmpeg_options=ffmpeg_options,
         )
@@ -384,10 +398,9 @@ def acquire_video(
     else:
         disp = None
 
-        
     if verbose:
         logging.log(logging.INFO, f"Initializing Arduino...")
-    
+
     # prepare communication with arduino
     serial_ports = glob.glob("/dev/ttyACM*")
     # check that there is an arduino available
@@ -398,7 +411,9 @@ def acquire_video(
 
     # delay recording to allow serial connection to connect
     sleep_duration = 1
-    logging.log(logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect...")
+    logging.log(
+        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
+    )
     time.sleep(sleep_duration)
 
     # create a triggerdata file
@@ -408,7 +423,7 @@ def acquire_video(
             ["pulse_id", "arduino_ms"]
             + [f"flag_{i}" for i in range(n_input_trigger_states)]
         )
-        
+
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
 
@@ -418,34 +433,48 @@ def acquire_video(
         acquisition_loop.prime()
         # Don't initialize until all cameras are ready
         acquisition_loop.ready.wait()
-    
+
     if verbose:
         logging.log(logging.INFO, f"Telling arduino to start recording")
 
     # Tell the arduino to start recording by sending along the recording parameters
-    inv_framerate = int(1e6 / framerate)
-    num_cycles = int(recording_duration_s * framerate)
-    msg = b"".join(
-        map(
-            packIntAsLong,
-            (
-                num_cycles,
-                inv_framerate,
-                *arduino_args,
-            ),
+    if azure_recording:
+        inv_framerate = int(1e6 / azure_framerate)
+        num_cycles = int(recording_duration_s * azure_framerate)
+        msg = b"".join(
+            map(
+                packIntAsLong,
+                (
+                    num_cycles,
+                    inv_framerate,
+                    *arduino_args,
+                ),
+            )
         )
-    )
+    else:
+        inv_framerate = int(1e6 / framerate)
+        num_cycles = int(recording_duration_s * framerate)
+        msg = b"".join(
+            map(
+                packIntAsLong,
+                (
+                    num_cycles,
+                    inv_framerate,
+                    *arduino_args,
+                ),
+            )
+        )
     arduino.write(msg)
 
     # delay recording to allow serial connection to connect
-    #time.sleep(1.0)
+    # time.sleep(1.0)
 
     # Run acquision
     try:
         confirmation = wait_for_serial_confirmation(arduino, "Start")
     except:
         end_processes(acquisition_loops, writers, disp)
-        
+
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
 
@@ -476,15 +505,19 @@ def acquire_video(
                 logging.log(logging.INFO, f"confirmation")
 
     if confirmation != "Finished":
-        confirmation = wait_for_serial_confirmation(arduino, "Finished")
+        try:
+            confirmation = wait_for_serial_confirmation(arduino, "Finished")
+        except ValueError as e:
+            logging.log(logging.WARN, e)
+            end_processes(acquisition_loops, writers, disp)
 
     end_processes(acquisition_loops, writers, disp)
-    
+
     if verbose:
         logging.log(logging.INFO, f"Closing")
-    
+
     pbar.close()
-    
+
     if verbose:
         # count each frame
         for camera_dict in camera_list:

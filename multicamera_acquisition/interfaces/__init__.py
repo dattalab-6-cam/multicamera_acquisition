@@ -1,3 +1,6 @@
+# TODO
+# - camera specific code (e.g. setting ain for basler) doesn't need to be in this file
+
 # define the base camera
 
 import numpy as np
@@ -58,8 +61,6 @@ def get_camera(
         # set exposure
         cam.ExposureAuto = "Off"
         cam.ExposureTime = exposure_time
-        
-
 
         # set trigger
         if trigger == "arduino":
@@ -88,7 +89,7 @@ def get_camera(
         if roi is not None:
             raise NotImplementedError("ROI not implemented for FLIR cameras")
 
-    if brand == "basler":
+    elif brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import (
             BaslerCamera as Camera,
         )
@@ -105,7 +106,7 @@ def get_camera(
         cam.cam.ExposureTime.SetValue(exposure_time)
 
         # set readout mode
-        #cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        # cam.cam.SensorReadoutMode.SetValue(readout_mode)
 
         # set roi
         if roi is not None:
@@ -132,5 +133,17 @@ def get_camera(
         else:
             # TODO - implement software trigger
             raise NotImplementedError
+
+    elif brand == "azure":
+        from multicamera_acquisition.interfaces.camera_azure import (
+            AzureCamera as Camera,
+        )
+
+        if "name" in kwargs:
+            name = kwargs["name"]
+        else:
+            raise ValueError("Azure camera requires name")
+
+        cam = Camera(index=str(serial), name=name)
 
     return cam

@@ -43,7 +43,7 @@ def write_frame(
     pipe : subprocess.Popen
         The pipe to write frames.
     """
-    
+
     if not pipe:
         frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
         command = [
@@ -61,38 +61,39 @@ def write_frame(
             str(fps),
             "-i",
             "-",
-            "-an"]
+            "-an",
+        ]
 
-        if gpu is not None: 
+        if gpu is not None:
             command += [
                 "-c:v",
                 "h264_nvenc",
                 "-preset",
-                'fast',
-                "-qp", str(quality),
-                "-gpu", str(gpu),
-                "-vsync", "0",
-                "-2pass", "0",
-                ]
+                "fast",
+                "-qp",
+                str(quality),
+                "-gpu",
+                str(gpu),
+                "-vsync",
+                "0",
+                "-2pass",
+                "0",
+            ]
 
-        else: 
-            command += [   
+        else:
+            command += [
                 "-c:v",
-                'libx264',
+                "libx264",
                 "-preset",
-                'ultrafast',
+                "ultrafast",
                 "-crf",
                 str(quality),
-                ]
-        command += [   
-            "-threads",
-            "4",
-            "-pix_fmt",
-            "yuv420p",
-            str(filename)
             ]
-        print(' '.join(command))
-        print(frame.shape)
-        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        command += ["-threads", "4", "-pix_fmt", "yuv420p", str(filename)]
+        # print(' '.join(command))
+        # print(frame.shape)
+        pipe = subprocess.Popen(
+            command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
     pipe.stdin.write(frame.astype(np.uint8).tobytes())
     return pipe
