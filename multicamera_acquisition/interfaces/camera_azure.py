@@ -19,6 +19,11 @@ import warnings
 import subprocess
 
 
+def process_ir(ir):
+    ir = np.clip(ir + 100, 160, 5500)
+    return ((np.log(ir) - 5) * 70).astype(np.uint8)
+
+
 class AzureCamera(BaseCamera):
     def __init__(self, name, index=0, lock=True, **kwargs):
         """
@@ -64,7 +69,11 @@ class AzureCamera(BaseCamera):
 
     def stop(self):
         "Stop recording images."
-        self.cam.stop()
+        try:
+            self.cam.stop()
+            # self.cam.close()
+        except Exception as e:
+            warnings.warn(e)
 
     def get_image(self, timeout=None):
         """Get an image from the camera.
@@ -78,11 +87,10 @@ class AzureCamera(BaseCamera):
         img : K4A Image
         """
 
-        if self.timeout_warning_flag == False:
-            if timeout is not None:
-                warnings.warn("Timeout is not implemented for Azure cameras.")
+        if timeout is None:
+            timeout = 10000
 
-        return self.cam.get_capture()
+        return self.cam.get_capture(timeout=timeout)
 
     def get_array(self, timeout=None, get_color=False, get_timestamp=False):
         """Get an image from the camera.
@@ -101,19 +109,18 @@ class AzureCamera(BaseCamera):
         tstamp : int
         """
 
-        if self.timeout_warning_flag == False:
-            if timeout is not None:
-                warnings.warn("Timeout is not implemented for Azure cameras.")
-
         # grab image
         capture = self.get_image(timeout)
 
-        if get_timestamp:
-            tstamp = capture._color_timestamp_usec
-
         # grab depth and ir
         depth = capture.depth.astype(np.int16)
-        ir = capture.ir.astype(np.uint16)
+        ir = capture.ir  # .astype(np.uint16)
+
+        # DELETEME
+        ir = (ir / 257).astype(np.uint8)
+
+        if get_timestamp:
+            tstamp = capture._ir_timestamp_usec
 
         if get_color:
             color = capture.color

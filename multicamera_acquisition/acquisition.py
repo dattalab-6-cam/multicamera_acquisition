@@ -111,6 +111,7 @@ class AcquisitionLoop(mp.Process):
                 if type(e).__name__ == "SpinnakerException":
                     pass
                 elif type(e).__name__ == "TimeoutException":
+                    logging.log(logging.DEBUG, f"{self.brand}:{e}")
                     pass
                 else:
                     raise e
@@ -128,6 +129,7 @@ class AcquisitionLoop(mp.Process):
         if self.display_frames:
             self.display_queue.put(tuple())
 
+        logging.log(logging.INFO, f"Closing camera {self.brand}")
         if cam is not None:
             cam.close()
 
@@ -183,6 +185,7 @@ class Writer(mp.Process):
                     else:
                         img, camera_timestamp, current_frame = data
                     qsize = self.queue.qsize()
+
                     # if the frame is corrupted
                     if img is None:
                         continue
@@ -200,10 +203,13 @@ class Writer(mp.Process):
                             self.video_file_name.parent
                             / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
                         )
-
+                        logging.log(
+                            logging.DEBUG, f"Creating new file self.video_file_name"
+                        )
                         self.pipe = None
                         frame_id = 0
 
+            logging.log(logging.DEBUG, f"Closing writer pipe ({self.camera_name})")
             self.close()
 
     def append(self, data):
@@ -212,22 +218,39 @@ class Writer(mp.Process):
         )
 
     def close(self):
+        # indicate that no more data will be written
         if self.pipe is not None:
             self.pipe.stdin.close()
+        logging.log(logging.DEBUG, f"Writer pipe closed ({self.camera_name})")
 
 
 def end_processes(acquisition_loops, writers, disp):
     # end acquisition loops
     for acquisition_loop in acquisition_loops:
-        acquisition_loop.stop()
-        acquisition_loop.join()
-
+        if acquisition_loop.is_alive():
+            logging.log(
+                logging.DEBUG, f"stopping acquisition loop ({acquisition_loop.brand})"
+            )
+            # stop writing
+            acquisition_loop.stop()
+            # kill thread
+            logging.log(
+                logging.DEBUG, f"joining acquisition loop ({acquisition_loop.brand})"
+            )
+            acquisition_loop.join()
     # end writers
     for writer in writers:
-        writer.join()
+        if writer.is_alive():
+            #     # wait to finish writing
+            #     while writer.queue.qsize() > 0:
+            #         print(writer.queue.qsize())
+            #         time.sleep(0.1)
+            writer.join()
 
     # end display
     if disp is not None:
+        if disp.is_alive():
+            disp.join()
         disp.join()
 
 
@@ -235,6 +258,7 @@ def acquire_video(
     save_location,
     camera_list,
     recording_duration_s,
+    frame_timeout=None,
     azure_recording=False,
     framerate=30,
     azure_framerate=30,
@@ -374,6 +398,7 @@ def acquire_video(
             display_frames=display_frames,
             display_frequency=display_frequency,
             dropped_frame_warnings=dropped_frame_warnings,
+            frame_timeout=frame_timeout,
             **camera_dict,
         )
 
@@ -410,7 +435,7 @@ def acquire_video(
     arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
 
     # delay recording to allow serial connection to connect
-    sleep_duration = 1
+    sleep_duration = 2
     logging.log(
         logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
     )
@@ -471,19 +496,22 @@ def acquire_video(
 
     # Run acquision
     try:
-        confirmation = wait_for_serial_confirmation(arduino, "Start")
+        confirmation = wait_for_serial_confirmation(
+            arduino, expected_confirmation="Start", seconds_to_wait=10
+        )
     except:
+        # kill everything if we can't get confirmation
         end_processes(acquisition_loops, writers, disp)
+        return save_location
 
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
 
+    # while current time is less than initial time + recording_duration_s
+    pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
     # how long to record
     datetime_prev = datetime.now()
     endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
-
-    # while current time is less than initial time + recording_duration_s
-    pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
     while datetime.now() < endtime:
         confirmation = arduino.readline().decode("utf-8").strip("\r\n")
         if confirmation == "Finished":
@@ -504,17 +532,31 @@ def acquire_video(
             if verbose:
                 logging.log(logging.INFO, f"confirmation")
 
-    if confirmation != "Finished":
+    # wait for a confirmation of being finished
+    if confirmation == "Finished":
+        print("Confirmation recieved: {}".format(confirmation))
+    else:
+        logging.log(logging.LOG, "Waiting for finished confirmation")
         try:
-            confirmation = wait_for_serial_confirmation(arduino, "Finished")
+            confirmation = wait_for_serial_confirmation(
+                arduino, expected_confirmation="Finished", seconds_to_wait=10
+            )
         except ValueError as e:
             logging.log(logging.WARN, e)
-            end_processes(acquisition_loops, writers, disp)
-
-    end_processes(acquisition_loops, writers, disp)
 
     if verbose:
         logging.log(logging.INFO, f"Closing")
+
+    # TODO wait until all acquisition loops are finished
+    #   the proper way to do this would be to use a event.wait()
+    #   for each camera, to wait until it has no more frames to grab
+    #   (except in the case of azure, where it will always be able) to
+    #   grab more frames because it is not locked to the arduino pulse.
+    #   for now, I've just added a 5 second sleep after the arduino is 'finished'
+    #   which should be enough time for the cameras to finish grabbing frames
+    time.sleep(5)
+
+    end_processes(acquisition_loops, writers, disp)
 
     pbar.close()
 

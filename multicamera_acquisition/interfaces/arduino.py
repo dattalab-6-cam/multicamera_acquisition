@@ -19,10 +19,10 @@ def packIntAsLong(value):
 
 
 def wait_for_serial_confirmation(
-    arduino, expected_confirmation, recording_duration=5, timeout_duration_s=0.1
+    arduino, expected_confirmation, seconds_to_wait=5, timeout_duration_s=0.1
 ):
     confirmation = None
-    for i in range(int(recording_duration / timeout_duration_s)):
+    for i in range(int(seconds_to_wait / timeout_duration_s)):
         confirmation = arduino.readline().decode("utf-8").strip("\r\n")
         if confirmation == expected_confirmation:
             print("Confirmation recieved: {}".format(confirmation))

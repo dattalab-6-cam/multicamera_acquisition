@@ -37,7 +37,7 @@ class BaslerCamera(BaseCamera):
                 raise CameraError("Camera with serial number %s not found." % index)
             index = np.where(camera_serials == index)[0][0]
             self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[index]))
-            
+
         del devices
 
         self.running = False
@@ -46,7 +46,7 @@ class BaslerCamera(BaseCamera):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
         self.cam.Open()
-        
+
         # reset to default settings
         self.cam.UserSetSelector = "Default"
         self.cam.UserSetLoad.Execute()
@@ -75,11 +75,8 @@ class BaslerCamera(BaseCamera):
         img : PySpin Image
         """
         if timeout is None:
-            return self.cam.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
-        else:
-            return self.cam.RetrieveResult(
-                timeout, pylon.TimeoutHandling_ThrowException
-            )
+            timeout = 10000
+        return self.cam.RetrieveResult(timeout, pylon.TimeoutHandling_ThrowException)
 
     def get_array(self, timeout=None, get_timestamp=False):
         """Get an image from the camera.

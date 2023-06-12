@@ -16,7 +16,7 @@ const int SERIAL_START_DELAY = 100;
  int num_cams_TOP = 5;
  int basler_trigger_pins_TOP[5] = {2};
 int num_cams_BOTTOM = 1;
-int basler_trigger_pins_BOTTOM[1] = {A2}; 
+int basler_trigger_pins_BOTTOM[1] = {A8}; 
 
 // AZURE trigger pin
 int azure_trigger_pin = 11; 

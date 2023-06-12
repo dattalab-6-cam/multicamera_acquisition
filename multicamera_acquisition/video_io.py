@@ -54,7 +54,7 @@ def write_frame(
             "-vcodec",
             "rawvideo",
             "-pix_fmt",
-            "gray",
+            "gray8",
             "-s",
             frame_size,
             "-r",
