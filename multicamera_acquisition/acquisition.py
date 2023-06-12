@@ -35,6 +35,7 @@ class AcquisitionLoop(mp.Process):
         display_frames=False,
         display_frequency=1,
         dropped_frame_warnings=False,
+        write_queue_depth=None,
         **camera_params,
     ):
         """
@@ -70,6 +71,7 @@ class AcquisitionLoop(mp.Process):
         self.display_frames = display_frames
         self.display_frequency = display_frequency
         self.dropped_frame_warnings = dropped_frame_warnings
+        self.write_queue_depth = write_queue_depth
 
     def stop(self):
         self.stopped.set()
@@ -100,11 +102,30 @@ class AcquisitionLoop(mp.Process):
                     # if this is the first frame, give time for serial to connect
                     data = cam.get_array(timeout=10000, get_timestamp=True)
                 if len(data) != 0:
-                    data = data + tuple([current_frame])
-                self.write_queue.put(data)
-                if self.display_frames:
-                    if current_frame % self.display_frequency == 0:
-                        self.display_queue.put(data)
+                    # if this is an azure camera, we write the depth data to a separate queue
+                    if self.brand == "azure":
+                        depth, ir, camera_timestamp = data
+                        # logging.log(
+                        #    logging.DEBUG,
+                        #    f"d: {depth.shape}, ir: {ir.shape}, {camera_timestamp}",
+                        # )
+                        self.write_queue.put(
+                            tuple([ir, camera_timestamp, current_frame])
+                        )
+                        self.write_queue_depth.put(
+                            tuple([depth, camera_timestamp, current_frame])
+                        )
+                        if self.display_frames:
+                            if current_frame % self.display_frequency == 0:
+                                self.display_queue.put(
+                                    tuple([ir, camera_timestamp, current_frame])
+                                )
+                    else:
+                        data = data + tuple([current_frame])
+                        self.write_queue.put(data)
+                        if self.display_frames:
+                            if current_frame % self.display_frequency == 0:
+                                self.display_queue.put(data)
                 initialized = True
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
@@ -145,6 +166,7 @@ class Writer(mp.Process):
         camera_brand,
         ffmpeg_options,
         max_video_frames=60 * 60,
+        depth=False,
     ):
         super().__init__()
         self.pipe = None
@@ -158,6 +180,7 @@ class Writer(mp.Process):
         self.orig_stem_metadata = self.metadata_file_name.stem
         self.max_video_frames = max_video_frames
         self.camera_brand = camera_brand
+        self.depth = depth
 
         self.initialize_metadata()
 
@@ -179,11 +202,18 @@ class Writer(mp.Process):
                 else:
                     # get the computer datetime of the frame
                     frame_image_uid = str(round(time.time(), 5)).zfill(5)
-                    if self.camera_brand == "azure":
-                        depth, ir, camera_timestamp, current_frame = data
-                        img = ir
-                    else:
-                        img, camera_timestamp, current_frame = data
+                    # if self.camera_brand == "azure":
+                    #    depth, ir, camera_timestamp, current_frame = data
+                    #    img = ir
+                    # else:
+                    img, camera_timestamp, current_frame = data
+
+                    # if self.camera_brand == "azure":
+                    #    logging.log(
+                    #        logging.DEBUG,
+                    #        f"d: {img.shape}, ts: {camera_timestamp}, {current_frame}",
+                    #    )
+
                     qsize = self.queue.qsize()
 
                     # if the frame is corrupted
@@ -384,6 +414,26 @@ def acquire_video(
             ffmpeg_options=ffmpeg_options,
         )
 
+        if camera_dict["brand"] == "azure":
+            # create asecond write queue for the depth data
+            # create a writer queue
+            video_file_depth = save_location / f"{name}.{serial_number}.depth.avi"
+            metadata_file = save_location / f"{name}.{serial_number}.metadata.depth.csv"
+            write_queue_depth = mp.Queue()
+            writer_depth = Writer(
+                queue=write_queue,
+                video_file_name=video_file_depth,
+                metadata_file_name=metadata_file,
+                camera_serial=serial_number,
+                camera_name=name,
+                camera_brand=camera_dict["brand"],
+                max_video_frames=max_video_frames,
+                ffmpeg_options=ffmpeg_options,
+                depth=True,
+            )
+        else:
+            write_queue_depth = None
+
         display_queue = None
         if display_frames:
             # create a writer queue
@@ -394,6 +444,7 @@ def acquire_video(
         # prepare the acuqisition loop in a separate thread
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
+            write_queue_depth=write_queue_depth,
             display_queue=display_queue,
             display_frames=display_frames,
             display_frequency=display_frequency,
@@ -405,6 +456,9 @@ def acquire_video(
         # initialize acquisition
         writer.start()
         writers.append(writer)
+        if camera_dict["brand"] == "azure":
+            writer_depth.start()
+            writers.append(writer_depth)
 
         acquisition_loop.start()
         acquisition_loop.ready.wait()
@@ -462,6 +516,11 @@ def acquire_video(
     if verbose:
         logging.log(logging.INFO, f"Telling arduino to start recording")
 
+    """ TODO 
+    We are currently hardcoding certain values in the arduino code that should instead be sent here.
+    In particular, the basler framerate, the number of basler cameras, and the number of azures. 
+    It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
+    """
     # Tell the arduino to start recording by sending along the recording parameters
     if azure_recording:
         inv_framerate = int(1e6 / azure_framerate)
@@ -490,9 +549,6 @@ def acquire_video(
             )
         )
     arduino.write(msg)
-
-    # delay recording to allow serial connection to connect
-    # time.sleep(1.0)
 
     # Run acquision
     try:
