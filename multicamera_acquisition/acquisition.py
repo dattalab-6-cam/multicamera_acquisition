@@ -118,7 +118,7 @@ class AcquisitionLoop(mp.Process):
                         if self.display_frames:
                             if current_frame % self.display_frequency == 0:
                                 self.display_queue.put(
-                                    tuple([ir, camera_timestamp, current_frame])
+                                    tuple([depth, camera_timestamp, current_frame])
                                 )
                     else:
                         data = data + tuple([current_frame])
@@ -145,6 +145,9 @@ class AcquisitionLoop(mp.Process):
                         )
                     )
             current_frame += 1
+
+        if self.brand == "azure":
+            self.write_queue_depth.put(tuple())
 
         self.write_queue.put(tuple())
         if self.display_frames:
@@ -202,17 +205,7 @@ class Writer(mp.Process):
                 else:
                     # get the computer datetime of the frame
                     frame_image_uid = str(round(time.time(), 5)).zfill(5)
-                    # if self.camera_brand == "azure":
-                    #    depth, ir, camera_timestamp, current_frame = data
-                    #    img = ir
-                    # else:
                     img, camera_timestamp, current_frame = data
-
-                    # if self.camera_brand == "azure":
-                    #    logging.log(
-                    #        logging.DEBUG,
-                    #        f"d: {img.shape}, ts: {camera_timestamp}, {current_frame}",
-                    #    )
 
                     qsize = self.queue.qsize()
 
@@ -421,7 +414,7 @@ def acquire_video(
             metadata_file = save_location / f"{name}.{serial_number}.metadata.depth.csv"
             write_queue_depth = mp.Queue()
             writer_depth = Writer(
-                queue=write_queue,
+                queue=write_queue_depth,
                 video_file_name=video_file_depth,
                 metadata_file_name=metadata_file,
                 camera_serial=serial_number,
