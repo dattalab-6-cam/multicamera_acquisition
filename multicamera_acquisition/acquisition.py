@@ -516,8 +516,9 @@ def acquire_video(
     """
     # Tell the arduino to start recording by sending along the recording parameters
     if azure_recording:
-        inv_framerate = int(1e6 / azure_framerate)
+        inv_framerate = int(1e6 / framerate)
         num_cycles = int(recording_duration_s * azure_framerate)
+
         msg = b"".join(
             map(
                 packIntAsLong,

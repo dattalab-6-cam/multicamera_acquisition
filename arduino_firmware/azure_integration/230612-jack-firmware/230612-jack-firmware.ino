@@ -34,28 +34,30 @@ const int input_pins[4] = {22, 24, 26, 28};
 // Azure timing params
 const unsigned int AZURE_INV_RATE_USEC = 33333; // sync pulses will be sent at this rate
 const unsigned int AZURE_TRIG_WIDTH_USEC = 10;
-const unsigned int AZURE_PULSE_PERIOD_USEC = 160; // actually 125 usec but microsoft recommends calling it 160 to be safe
-const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575;  // I think? 0.125 pulse + 1.45 wait
-//const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1600;
-const unsigned int NUM_AZURES = 2;
-const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333;
 
-// Basler frame times are defined relative to each sync pulse being 0.
-// TODO: re-write python code to configure baslers to take rising edge triggers.
-// TODO: configure Baslers to start exposure asap, and to have a Timed exposure: https://docs.baslerweb.com/trigger-selector#frame-start-end-and-active-trigger
-// TODO: take into account any line delay (~1 us), exposure start time (3.6 us for us?), any line debouncing. Ideally trigger delay should be 0.
-// https://docs.baslerweb.com/trigger-activation
-// https://docs.baslerweb.com/acquisition-timing-information#exposure-start-delay
 const unsigned int BASLER_TRIG_WIDTH_USEC = 200;  // some random internet source suggested 100, let's try 50 for now.
 const unsigned int BASLER_IR_PULSE_WIDTH_USEC = 1000;  // make sure this is less than the separation between top + bottom baslers. 
-const int offset = 350;  // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
-const int basler_f0 = NUM_AZURES*AZURE_PULSE_PERIOD_USEC + offset;
-const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;  // want to be as close to 8333 as possible here
-const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - offset;
-const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
-const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3};  // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
-// nb as currently written, if f3 is > 33,333 it will break.
-const int basler_frame_times_BOTTOM[4] = {basler_f0 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f1 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f2 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f3 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC};
+
+// const unsigned int AZURE_PULSE_PERIOD_USEC = 160; // actually 125 usec but microsoft recommends calling it 160 to be safe
+// const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575;  // I think? 0.125 pulse + 1.45 wait
+// //const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1600;
+// const unsigned int NUM_AZURES = 2;
+// const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333;
+
+// // Basler frame times are defined relative to each sync pulse being 0.
+// // TODO: re-write python code to configure baslers to take rising edge triggers.
+// // TODO: configure Baslers to start exposure asap, and to have a Timed exposure: https://docs.baslerweb.com/trigger-selector#frame-start-end-and-active-trigger
+// // TODO: take into account any line delay (~1 us), exposure start time (3.6 us for us?), any line debouncing. Ideally trigger delay should be 0.
+// // https://docs.baslerweb.com/trigger-activation
+// // https://docs.baslerweb.com/acquisition-timing-information#exposure-start-delay
+// const int offset = 350;  // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
+// const int basler_f0 = NUM_AZURES*AZURE_PULSE_PERIOD_USEC + offset;
+// const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;  // want to be as close to 8333 as possible here
+// const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - offset;
+// const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
+// const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3};  // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
+// // nb as currently written, if f3 is > 33,333 it will break.
+// const int basler_frame_times_BOTTOM[4] = {basler_f0 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f1 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f2 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f3 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC};
 
 
 
@@ -182,8 +184,8 @@ int azure_pulse_logic()
 }
 
 
-void basler_pulse_logic(){
-  if ((basler_trigger_state_TOP == 0) && (basler_frame_timer >= basler_frame_times_TOP[current_basler_frame_idx_TOP]) && (not basler_await_azure_TOP)){
+void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTimesBottom[]){
+  if ((basler_trigger_state_TOP == 0) && (basler_frame_timer >= baslerFrameTimesTop[current_basler_frame_idx_TOP]) && (not basler_await_azure_TOP)){
     // Send the balser pulse and iterate relative frame idx
     toggle_camera_triggers(basler_trigger_pins_TOP, HIGH, num_cams_TOP);
     digitalWrite(IR1_top, HIGH);
@@ -272,7 +274,7 @@ void serial_flush(void) {
 }
 
 
-void runAcquisition(long num_cycles){
+void runAcquisition(long num_cycles, const int baslerFrameTimesTop[], const int baslerFrameTimesBottom[]){
 
   unsigned long current_cycle = 0;
   int frame_started = 0;
@@ -291,7 +293,7 @@ void runAcquisition(long num_cycles){
     frame_started = azure_pulse_logic();
     current_cycle = current_cycle + frame_started; // add 1 for each az frame
     // do basler logic
-    basler_pulse_logic();
+    basler_pulse_logic(baslerFrameTimesTop, baslerFrameTimesBottom);
 
      // Check if user is requesting an interrupt by sending a serial input
     if (sinceInterruptCheck >= interrupt_check_period_millis){
@@ -364,6 +366,29 @@ void loop()
     // Report params
     Serial.print("Num cycles:");
     Serial.println(num_cycles);
+
+    const unsigned int AZURE_PULSE_PERIOD_USEC = 160; // actually 125 usec but microsoft recommends calling it 160 to be safe
+    const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575;  // I think? 0.125 pulse + 1.45 wait
+    //const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1600;
+    const unsigned int NUM_AZURES = 2;
+    // const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333;
+    const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = (const unsigned int)inv_framerate;
+
+    // Basler frame times are defined relative to each sync pulse being 0.
+    // TODO: re-write python code to configure baslers to take rising edge triggers.
+    // TODO: configure Baslers to start exposure asap, and to have a Timed exposure: https://docs.baslerweb.com/trigger-selector#frame-start-end-and-active-trigger
+    // TODO: take into account any line delay (~1 us), exposure start time (3.6 us for us?), any line debouncing. Ideally trigger delay should be 0.
+    // https://docs.baslerweb.com/trigger-activation
+    // https://docs.baslerweb.com/acquisition-timing-information#exposure-start-delay
+    const int offset = 350;  // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
+    const int basler_f0 = NUM_AZURES*AZURE_PULSE_PERIOD_USEC + offset;
+    const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;  // want to be as close to 8333 as possible here
+    const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - offset;
+    const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
+    const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3};  // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
+    // nb as currently written, if f3 is > 33,333 it will break.
+    const int basler_frame_times_BOTTOM[4] = {basler_f0 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f1 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f2 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f3 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC};
+
     for (int t: basler_frame_times_TOP)
       {
         Serial.print(t);
@@ -380,7 +405,9 @@ void loop()
 
     // Do the magic!
     runAcquisition(
-        num_cycles);
+        num_cycles,
+        basler_frame_times_TOP,
+        basler_frame_times_BOTTOM);
 
     // turn LEDs off at end
     digitalWrite(IR1_top, LOW);
