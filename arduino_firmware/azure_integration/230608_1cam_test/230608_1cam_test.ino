@@ -14,7 +14,7 @@ const int SERIAL_START_DELAY = 100;
 
 // Camera trigger pins
  int num_cams_TOP = 5;
- int basler_trigger_pins_TOP[5] = {2};
+ int basler_trigger_pins_TOP[5] = {A5, 2};
 int num_cams_BOTTOM = 1;
 int basler_trigger_pins_BOTTOM[1] = {A8}; 
 
@@ -22,7 +22,7 @@ int basler_trigger_pins_BOTTOM[1] = {A8};
 int azure_trigger_pin = 11; 
 
 // LED pins
-int IR1_top    = 4;
+int IR1_top    = A1;
 int IR2_top    = 13;  // not actually used on Eli's rig
 int IR1_bottom = 10;  // not actually used on Eli's rig
 int IR2_bottom = 10;  // not actually used on Eli's rig

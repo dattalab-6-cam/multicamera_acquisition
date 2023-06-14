@@ -14,7 +14,7 @@ const int SERIAL_START_DELAY = 100;
 
 // Camera trigger pins
  int num_cams_TOP = 5;
- int basler_trigger_pins_TOP[5] = {2};
+ int basler_trigger_pins_TOP[5] = {A5, 2};
 int num_cams_BOTTOM = 1;
 int basler_trigger_pins_BOTTOM[1] = {A8}; 
 
@@ -22,7 +22,7 @@ int basler_trigger_pins_BOTTOM[1] = {A8};
 int azure_trigger_pin = 11; 
 
 // LED pins
-int IR1_top    = 4;
+int IR1_top    = A2;
 int IR2_top    = 13;  // not actually used on Eli's rig
 int IR1_bottom = 10;  // not actually used on Eli's rig
 int IR2_bottom = 10;  // not actually used on Eli's rig
@@ -359,7 +359,9 @@ void loop()
 
     // Read in user params
     long num_cycles = readLongFromSerial();
-    long inv_framerate = readLongFromSerial(); // not used
+    long inv_framerate = readLongFromSerial();
+    // long num_azures = readLongFromSerial();
+    // long num_baslers = readLongFromSerial();
 
     Serial.println("Start");
     
@@ -370,9 +372,11 @@ void loop()
     const unsigned int AZURE_PULSE_PERIOD_USEC = 160; // actually 125 usec but microsoft recommends calling it 160 to be safe
     const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575;  // I think? 0.125 pulse + 1.45 wait
     //const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1600;
+    // const unsigned int NUM_AZURES = (const unsigned int)num_azures;
     const unsigned int NUM_AZURES = 2;
-    // const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333;
     const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = (const unsigned int)inv_framerate;
+    // const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333;
+
 
     // Basler frame times are defined relative to each sync pulse being 0.
     // TODO: re-write python code to configure baslers to take rising edge triggers.

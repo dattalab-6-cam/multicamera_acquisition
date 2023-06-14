@@ -370,6 +370,9 @@ def acquire_video(
     display_queues = []
     camera_names = []
 
+    num_azures = len([v for v in camera_list if "azure" in v["brand"]])
+    num_baslers = len(camera_list) - num_azures
+
     # create acquisition loops
     for camera_dict in camera_list:
         name = camera_dict["name"]
@@ -515,33 +518,27 @@ def acquire_video(
     It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
     """
     # Tell the arduino to start recording by sending along the recording parameters
+    inv_framerate = int(1e6 / framerate)
     if azure_recording:
-        inv_framerate = int(1e6 / framerate)
         num_cycles = int(recording_duration_s * azure_framerate)
-
-        msg = b"".join(
-            map(
-                packIntAsLong,
-                (
-                    num_cycles,
-                    inv_framerate,
-                    *arduino_args,
-                ),
-            )
-        )
     else:
-        inv_framerate = int(1e6 / framerate)
         num_cycles = int(recording_duration_s * framerate)
-        msg = b"".join(
-            map(
-                packIntAsLong,
-                (
-                    num_cycles,
-                    inv_framerate,
-                    *arduino_args,
-                ),
-            )
+
+    logging.log(
+        logging.DEBUG, f"Inverse framerate: {inv_framerate}; num cycles: {num_cycles}"
+    )
+    msg = b"".join(
+        map(
+            packIntAsLong,
+            (
+                num_cycles,
+                inv_framerate,
+                # num_azures,
+                # num_baslers,
+                *arduino_args,
+            ),
         )
+    )
     arduino.write(msg)
 
     # Run acquision
