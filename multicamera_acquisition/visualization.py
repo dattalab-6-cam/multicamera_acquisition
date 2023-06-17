@@ -81,18 +81,37 @@ class MultiDisplay(mp.Process):
                 # retrieve frame
                 if data[0] is not None:
                     initialized[qi] = True
-                    frame = data[0][:: self.downsample, :: self.downsample] 
+                    frame = data[0][:: self.downsample, :: self.downsample]
+
+                    # logging.log(
+                    #    logging.DEBUG,
+                    #    f"Frame dtype: {frame.dtype == np.int16}, {frame.dtype}",
+                    # )
+
+                    logging.log(
+                        logging.DEBUG,
+                        f"Frame max min: {np.max(frame)}, {np.min(frame)}",
+                    )
+
                     frame = cv2.resize(frame, self.display_size)
 
+                    # int16 should be azure data
+                    if frame.dtype == np.int16:
+                        # normalize in range
+                        frame = normalize_array(frame).astype(np.uint8)
+
+                        # Convert frame to turbo/jet colormap
+                        colormap_frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
+
                     # convert frame to PhotoImage
-                    img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
+                    img = ImageTk.PhotoImage(image=PIL.Image.fromarray(colormap_frame))
 
                     # update label with new image
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
                     continue
-                    #print(f"No data: {self.camera_names[qi]}")
+                    # print(f"No data: {self.camera_names[qi]}")
 
             if quit:
                 break
@@ -101,41 +120,10 @@ class MultiDisplay(mp.Process):
         root.destroy()
 
 
-class Display(mp.Process):
-    def __init__(self, queue, camera_name, display_downsample=4):
-        super().__init__()
-        self.pipe = None
-        self.queue = queue
-        self.camera_name = camera_name
-        self.display_fcn = lambda x: x
-        self.downsample = display_downsample
+def normalize_array(arr, norm_max=255):
+    min_val = np.min(arr)
+    max_val = np.max(arr)
 
-    def run(self):
-        """Displays an image to a window."""
+    normalized_arr = (arr - min_val) / (max_val - min_val) * norm_max
 
-        root = tk.Tk()  # this is the window
-        root.title(self.camera_name)  # this is the title of the window
-        root.geometry("640x480")  # this is the size of the window
-
-        # create a label to hold the image
-        label = tk.Label(root)  # this is where the image will go
-        label.pack(fill=tk.BOTH, expand=True)  #
-
-        while True:
-            data = self.queue.get()
-            if len(data) == 0:
-                break
-
-            # retrieve frame
-            frame = data[0][:: self.downsample, :: self.downsample]
-            frame = cv2.resize(frame, (640, 480))
-
-            # convert frame to PhotoImage
-            img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
-
-            # update label with new image
-            label.config(image=img)
-            label.image = img
-
-            # update tkinter window
-            root.update()
+    return normalized_arr.astype(int)

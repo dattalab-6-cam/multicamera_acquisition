@@ -5,7 +5,7 @@ from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
 )
-from multicamera_acquisition.visualization import Display, MultiDisplay
+from multicamera_acquisition.visualization import MultiDisplay
 
 import multiprocessing as mp
 import csv
