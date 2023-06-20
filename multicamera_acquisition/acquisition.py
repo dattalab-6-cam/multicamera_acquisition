@@ -36,6 +36,7 @@ class AcquisitionLoop(mp.Process):
         display_frequency=1,
         dropped_frame_warnings=False,
         write_queue_depth=None,
+        cam=None,
         **camera_params,
     ):
         """
@@ -72,6 +73,7 @@ class AcquisitionLoop(mp.Process):
         self.display_frequency = display_frequency
         self.dropped_frame_warnings = dropped_frame_warnings
         self.write_queue_depth = write_queue_depth
+        self.cam = cam
 
     def stop(self):
         self.stopped.set()
@@ -81,8 +83,11 @@ class AcquisitionLoop(mp.Process):
         self.primed.set()
 
     def run(self):
-        cam = get_camera(brand=self.brand, **self.camera_params)
-
+        # get the camera if it hasn't been passed in (e.g. for azure)
+        if self.cam is None:
+            cam = get_camera(brand=self.brand, **self.camera_params)
+        else:
+            cam = self.cam
         self.ready.set()
         self.primed.wait()
 
@@ -96,19 +101,23 @@ class AcquisitionLoop(mp.Process):
         initialized = False
         while not self.stopped.is_set():
             try:
+                # debug write getting frame
+                # logging.debug(
+                #    f"Getting frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
+                # )
                 if initialized:
                     data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
                 else:
                     # if this is the first frame, give time for serial to connect
                     data = cam.get_array(timeout=10000, get_timestamp=True)
+                # logging.debug(
+                #    f"Got frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
+                # )
                 if len(data) != 0:
                     # if this is an azure camera, we write the depth data to a separate queue
                     if self.brand == "azure":
                         depth, ir, camera_timestamp = data
-                        # logging.log(
-                        #    logging.DEBUG,
-                        #    f"d: {depth.shape}, ir: {ir.shape}, {camera_timestamp}",
-                        # )
+
                         self.write_queue.put(
                             tuple([ir, camera_timestamp, current_frame])
                         )
@@ -127,6 +136,7 @@ class AcquisitionLoop(mp.Process):
                             if current_frame % self.display_frequency == 0:
                                 self.display_queue.put(data)
                 initialized = True
+
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
                 if type(e).__name__ == "SpinnakerException":
@@ -144,7 +154,12 @@ class AcquisitionLoop(mp.Process):
                             type(e).__name__,  # , str(e)
                         )
                     )
+            # logging.debug(
+            #    f"finished loop, {self.camera_params['name']}, current frame: {current_frame}, stopped: {self.stopped.is_set()}"
+            # )
             current_frame += 1
+
+        logging.debug(f"Writing empties to queue, {self.camera_params['name']}")
 
         if self.brand == "azure":
             self.write_queue_depth.put(tuple())
@@ -153,9 +168,11 @@ class AcquisitionLoop(mp.Process):
         if self.display_frames:
             self.display_queue.put(tuple())
 
-        logging.log(logging.INFO, f"Closing camera {self.brand}")
+        logging.log(logging.INFO, f"Closing camera {self.camera_params['name']}")
         if cam is not None:
             cam.close()
+
+        logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
 
 
 class Writer(mp.Process):
@@ -184,6 +201,10 @@ class Writer(mp.Process):
         self.max_video_frames = max_video_frames
         self.camera_brand = camera_brand
         self.depth = depth
+        if (camera_brand == "azure") & (depth == True):
+            self.pixel_format = "gray16"
+        else:
+            self.pixel_format = "gray8"
 
         self.initialize_metadata()
 
@@ -235,9 +256,15 @@ class Writer(mp.Process):
             logging.log(logging.DEBUG, f"Closing writer pipe ({self.camera_name})")
             self.close()
 
+        logging.log(logging.DEBUG, f"Writer run finished ({self.camera_name})")
+
     def append(self, data):
         self.pipe = write_frame(
-            self.video_file_name, data, pipe=self.pipe, **self.ffmpeg_options
+            self.video_file_name,
+            data,
+            pipe=self.pipe,
+            pixel_format=self.pixel_format,
+            **self.ffmpeg_options,
         )
 
     def close(self):
@@ -252,15 +279,21 @@ def end_processes(acquisition_loops, writers, disp):
     for acquisition_loop in acquisition_loops:
         if acquisition_loop.is_alive():
             logging.log(
-                logging.DEBUG, f"stopping acquisition loop ({acquisition_loop.brand})"
+                logging.DEBUG,
+                f"stopping acquisition loop ({acquisition_loop.camera_params['name']})",
             )
             # stop writing
             acquisition_loop.stop()
             # kill thread
             logging.log(
-                logging.DEBUG, f"joining acquisition loop ({acquisition_loop.brand})"
+                logging.DEBUG,
+                f"joining acquisition loop ({acquisition_loop.camera_params['name']})",
             )
-            acquisition_loop.join()
+            acquisition_loop.join(timeout=1)
+            # kill if necessary
+            if acquisition_loop.is_alive():
+                acquisition_loop.terminate()
+
     # end writers
     for writer in writers:
         if writer.is_alive():
@@ -427,8 +460,11 @@ def acquire_video(
                 ffmpeg_options=ffmpeg_options,
                 depth=True,
             )
+            cam = get_camera(**camera_dict)
+
         else:
             write_queue_depth = None
+            cam = None
 
         display_queue = None
         if display_frames:
@@ -446,6 +482,7 @@ def acquire_video(
             display_frequency=display_frequency,
             dropped_frame_warnings=dropped_frame_warnings,
             frame_timeout=frame_timeout,
+            cam=cam,
             **camera_dict,
         )
 

@@ -2,9 +2,7 @@
 
 // LED pins
 int IR1_top    = 5;
-int IR2_top    = 13;  // not actually used 
-int IR1_bottom = 4; 
-int IR2_bottom = 10;  // not actually used on Eli's rig
+int IR1_bottom = 3; 
 
 // Time related variables
 elapsedMillis timeElapsed;

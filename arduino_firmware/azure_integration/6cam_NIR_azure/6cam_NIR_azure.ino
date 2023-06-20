@@ -54,10 +54,10 @@ int current_basler_frame_idx_BOTTOM = 0;
 
 // Camera trigger pins
  int num_cams_TOP = 5;
- int basler_trigger_pins_TOP[5] = {A2, A3};
+ int basler_trigger_pins_TOP[5] = {A3};
 int num_cams_BOTTOM = 1;
-int basler_trigger_pins_BOTTOM[1] = {A1}; 
-int azure_trigger_pin = A0; 
+int basler_trigger_pins_BOTTOM[1] = {A0}; 
+int azure_trigger_pin = A5; 
 
 // State vars
 int azure_trigger_state = 0;
@@ -70,10 +70,10 @@ int basler_await_azure_BOTTOM = 0;
 int done = 0;
 
 // LED pins
-int IR1_top    = 5;
-int IR2_top    = 7;
-int IR1_bottom = 4;
-int IR2_bottom = 6; 
+int IR1_top    = 4;
+int IR2_top    = 13;
+int IR1_bottom = 5;
+int IR2_bottom = 10; 
 
 // Define the input GPIOs
 int num_input = 4;

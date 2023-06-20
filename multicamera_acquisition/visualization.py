@@ -83,29 +83,23 @@ class MultiDisplay(mp.Process):
                     initialized[qi] = True
                     frame = data[0][:: self.downsample, :: self.downsample]
 
-                    # logging.log(
-                    #    logging.DEBUG,
-                    #    f"Frame dtype: {frame.dtype == np.int16}, {frame.dtype}",
-                    # )
-
-                    logging.log(
-                        logging.DEBUG,
-                        f"Frame max min: {np.max(frame)}, {np.min(frame)}",
-                    )
-
                     frame = cv2.resize(frame, self.display_size)
 
                     # int16 should be azure data
-                    if frame.dtype == np.int16:
+                    if frame.dtype == np.uint16:
                         # normalize in range
                         frame = normalize_array(frame).astype(np.uint8)
 
                         # Convert frame to turbo/jet colormap
                         colormap_frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
 
-                    # convert frame to PhotoImage
-                    img = ImageTk.PhotoImage(image=PIL.Image.fromarray(colormap_frame))
-
+                        # convert frame to PhotoImage
+                        img = ImageTk.PhotoImage(
+                            image=PIL.Image.fromarray(colormap_frame)
+                        )
+                    else:
+                        # convert frame to PhotoImage
+                        img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
                     # update label with new image
                     labels[qi].config(image=img)
                     labels[qi].image = img

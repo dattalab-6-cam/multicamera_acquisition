@@ -19,11 +19,6 @@ import warnings
 import subprocess
 
 
-def process_ir(ir):
-    ir = np.clip(ir + 100, 160, 5500)
-    return ((np.log(ir) - 5) * 70).astype(np.uint8)
-
-
 class AzureCamera(BaseCamera):
     def __init__(self, name, index=0, lock=True, **kwargs):
         """
@@ -109,15 +104,16 @@ class AzureCamera(BaseCamera):
         tstamp : int
         """
 
+        def ir16_to_uint8(ir):
+            return (np.clip(ir, 0, 1275) / 5).astype(np.uint8)
+
         # grab image
         capture = self.get_image(timeout)
 
         # grab depth and ir
-        depth = capture.depth.astype(np.int16)
-        ir = capture.ir  # .astype(np.uint16)
-
-        # DELETEME
-        ir = (ir / 257).astype(np.uint8)
+        # TODO ensure depth and ir are actually captured
+        depth = capture.depth.astype(np.uint16)
+        ir = ir16_to_uint8(capture.ir)
 
         if get_timestamp:
             tstamp = capture._ir_timestamp_usec
