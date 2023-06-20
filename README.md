@@ -18,15 +18,67 @@ Sources:
 
 ### Installation
 
-Before installation: You should install pylon and pypylon if you are using Basler cameras, and spinnaker and pyspin if you are using Flir cameras. 
+### NVIDIA Driver
+1. Run software updater on a fresh installation of Ubuntu
+2. Check additional drivers to see if NVIDIA drivers are available and reboot your computer
+3. Click `Using X.OrgX ...` and run `Apply Changes` and reboot again
 
-#### Setting USB camera settings
+### k4aviewer
+
+```
+sudo apt-add-repository -y -n 'deb http://archive.ubuntu.com/ubuntu focal main'
+sudo apt-add-repository -y 'deb http://archive.ubuntu.com/ubuntu focal universe'
+sudo apt-get install -y libsoundio1
+sudo apt-add-repository -r -y -n 'deb http://archive.ubuntu.com/ubuntu focal universe'
+sudo apt-add-repository -r -y 'deb http://archive.ubuntu.com/ubuntu focal main'
+
+curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3/libk4a1.3_1.3.0_amd64.deb > /tmp/libk4a1.3_1.3.0_amd64.deb
+echo 'libk4a1.3 libk4a1.3/accepted-eula-hash string 0f5d5c5de396e4fee4c0753a21fee0c1ed726cf0316204edda484f08cb266d76' | sudo debconf-set-selections
+sudo dpkg -i /tmp/libk4a1.3_1.3.0_amd64.deb
+
+curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3-dev/libk4a1.3-dev_1.3.0_amd64.deb > /tmp/libk4a1.3-dev_1.3.0_amd64.deb
+sudo dpkg -i /tmp/libk4a1.3-dev_1.3.0_amd64.deb
+
+curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0/libk4abt1.0_1.0.0_amd64.deb > /tmp/libk4abt1.0_1.0.0_amd64.deb
+echo 'libk4abt1.0	libk4abt1.0/accepted-eula-hash	string	03a13b63730639eeb6626d24fd45cf25131ee8e8e0df3f1b63f552269b176e38' | sudo debconf-set-selections
+sudo dpkg -i /tmp/libk4abt1.0_1.0.0_amd64.deb
+
+curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0-dev/libk4abt1.0-dev_1.0.0_amd64.deb > /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
+sudo dpkg -i /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
+
+curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/k/k4a-tools/k4a-tools_1.3.0_amd64.deb > /tmp/k4a-tools_1.3.0_amd64.deb
+sudo dpkg -i /tmp/k4a-tools_1.3.0_amd64.deb
+```
+
+Then update the udev rules
+
+```
+wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules``
+sudo mv 99-k4a.rules /etc/udev/rules.d/
+```
+Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
+
+#### Pylon installation
+1. Make sure `_apt` has write permission to the proper directories:
+```
+sudo chown -Rv _apt:root /var/cache/apt/archives/partial/
+sudo chmod -Rv 700 /var/cache/apt/archives/partial/
+```
+2. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package
+```
+cd /to/your/donwload/dir/
+tar -xf pylon_7.3.0.27189_linux-x86_64_debs.tar.gz
+sudo apt-get install ./pylon_*.deb ./codemeter*.deb
+```
+
+
+##### Setting USB camera settings
 For both pylon and spinnaker, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
 In pylon, this can be done with 
 ```
-sudo /opt/pylon/share/pylon/setup-usb.sh
+sudo sh /opt/pylon/share/pylon/setup-usb.sh
 ```
-In spinnaker, navigat to the spinnaker download folder and run 
+In spinnaker, navigate to the spinnaker download folder and run 
 ```
 sudo sh configure_usbfs.sh
 ```
@@ -232,47 +284,6 @@ For each recording, video clips will be `max_video_frames` frames long, but may 
 ### Video naming scheme.
 Videos are named as `{camera_name}.{camera_serial_number}.{frame_number}.avi`, for example `Top.22181547.30001.avi`.
 Here, `frame_number` corresponds to the the `frame_id` value in the `{camera_name}.{camera_serial_number}.metadata.csv` file. 
-
-
-### Install kinect sdk / k4a on ubuntu 22.04
-
-```
-sudo apt-add-repository -y -n 'deb http://archive.ubuntu.com/ubuntu focal main'
-sudo apt-add-repository -y 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-get install -y libsoundio1
-sudo apt-add-repository -r -y -n 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-add-repository -r -y 'deb http://archive.ubuntu.com/ubuntu focal main'
-
-if ! dpkg -s libk4a1.3 > /dev/null; then
-	curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3/libk4a1.3_1.3.0_amd64.deb > /tmp/libk4a1.3_1.3.0_amd64.deb
-	echo 'libk4a1.3 libk4a1.3/accepted-eula-hash string 0f5d5c5de396e4fee4c0753a21fee0c1ed726cf0316204edda484f08cb266d76' | sudo debconf-set-selections
-	sudo dpkg -i /tmp/libk4a1.3_1.3.0_amd64.deb
-fi
-if ! dpkg -s libk4a1.3-dev > /dev/null; then
-	curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3-dev/libk4a1.3-dev_1.3.0_amd64.deb > /tmp/libk4a1.3-dev_1.3.0_amd64.deb
-	sudo dpkg -i /tmp/libk4a1.3-dev_1.3.0_amd64.deb
-fi
-if ! dpkg -s libk4abt1.0 > /dev/null; then
-	curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0/libk4abt1.0_1.0.0_amd64.deb > /tmp/libk4abt1.0_1.0.0_amd64.deb
-	echo 'libk4abt1.0	libk4abt1.0/accepted-eula-hash	string	03a13b63730639eeb6626d24fd45cf25131ee8e8e0df3f1b63f552269b176e38' | sudo debconf-set-selections
-	sudo dpkg -i /tmp/libk4abt1.0_1.0.0_amd64.deb
-fi
-if ! dpkg -s libk4abt1.0-dev > /dev/null; then
-	curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0-dev/libk4abt1.0-dev_1.0.0_amd64.deb > /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
-	sudo dpkg -i /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
-fi
-if ! dpkg -s k4a-tools > /dev/null; then
-	curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/k/k4a-tools/k4a-tools_1.3.0_amd64.deb > /tmp/k4a-tools_1.3.0_amd64.deb
-	sudo dpkg -i /tmp/k4a-tools_1.3.0_amd64.deb
-```
-
-Then update the udev rules
-
-```
-wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules``
-sudo mv 99-k4a.rules /etc/udev/rules.d/
-```
-
 
 ## TODO
 - in the visualization, if skip to the latest frame in the buffer. 
