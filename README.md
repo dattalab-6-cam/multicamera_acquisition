@@ -59,9 +59,7 @@ sudo mv 99-k4a.rules /etc/udev/rules.d/
 Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
 
 #### Pylon installation
-```
 1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package
-```
 
 ```
 cd /to/your/donwload/dir/
