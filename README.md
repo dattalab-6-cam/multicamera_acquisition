@@ -101,6 +101,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 Then, install the usb library.
 ```
 sudo apt-get install libusb-1.0-0-dev
+reboot
 ```
 
 
