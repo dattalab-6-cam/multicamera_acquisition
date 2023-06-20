@@ -62,6 +62,8 @@ Plug a Kinect Azure camera into the computer and run `k4aviewer` from the termin
 ```
 1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package
 ```
+
+```
 cd /to/your/donwload/dir/
 mv pylon_7.3* /tmp && cd /tmp
 tar -xf pylon_7.3.0.27189_linux-x86_64_debs.tar.gz
