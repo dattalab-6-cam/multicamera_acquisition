@@ -302,11 +302,7 @@ void runAcquisition(long num_cycles, const int baslerFrameTimesTop[], const int 
         Serial.println("Breaking!");
         Serial.flush();
         break;
-      }void serial_flush(void)
-{
-  while (Serial.available())
-    Serial.read();
-}
+      }
     }
   }
   done = 1;
