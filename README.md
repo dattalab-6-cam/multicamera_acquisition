@@ -109,6 +109,13 @@ sudo apt-get install libusb-1.0-0-dev
 reboot
 ```
 
+#### Arduino IDE
+```
+sudo snap install arduino
+sudo usermod -a -G dialout $USER
+reboot
+``` 
+
 
 #### Package installation
 
