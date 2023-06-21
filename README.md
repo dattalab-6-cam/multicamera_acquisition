@@ -59,7 +59,7 @@ sudo mv 99-k4a.rules /etc/udev/rules.d/
 Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
 
 #### Pylon installation
-1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package
+1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download `pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package`
 
 ```
 cd /to/your/donwload/dir/
@@ -67,7 +67,15 @@ mv pylon_7.3* /tmp && cd /tmp
 tar -xf pylon_7.3.0.27189_linux-x86_64_debs.tar.gz
 sudo apt-get install ./pylon_*.deb ./codemeter*.deb
 ```
-
+Pylon should now be on your applications grid. If it does not launch upon clicking it, then try the following:
+```
+sudo apt-get install libxcb-xinput0
+```
+If that does not work, then run the below and use the error message to debug what possibly went wrong
+```
+export QT_DEBUG_PLUGINS=1
+/opt/pylon/bin/pylonviewer
+```
 
 ##### Setting USB camera settings
 For both pylon and spinnaker, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
