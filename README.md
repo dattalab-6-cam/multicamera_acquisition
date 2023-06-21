@@ -128,6 +128,11 @@ sudo apt install libfuse2
 ```
 If you want to have the IDE available in your Desktop menu then fllow the instructions at this [link](https://askubuntu.com/questions/1311600/add-an-appimage-application-to-the-top-menu-bar)
 
+#### ffmpeg
+```
+sudo apt install ffmpeg
+```
+
 #### Package installation
 
 You are most likely going to want to customize this code, so just install it with `python setup.py develop` in the main directory. 
