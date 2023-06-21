@@ -110,12 +110,22 @@ reboot
 ```
 
 #### Arduino IDE
+1. Download the Arduino IDE AppImage from Arduino's [website](https://www.arduino.cc/en/software)
+2. (Optional) Move to a better location:
 ```
-sudo snap install arduino
-sudo usermod -a -G dialout $USER
-reboot
-``` 
+mv ~/Downloads/arudino-*.Appimage /path/to/where/you/want/arduino-ide
+```
+3. Open the folder viewer where you arudino app image lives
+4. Right-click the file,
+5. Choose Properties,
+6. Select Permissions tab,
+7. Tick the Allow executing file as program box. 
 
+If double clicking the app image does not open the IDE try the following:
+```
+sudo add-apt-repository universe
+sudo apt install libfuse2
+```
 
 #### Package installation
 
