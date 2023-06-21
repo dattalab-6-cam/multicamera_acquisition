@@ -126,6 +126,7 @@ If double clicking the app image does not open the IDE try the following:
 sudo add-apt-repository universe
 sudo apt install libfuse2
 ```
+If you want to have the IDE available in your Desktop menu then fllow the instructions at this [link](https://askubuntu.com/questions/1311600/add-an-appimage-application-to-the-top-menu-bar)
 
 #### Package installation
 
