@@ -184,6 +184,7 @@ class Writer(mp.Process):
         camera_serial,
         camera_name,
         camera_brand,
+        fps,
         ffmpeg_options,
         max_video_frames=60 * 60,
         depth=False,
@@ -200,6 +201,7 @@ class Writer(mp.Process):
         self.orig_stem_metadata = self.metadata_file_name.stem
         self.max_video_frames = max_video_frames
         self.camera_brand = camera_brand
+        self.fps = fps
         self.depth = depth
         if (camera_brand == "azure") & (depth == True):
             self.pixel_format = "gray16"
@@ -262,6 +264,7 @@ class Writer(mp.Process):
         self.pipe = write_frame(
             self.video_file_name,
             data,
+            fps = self.fps,
             pipe=self.pipe,
             pixel_format=self.pixel_format,
             **self.ffmpeg_options,
@@ -282,7 +285,7 @@ def end_processes(acquisition_loops, writers, disp):
                 logging.DEBUG,
                 f"stopping acquisition loop ({acquisition_loop.camera_params['name']})",
             )
-            # stop writing
+            # stop writinacquire_videog
             acquisition_loop.stop()
             # kill thread
             logging.log(
@@ -305,9 +308,11 @@ def end_processes(acquisition_loops, writers, disp):
 
     # end display
     if disp is not None:
+        # TODO figure out why display.join hangs when there is >1 azure
         if disp.is_alive():
-            disp.join()
-        disp.join()
+            disp.join(timeout=1)
+        if disp.is_alive():
+            disp.terminate()
 
 
 def acquire_video(
@@ -391,6 +396,7 @@ def acquire_video(
     # ensure that a directory exists to save data in
     ensure_dir(save_location)
 
+
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
@@ -410,6 +416,8 @@ def acquire_video(
     for camera_dict in camera_list:
         name = camera_dict["name"]
         serial_number = camera_dict["serial"]
+
+        camera_framerate = azure_framerate if camera_dict["brand"] == "azure" else framerate
 
         ffmpeg_options = {}
         for key in ["gpu", "quality"]:
@@ -437,6 +445,7 @@ def acquire_video(
             video_file_name=video_file,
             metadata_file_name=metadata_file,
             camera_serial=serial_number,
+            fps = camera_framerate,
             camera_name=name,
             camera_brand=camera_dict["brand"],
             max_video_frames=max_video_frames,
@@ -455,6 +464,7 @@ def acquire_video(
                 metadata_file_name=metadata_file,
                 camera_serial=serial_number,
                 camera_name=name,
+                fps = camera_framerate,
                 camera_brand=camera_dict["brand"],
                 max_video_frames=max_video_frames,
                 ffmpeg_options=ffmpeg_options,
@@ -591,54 +601,61 @@ def acquire_video(
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
 
-    # while current time is less than initial time + recording_duration_s
-    pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
-    # how long to record
-    datetime_prev = datetime.now()
-    endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
-    while datetime.now() < endtime:
-        confirmation = arduino.readline().decode("utf-8").strip("\r\n")
+    try:
+        # while current time is less than initial time + recording_duration_s
+        pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
+        # how long to record
+        datetime_prev = datetime.now()
+        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        while datetime.now() < endtime:
+            confirmation = arduino.readline().decode("utf-8").strip("\r\n")
+            if confirmation == "Finished":
+                break
+            if (datetime.now() - datetime_prev).seconds > 0:
+                pbar.update((datetime.now() - datetime_prev).seconds)
+                datetime_prev = datetime.now()
+            # save input data flags
+            if len(confirmation) > 0:
+                # print(confirmation)
+                if confirmation[:7] == "input: ":
+                    with open(triggerdata_file, "a") as triggerdata_f:
+                        triggerdata_writer = csv.writer(triggerdata_f)
+                        states = confirmation[7:].split(",")[:-2]
+                        frame_num = confirmation[7:].split(",")[-2]
+                        arduino_clock = confirmation[7:].split(",")[-1]
+                        triggerdata_writer.writerow([frame_num, arduino_clock] + states)
+                if verbose:
+                    logging.log(logging.INFO, f"confirmation")
+
+        # wait for a confirmation of being finished
         if confirmation == "Finished":
-            break
-        if (datetime.now() - datetime_prev).seconds > 0:
-            pbar.update((datetime.now() - datetime_prev).seconds)
-            datetime_prev = datetime.now()
-        # save input data flags
-        if len(confirmation) > 0:
-            # print(confirmation)
-            if confirmation[:7] == "input: ":
-                with open(triggerdata_file, "a") as triggerdata_f:
-                    triggerdata_writer = csv.writer(triggerdata_f)
-                    states = confirmation[7:].split(",")[:-2]
-                    frame_num = confirmation[7:].split(",")[-2]
-                    arduino_clock = confirmation[7:].split(",")[-1]
-                    triggerdata_writer.writerow([frame_num, arduino_clock] + states)
-            if verbose:
-                logging.log(logging.INFO, f"confirmation")
+            print("Confirmation recieved: {}".format(confirmation))
+        else:
+            logging.log(logging.LOG, "Waiting for finished confirmation")
+            try:
+                confirmation = wait_for_serial_confirmation(
+                    arduino, expected_confirmation="Finished", seconds_to_wait=10
+                )
+            except ValueError as e:
+                logging.log(logging.WARN, e)
 
-    # wait for a confirmation of being finished
-    if confirmation == "Finished":
-        print("Confirmation recieved: {}".format(confirmation))
-    else:
-        logging.log(logging.LOG, "Waiting for finished confirmation")
-        try:
-            confirmation = wait_for_serial_confirmation(
-                arduino, expected_confirmation="Finished", seconds_to_wait=10
-            )
-        except ValueError as e:
-            logging.log(logging.WARN, e)
+        if verbose:
+            logging.log(logging.INFO, f"Closing")
 
-    if verbose:
-        logging.log(logging.INFO, f"Closing")
+        # TODO wait until all acquisition loops are finished
+        #   the proper way to do this would be to use a event.wait()
+        #   for each camera, to wait until it has no more frames to grab
+        #   (except in the case of azure, where it will always be able) to
+        #   grab more frames because it is not locked to the arduino pulse.
+        #   for now, I've just added a 5 second sleep after the arduino is 'finished'
+        #   which should be enough time for the cameras to finish grabbing frames
+        time.sleep(5)
 
-    # TODO wait until all acquisition loops are finished
-    #   the proper way to do this would be to use a event.wait()
-    #   for each camera, to wait until it has no more frames to grab
-    #   (except in the case of azure, where it will always be able) to
-    #   grab more frames because it is not locked to the arduino pulse.
-    #   for now, I've just added a 5 second sleep after the arduino is 'finished'
-    #   which should be enough time for the cameras to finish grabbing frames
-    time.sleep(5)
+    # unless there is a keyboard interrupt, in which case we should catch the error and still
+    #   return the save location
+    except KeyboardInterrupt as e:
+        pass
+
 
     end_processes(acquisition_loops, writers, disp)
 
@@ -652,4 +669,5 @@ def acquire_video(
             video_file = save_location / f"{name}.{serial_number}.avi"
             print(f"Frames ({name}):", count_frames(video_file.as_posix()))
 
+    
     return save_location

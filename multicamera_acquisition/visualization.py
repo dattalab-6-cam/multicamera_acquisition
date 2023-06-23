@@ -6,6 +6,28 @@ from PIL import Image, ImageTk
 import cv2
 import numpy as np
 import logging
+import time
+
+def get_latest(queue, timeout = 0.1 ):
+    start_time = time.time()
+    try:
+        item = queue.get(timeout=timeout)
+        while True:
+            try:
+                elapsed_time = time.time() - start_time
+                remaining_time = timeout - elapsed_time
+
+                if remaining_time > 0:
+                    next_item = queue.get(timeout=remaining_time)
+                    item = next_item
+                else:
+                    break
+            except queue.Empty:
+                break
+    except queue.Empty:
+        item = None
+
+    return item
 
 
 class MultiDisplay(mp.Process):
@@ -60,12 +82,15 @@ class MultiDisplay(mp.Process):
             root.grid_rowconfigure(i, weight=1)
 
         while True:
-            quit = False
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
             for qi, queue in enumerate(self.queues):
                 try:
-                    data = queue.get(timeout=0.1)
+                    if queue.qsize() > 1:
+                        while queue.qsize() > 1:
+                            data = get_latest(queue, timeout = 0.01)
+                    else:
+                        data = queue.get(timeout=0.01)
                 except Exception as error:
                     if initialized[qi]:
                         logging.info(

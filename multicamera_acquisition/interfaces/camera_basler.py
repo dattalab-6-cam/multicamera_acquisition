@@ -98,7 +98,7 @@ class BaslerCamera(BaseCamera):
         img = self.get_image(timeout)
 
         if img.GrabSucceeded():
-            img_array = img.Array
+            img_array = img.Array.astype(np.uint8)
             if get_timestamp:
                 tstamp = img.GetTimeStamp()
             else:

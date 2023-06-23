@@ -3,8 +3,8 @@ import numpy as np
 import av
 import os
 import datetime
-
-
+import cv2
+import logging
 def count_frames(file_name):
     if os.path.exists(file_name):
         try:
@@ -16,17 +16,26 @@ def count_frames(file_name):
         print("File does not exist")
 
 
-def write_frame(
-    filename,
-    frame,
-    fps=30,
-    quality=15,
-    pixel_format="grey8",
-    gpu=None,
-    pipe=None,
-):
+def convert_gray_to_yuv420p(img_gray):
+    h, w = img_gray.shape
+    img_yuv = np.zeros((h, w, 3), dtype=np.uint8)
+
+    # Y channel is the same as the gray image
+    img_yuv[..., 0] = img_gray
+
+    # U and V channels are constant 128 (half the resolution)
+    img_yuv[::2, ::2, 1] = 128  # U channel
+    img_yuv[::2, ::2, 2] = 128  # V channel
+
+    return img_yuv
+
+
+
+bytes_to_pad = np.repeat(np.uint8(128), int((1200 * 1920)/2)).tobytes()
+def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None, pipe=None):
     """
     Write frames to a video file.
+
     Parameters
     ----------
     filename : str
@@ -37,68 +46,75 @@ def write_frame(
         The number of frames per second to write.
     gpu: int (default=False)
         Which GPU to use for encoding. If None, the CPU is used.
-    pipe (subprocess.Popen, optional): The current pipe to write frames. If None,
-        creates a pipe. Defaults to None.
+    pipe (subprocess.Popen, optional): The current pipe to write frames. If None, creates a pipe. Defaults to None.
+
     Returns
     -------
     pipe : subprocess.Popen
         The pipe to write frames.
     """
+
     if not pipe:
+        # Get the size of the frame
         frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
+        logging.log(logging.INFO, f"FRAME SHAPE {frame.shape}")
+        # Prepare the basic ffmpeg command
         command = [
             "ffmpeg",
-            "-y",
-            "-f",
-            "rawvideo",
-            "-vcodec",
-            "rawvideo",
-            "-pix_fmt",
-            pixel_format,
-            "-s",
-            frame_size,
-            "-r",
-            str(fps),
-            "-i",
-            "-",
-            "-an",
+            "-y",  # Overwrite existing file without asking
+            "-f", "rawvideo",
+            "-vcodec", "rawvideo",
+            "-pix_fmt", pixel_format,  # Input pixel format (gray8, gray16, etc.)
+            "-s", frame_size,  # Input frame size
+            "-r", str(fps),  # Input frames per second
+            "-i", "-",  # Read input from stdin
+            "-an",  # No audio
+
         ]
 
         if gpu is not None:
+            # GPU encoding options using h264_nvenc codec
             command += [
-                "-c:v",
-                "h264_nvenc",
-                "-preset",
-                "fast",
-                "-qp",
-                str(quality),
-                "-gpu",
-                str(gpu),
-                "-vsync",
-                "0",
-                "-2pass",
-                "0",
+                "-c:v", "h264_nvenc",
+                "-preset", "p1",
+                "-qp", str(quality),  # Video quality (0-51, lower is better)
+                "-gpu", str(gpu),  # Specify which GPU to use for encoding
+                "-vsync", "0",  # Disable frame rate synchronization
+                "-2pass", "0",  # Disable two-pass encoding
+            ]
+        else:
+            # CPU encoding options using libx264 codec
+            command += [
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", str(quality),  # Video quality (0-51, lower is better)
             ]
 
-        else:
-            command += [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                str(quality),
-            ]
-        command += ["-threads", "4", "-pix_fmt", "yuv420p", str(filename)]
-        # print(' '.join(command))
-        # print(frame.shape)
-        pipe = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL
-        )
+        # Additional options for output format and filename
+        command += [
+            #"-threads", "4",  # Number of threads to use for encoding
+            "-pix_fmt", "yuv420p",#"yuv420p",  # Output pixel format
+            str(filename)  # Output filename
+        ]
+
+        print(' '.join(command))  # Print the ffmpeg command for debugging purposes
+
+        # Create a subprocess pipe to write frames
+        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    
+
     if pixel_format == "gray8":
-        pipe.stdin.write(frame.astype(np.uint8).tobytes())
+        # Convert the frame to uint8 and write it to the pipe's stdin
+        # additionally, convert to yuv444p/yuv420 format
+        if False:
+            #bytes_to_pad = np.repeat(np.uint8(128), int(np.product(frame.shape)/2)).tobytes()
+            pipe.stdin.write(frame.astype(np.uint8).tobytes() + bytes_to_pad)
+        else:
+            pipe.stdin.write(frame.astype(np.uint8).tobytes())
     elif pixel_format == "gray16":
+        # Convert the frame to uint16 and write it to the pipe's stdin
         pipe.stdin.write(frame.astype(np.uint16).tobytes())
+
     return pipe
 
 
@@ -149,6 +165,8 @@ def read_frames(
         str(slices),
         "-slicecrc",
         str(slicecrc),
+        "-pix_fmt",
+        "gray16",
         "-vcodec",
         "rawvideo",
         "-",
