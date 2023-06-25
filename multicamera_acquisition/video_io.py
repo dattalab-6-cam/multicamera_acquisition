@@ -5,6 +5,7 @@ import os
 import datetime
 import cv2
 import logging
+
 def count_frames(file_name):
     if os.path.exists(file_name):
         try:
@@ -14,20 +15,6 @@ def count_frames(file_name):
             print(e)
     else:
         print("File does not exist")
-
-
-def convert_gray_to_yuv420p(img_gray):
-    h, w = img_gray.shape
-    img_yuv = np.zeros((h, w, 3), dtype=np.uint8)
-
-    # Y channel is the same as the gray image
-    img_yuv[..., 0] = img_gray
-
-    # U and V channels are constant 128 (half the resolution)
-    img_yuv[::2, ::2, 1] = 128  # U channel
-    img_yuv[::2, ::2, 2] = 128  # V channel
-
-    return img_yuv
 
 
 
@@ -106,11 +93,7 @@ def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None
     if pixel_format == "gray8":
         # Convert the frame to uint8 and write it to the pipe's stdin
         # additionally, convert to yuv444p/yuv420 format
-        if False:
-            #bytes_to_pad = np.repeat(np.uint8(128), int(np.product(frame.shape)/2)).tobytes()
-            pipe.stdin.write(frame.astype(np.uint8).tobytes() + bytes_to_pad)
-        else:
-            pipe.stdin.write(frame.astype(np.uint8).tobytes())
+        pipe.stdin.write(frame.astype(np.uint8).tobytes())
     elif pixel_format == "gray16":
         # Convert the frame to uint16 and write it to the pipe's stdin
         pipe.stdin.write(frame.astype(np.uint16).tobytes())

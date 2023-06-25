@@ -81,6 +81,8 @@ class MultiDisplay(mp.Process):
         for i in range(rowi):
             root.grid_rowconfigure(i, weight=1)
 
+        # quit the loop if an empty array is passed
+        quit = False
         while True:
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
