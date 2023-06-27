@@ -51,6 +51,8 @@ def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None
             "-y",  # Overwrite existing file without asking
             "-f", "rawvideo",
             "-vcodec", "rawvideo",
+            #"-hwaccel",
+            #"cuda",
             "-pix_fmt", pixel_format,  # Input pixel format (gray8, gray16, etc.)
             "-s", frame_size,  # Input frame size
             "-r", str(fps),  # Input frames per second
@@ -84,7 +86,7 @@ def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None
             str(filename)  # Output filename
         ]
 
-        print(' '.join(command))  # Print the ffmpeg command for debugging purposes
+        # print(' '.join(command))  # Print the ffmpeg command for debugging purposes
 
         # Create a subprocess pipe to write frames
         pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)

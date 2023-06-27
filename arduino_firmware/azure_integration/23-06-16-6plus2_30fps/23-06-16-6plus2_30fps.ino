@@ -376,11 +376,11 @@ void loop()
 
     //
     const unsigned int NUM_AZURES = 2;                            // needed to determine basler frame times
-    const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333; // 120 hz TODO: get from inv_framerate
+    const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 33333; // 120 hz TODO: get from inv_framerate
 
     // Basler frame times are defined relative to each sync pulse being 0.
     const int basler_f0 = NUM_AZURES * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
-    const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5; // want to be as close to 8333 as possible here
+    const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 21; // want to be as close to 8333 as possible here
     const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - OFFSET_BETWEEN_BASLER_AZURE;
     const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
     const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3}; // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
