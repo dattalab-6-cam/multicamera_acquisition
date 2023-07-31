@@ -11,20 +11,24 @@ const int SERIAL_START_DELAY = 100;
 
 // Camera trigger pins
 int num_cams_TOP = 5;
-int basler_trigger_pins_TOP[5] = {A0};
+//int basler_trigger_pins_TOP[5] = {A0};
+int basler_trigger_pins_TOP[5] = {1,5,9,24,28};
 int num_cams_BOTTOM = 1;
-int basler_trigger_pins_BOTTOM[1] = {A3};
+//int basler_trigger_pins_BOTTOM[1] = {A3};
+int basler_trigger_pins_BOTTOM[1] = {32};
 
 // AZURE trigger pin
-int azure_trigger_pin = A5;
+int azure_trigger_pin = 0;
 
-// LED pins
-int IR1_top = 5;
-int IR1_bottom = 3;
+// LED pins TODO - make this ans array
+//int IR1_top = 36;
+int LED_IR_TOP[5] = {36, 47, 14, 15, 22};
+//int IR1_bottom = 37;
+int LED_IR_BOTTOM[1] = {23};
 
 // Define the input GPIOs
 int num_input = 4;
-const int input_pins[4] = {22, 24, 26, 28};
+const int input_pins[4] = {A14,A15,A16,A17};
 
 // Azure timing params
 const unsigned int AZURE_INV_RATE_USEC = 33333;            // sync pulses will be sent at this rate (1/30 of a second)
@@ -194,7 +198,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   {
     // Start the Basler pulse and turn on the IR lights.
     toggle_camera_triggers(basler_trigger_pins_TOP, HIGH, num_cams_TOP);
-    digitalWrite(IR1_top, LOW);
+    //digitalWrite(IR1_top, LOW);
+    for (int pin : LED_IR_TOP)
+    {
+      digitalWrite(pin, HIGH);
+    }
 
     // Update the state to indicate the pulse and IR lights have started.
     basler_trigger_state_TOP = 1;
@@ -224,7 +232,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_TOP >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_TOP == 1)
   {
-    digitalWrite(IR1_top, HIGH);
+    //digitalWrite(IR1_top, HIGH);
+    for (int pin : LED_IR_TOP)
+    {
+      digitalWrite(pin, LOW);
+    }
     basler_ir_state_TOP = 0;
   }
 
@@ -237,7 +249,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
     //    Serial.println(basler_frame_timer);
 
     toggle_camera_triggers(basler_trigger_pins_BOTTOM, HIGH, num_cams_BOTTOM);
-    digitalWrite(IR1_bottom, LOW);
+    // digitalWrite(IR1_bottom, LOW);
+    for (int pin : LED_IR_BOTTOM)
+    {
+      digitalWrite(pin, HIGH);
+    }
 
     basler_trigger_state_BOTTOM = 1;
     basler_ir_state_BOTTOM = 1;
@@ -263,7 +279,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_BOTTOM >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_BOTTOM == 1)
   {
-    digitalWrite(IR1_bottom, HIGH);
+    //digitalWrite(IR1_bottom, HIGH);
+    for (int pin : LED_IR_BOTTOM)
+    {
+      digitalWrite(pin, LOW);
+    }
     basler_ir_state_BOTTOM = 0;
   }
 }
@@ -312,9 +332,18 @@ void setup()
 {
 
   // set up IR pins
-  pinMode(IR1_top, OUTPUT);
+  //pinMode(IR1_top, OUTPUT);
+  for (int pin : LED_IR_TOP)
+  {
+    pinMode(pin, OUTPUT);
+  }
+  for (int pin : LED_IR_BOTTOM)
+  {
+    pinMode(pin, OUTPUT);
+  }
+
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(IR1_bottom, OUTPUT);
+  //pinMode(IR1_bottom, OUTPUT);
 
     // turn LEDs on at end
     //digitalWrite(IR1_top, HIGH);

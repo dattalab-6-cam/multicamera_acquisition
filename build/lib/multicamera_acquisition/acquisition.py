@@ -267,7 +267,6 @@ class Writer(mp.Process):
             fps = self.fps,
             pipe=self.pipe,
             pixel_format=self.pixel_format,
-            depth = self.depth,
             **self.ffmpeg_options,
         )
 
@@ -347,10 +346,6 @@ def acquire_video(
     # ensure that framerate is a multiple of display_framerate
     if framerate % display_framerate != 0:
         raise ValueError("Framerate must be a multiple of display_framerate")
-
-    exp_times = [cd['exposure_time'] for cd in camera_list if 'exposure_time' in cd.keys()]
-    if not all(exp <= 1000 for exp in exp_times):
-        raise ValueError("Max exposure time is 1000 microseconds")
 
     if max_video_frames == "default":
         # set max video frames to 1 hour
@@ -571,8 +566,6 @@ def acquire_video(
     """
     # Tell the arduino to start recording by sending along the recording parameters
     inv_framerate = int(1e6 / framerate)
-    # TODO: 600 and 1575 hardcoded
-    # const_mult = np.ceil((inv_framerate - 600) / 1575).astype(int)
     if azure_recording:
         num_cycles = int(recording_duration_s * azure_framerate)
     else:
@@ -587,7 +580,6 @@ def acquire_video(
             (
                 num_cycles,
                 inv_framerate,
-                # const_mult,
                 # num_azures,
                 # num_baslers,
                 *arduino_args,
@@ -617,8 +609,6 @@ def acquire_video(
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
         while datetime.now() < endtime:
             confirmation = arduino.readline().decode("utf-8").strip("\r\n")
-            if len(confirmation) > 0:
-                print(confirmation)
             if confirmation == "Finished":
                 break
             if (datetime.now() - datetime_prev).seconds > 0:
@@ -641,7 +631,7 @@ def acquire_video(
         if confirmation == "Finished":
             print("Confirmation recieved: {}".format(confirmation))
         else:
-            logging.log(logging.LOG, "Waiting for finished confir mation")
+            logging.log(logging.LOG, "Waiting for finished confirmation")
             try:
                 confirmation = wait_for_serial_confirmation(
                     arduino, expected_confirmation="Finished", seconds_to_wait=10

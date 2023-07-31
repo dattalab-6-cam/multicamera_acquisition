@@ -3,6 +3,7 @@ numpy
 pyserial
 pathlib2
 opencv-python
+av
 
 [pypylon]
 pypylon
