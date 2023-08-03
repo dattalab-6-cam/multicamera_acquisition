@@ -6,6 +6,7 @@ import datetime
 import cv2
 import logging
 
+
 def count_frames(file_name):
     if os.path.exists(file_name):
         try:
@@ -17,9 +18,115 @@ def count_frames(file_name):
         print("File does not exist")
 
 
+def create_ffmpeg_pipe_command(
+    filename,
+    frame,
+    fps,
+    quality=15,
+    pixel_format="grey8",
+    gpu=None,
+    depth=False,
+):
+    """Create a pipe for ffmpeg"""
+    # Get the size of the frame
+    frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
+    logging.log(logging.DEBUG, f"FRAME SHAPE {frame.shape}")
+    if not depth:
+        # Prepare the basic ffmpeg command
+        command = [
+            "ffmpeg",
+            "-loglevel",
+            "fatal",
+            "-y",  # Overwrite existing file without asking
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-pix_fmt",
+            pixel_format,  # Input pixel format (gray8, gray16, etc.)
+            "-s",
+            frame_size,  # Input frame size
+            "-r",
+            str(fps),  # Input frames per second
+            "-i",
+            "-",  # Read input from stdin
+            "-an",  # No audio
+        ]
 
-bytes_to_pad = np.repeat(np.uint8(128), int((1200 * 1920)/2)).tobytes()
-def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None, pipe=None, depth=False):
+        if gpu is not None:
+            # GPU encoding options using h264_nvenc codec
+            command += [
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p1",
+                "-qp",
+                str(quality),  # Video quality (0-51, lower is better)
+                "-gpu",
+                str(gpu),  # Specify which GPU to use for encoding
+                "-vsync",
+                "0",  # Disable frame rate synchronization
+                "-2pass",
+                "0",  # Disable two-pass encoding
+            ]
+        else:
+            # CPU encoding options using libx264 codec
+            if pixel_format in ["gray16", "grey16"]:
+                command += ["-vcodec", "ffv1"]
+            else:
+                command += ["-c:v", "libx264"]
+            command += [
+                "-preset",
+                "ultrafast",
+                "-crf",
+                str(quality),  # Video quality (0-51, lower is better)
+                "-threads",
+                "4",  # Number of threads to use for encoding
+            ]
+
+        if pixel_format not in ["gray16", "grey16"]:
+            command += ["-pix_fmt", "yuv420p"]  # Output pixel format
+
+        # Additional options for output format and filename
+        command += [str(filename)]  # Output filename
+    else:
+        codec = "ffv1"
+        command = [
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            str(fps),
+            "-f",
+            "rawvideo",
+            "-s",
+            frame_size,
+            "-pix_fmt",
+            pixel_format,
+            "-i",
+            "-",
+            "-an",
+            "-vcodec",
+            codec,
+            str(filename),
+        ]
+
+    # log
+    return command
+
+
+bytes_to_pad = np.repeat(np.uint8(128), int((1200 * 1920) / 2)).tobytes()
+
+
+def write_frame(
+    filename,
+    frame,
+    fps,
+    quality=15,
+    pixel_format="grey8",
+    gpu=None,
+    pipe=None,
+    depth=False,
+):
     """
     Write frames to a video file.
 
@@ -42,105 +149,39 @@ def write_frame(filename, frame, fps, quality=15, pixel_format="grey8", gpu=None
     """
 
     if not pipe:
-        # Get the size of the frame
-        frame_size = "{0:d}x{1:d}".format(frame.shape[1], frame.shape[0])
-        logging.log(logging.INFO, f"FRAME SHAPE {frame.shape}")
-        if not depth:
-            # Prepare the basic ffmpeg command
-            command = [
-                "ffmpeg",
-                "-y",  # Overwrite existing file without asking
-                "-f", "rawvideo",
-                "-vcodec", "rawvideo",
-                "-pix_fmt", pixel_format,  # Input pixel format (gray8, gray16, etc.)
-                "-s", frame_size,  # Input frame size
-                "-r", str(fps),  # Input frames per second
-                "-i", "-",  # Read input from stdin
-                "-an",  # No audio
-
-            ]
-
-            if gpu is not None:
-                # GPU encoding options using h264_nvenc codec
-                command += [
-                    "-c:v", "h264_nvenc",
-                    "-preset", "p1",
-                    "-qp", str(quality),  # Video quality (0-51, lower is better)
-                    "-gpu", str(gpu),  # Specify which GPU to use for encoding
-                    "-vsync", "0",  # Disable frame rate synchronization
-                    "-2pass", "0",  # Disable two-pass encoding
-                ]
-            else:
-                # CPU encoding options using libx264 codec
-                if pixel_format in ["gray16", "grey16"]:
-                    command+= ["-vcodec", "ffv1"]
-                else:
-                    command+= ["-c:v", "libx264"]
-                command += [
-                    "-preset", "ultrafast",
-                    "-crf", str(quality),  # Video quality (0-51, lower is better)
-                    "-threads", "4",  # Number of threads to use for encoding
-                ]
-
-            if pixel_format not in ["gray16", "grey16"]:
-                command+= ["-pix_fmt", "yuv420p"] # Output pixel format
-
-            # Additional options for output format and filename
-            command += [
-                str(filename)  # Output filename
-            ]
-        else:
-            crf = 14
-            codec = "ffv1"
-            threads = 6
-            slices = 24
-            slicecrc = 1
-            command = [
-                "ffmpeg",
-                "-y",
-                #"-loglevel",
-                #"fatal",
-                "-framerate",
-                str(fps),
-                "-f",
-                "rawvideo",
-                "-s",
-                frame_size,
-                "-pix_fmt",
-                pixel_format,
-                "-i",
-                "-",
-                "-an",
-                #"-crf",
-                #str(crf),
-                "-vcodec",
-                codec,
-                #"-preset",
-                #"ultrafast",
-                #"-threads",
-                #str(threads),
-                #"-slices",
-                #str(slices),
-                #"-slicecrc",
-                #str(slicecrc),
-                #"-r",
-                #str(fps),
-                str(filename),
-            ]
-
-        print(' '.join(command))  # Print the ffmpeg command for debugging purposes
-
+        command = create_ffmpeg_pipe_command(
+            filename,
+            frame,
+            fps,
+            quality=quality,
+            pixel_format=pixel_format,
+            gpu=gpu,
+            depth=depth,
+        )
+        #print(' '.join(command))
         # Create a subprocess pipe to write frames
-        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    
+        with open(f"{str(filename)}.stdout.txt", 'w') as f_out, open(f"{str(filename)}.stderr.txt", 'w') as f_err:
+            pipe = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=f_out,  # standard output is redirected to 'stdout.txt'
+                stderr=f_err,  # standard error is redirected to 'stderr.txt'
+            )
 
-    if pixel_format == "gray8":
-        # Convert the frame to uint8 and write it to the pipe's stdin
-        # additionally, convert to yuv444p/yuv420 format
-        pipe.stdin.write(frame.astype(np.uint8).tobytes())
-    elif pixel_format == "gray16":
-        # Convert the frame to uint16 and write it to the pipe's stdin
-        pipe.stdin.write(frame.astype(np.uint16).tobytes())
+    try:
+        if pixel_format == "gray8":
+            # Convert the frame to uint8 and write it to the pipe's stdin
+            # additionally, convert to yuv444p/yuv420 format
+            pipe.stdin.write(frame.astype(np.uint8).tobytes())
+        elif pixel_format == "gray16":
+            # Convert the frame to uint16 and write it to the pipe's stdin
+            pipe.stdin.write(frame.astype(np.uint16).tobytes())
+    except BrokenPipeError as e:
+        logging.log(logging.WARNING, f"BrokenPipeError. Are video files >5GB & FAT32? Check STDERR {e}.")
+
+
+        pipe=None
+        raise BrokenPipeError
 
     return pipe
 

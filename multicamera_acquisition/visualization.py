@@ -8,7 +8,8 @@ import numpy as np
 import logging
 import time
 
-def get_latest(queue, timeout = 0.1 ):
+
+def get_latest(queue, timeout=0.1):
     start_time = time.time()
     try:
         item = queue.get(timeout=timeout)
@@ -35,6 +36,7 @@ class MultiDisplay(mp.Process):
         self,
         queues,
         camera_names,
+        display_ranges,
         display_downsample=4,
         cameras_per_row=3,
         display_size=(300, 300),
@@ -47,6 +49,7 @@ class MultiDisplay(mp.Process):
         self.downsample = display_downsample
         self.cameras_per_row = cameras_per_row
         self.display_size = display_size
+        self.display_ranges = display_ranges
 
     def run(self):
         """Displays an image to a window."""
@@ -90,7 +93,7 @@ class MultiDisplay(mp.Process):
                 try:
                     if queue.qsize() > 1:
                         while queue.qsize() > 1:
-                            data = get_latest(queue, timeout = 0.01)
+                            data = get_latest(queue, timeout=0.01)
                     else:
                         data = queue.get(timeout=0.01)
                 except Exception as error:
@@ -115,7 +118,14 @@ class MultiDisplay(mp.Process):
                     # int16 should be azure data
                     if frame.dtype == np.uint16:
                         # normalize in range
-                        frame = normalize_array(frame).astype(np.uint8)
+                        if self.display_ranges[qi] is not None:
+                            frame = normalize_array(
+                                frame,
+                                min_value=self.display_ranges[qi][0],
+                                max_value=self.display_ranges[qi][1],
+                            ).astype(np.uint8)
+                        else:
+                            frame = normalize_array(frame).astype(np.uint8)
 
                         # Convert frame to turbo/jet colormap
                         colormap_frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
@@ -141,10 +151,14 @@ class MultiDisplay(mp.Process):
         root.destroy()
 
 
-def normalize_array(arr, norm_max=255):
-    min_val = np.min(arr)
-    max_val = np.max(arr)
-
-    normalized_arr = (arr - min_val) / (max_val - min_val) * norm_max
-
-    return normalized_arr.astype(int)
+def normalize_array(frame, min_value=None, max_value=None):
+    if min_value is None:
+        min_value = np.min(frame)
+        max_value = np.max(frame)
+    frame[frame > max_value] = min_value
+    frame[frame < min_value] = min_value
+    # frame = np.clip(frame, min_value, max_value)  # Ensure values are in the range [min_value, max_value]
+    frame = (
+        (frame - min_value) / (max_value - min_value)
+    ) * 255.0  # Normalize to [0, 255]
+    return frame.astype(np.uint8)

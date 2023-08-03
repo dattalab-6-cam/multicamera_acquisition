@@ -413,6 +413,8 @@ def acquire_video(
     acquisition_loops = []
     display_queues = []
     camera_names = []
+    display_ranges = [] # range for displaying (for azure mm)
+
 
     num_azures = len([v for v in camera_list if "azure" in v["brand"]])
     num_baslers = len(camera_list) - num_azures
@@ -486,6 +488,10 @@ def acquire_video(
             # create a writer queue
             display_queue = mp.Queue()
             camera_names.append(name)
+            if "display_range" in camera_dict:
+                display_ranges.append(camera_dict["display_range"])
+            else:
+                display_ranges.append(None)
             display_queues.append(display_queue)
 
         # prepare the acuqisition loop in a separate thread
@@ -513,13 +519,14 @@ def acquire_video(
         acquisition_loops.append(acquisition_loop)
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
-
+    
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
         disp = MultiDisplay(
             display_queues,
             camera_names,
             display_downsample=display_downsample,
+            display_ranges = display_ranges
         )
         disp.start()
     else:
