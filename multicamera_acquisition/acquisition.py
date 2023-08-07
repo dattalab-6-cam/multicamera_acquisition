@@ -305,7 +305,7 @@ def end_processes(acquisition_loops, writers, disp):
             #     while writer.queue.qsize() > 0:
             #         print(writer.queue.qsize())
             #         time.sleep(0.1)
-            writer.join()
+            writer.join(timeout=60)
 
     # end display
     if disp is not None:
@@ -439,7 +439,7 @@ def acquire_video(
         if verbose:
             logging.log(logging.INFO, f"Camera {name}...")
 
-        video_file = save_location / f"{name}.{serial_number}.avi"
+        video_file = save_location / f"{name}.{serial_number}.mp4"
         metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
 
         if video_file.exists() and (overwrite == False):
@@ -683,7 +683,7 @@ def acquire_video(
         for camera_dict in camera_list:
             name = camera_dict["name"]
             serial_number = camera_dict["serial"]
-            video_file = save_location / f"{name}.{serial_number}.avi"
+            video_file = save_location / f"{name}.{serial_number}.mp4"
             print(f"Frames ({name}):", count_frames(video_file.as_posix()))
 
     

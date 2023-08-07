@@ -10,13 +10,31 @@
 
 const int SERIAL_START_DELAY = 100;
 
+// hardcoded pins
+int LED1 = 36;
+int LED2 = 37;
+int LED3 = 14;
+int LED4 = 15;
+int LED5 = 18;
+int LED6 = 19;
+int LED7 = 22;
+int LED8 = 23;
+
+int BASLER1 = 1;
+int BASLER2 = 5;
+int BASLER3 = 9;
+int BASLER4 = 24;
+int BASLER5 = 28;
+int BASLER6 = 32;
+
+
+
 // Camera trigger pins
-int num_cams_TOP = 5;
-//int basler_trigger_pins_TOP[5] = {A0};
-int basler_trigger_pins_TOP[5] = {1,5,9,24,28};
-int num_cams_BOTTOM = 1;
-//int basler_trigger_pins_BOTTOM[1] = {A3};
-int basler_trigger_pins_BOTTOM[1] = {32};
+int num_cams_TOP = 4;
+int basler_trigger_pins_TOP[4] = {1,5,9,24};
+
+int num_cams_BOTTOM = 2;
+int basler_trigger_pins_BOTTOM[2] = {28, 32};
 
 // AZURE trigger pin
 int azure_trigger_pin = 0;
@@ -28,10 +46,8 @@ int azure_trigger_pin = 0;
 // //int LED_IR_BOTTOM[1] = 
 
 // LED pins TODO - make this ans array
-// //int IR1_top = 36;
-int LED_IR_TOP[5] = {36, 37, 14, 15, 18};
-// //int IR1_bottom = 37;
-int LED_IR_BOTTOM[3] = {19, 20, 23}; // Adjusted size and values
+int LED_IR_TOP[6] = {LED1, LED2, LED3, LED4, LED5, LED6};
+int LED_IR_BOTTOM[2] = {LED7, LED8}; // Adjusted size and values
 
 
 // Define the input GPIOs
