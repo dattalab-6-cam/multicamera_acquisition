@@ -57,7 +57,7 @@ def create_ffmpeg_pipe_command(
             # GPU encoding options using h264_nvenc codec
             command += [
                 "-c:v",
-                "h264_nvenc", #"av1_nvenc", "h264_nvenc" "hevc_nvenc"
+                "h264_nvenc",  # "av1_nvenc", "h264_nvenc" "hevc_nvenc"
                 "-preset",
                 "p1",
                 "-qp",
@@ -113,7 +113,6 @@ def create_ffmpeg_pipe_command(
     # log
     logging.log(logging.DEBUG, f"filename: {' '.join(command)}")
 
-
     return command
 
 
@@ -161,9 +160,11 @@ def write_frame(
             gpu=gpu,
             depth=depth,
         )
-        #print(' '.join(command))
+        # print(' '.join(command))
         # Create a subprocess pipe to write frames
-        with open(f"{str(filename)}.stdout.txt", 'w') as f_out, open(f"{str(filename)}.stderr.txt", 'w') as f_err:
+        with open(f"{str(filename)}.stdout.txt", "w") as f_out, open(
+            f"{str(filename)}.stderr.txt", "w"
+        ) as f_err:
             pipe = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,
@@ -180,10 +181,12 @@ def write_frame(
             # Convert the frame to uint16 and write it to the pipe's stdin
             pipe.stdin.write(frame.astype(np.uint16).tobytes())
     except BrokenPipeError as e:
-        logging.log(logging.WARNING, f"BrokenPipeError. Are video files >5GB & FAT32? Check STDERR {e}.")
+        logging.log(
+            logging.WARNING,
+            f"BrokenPipeError. Are video files >5GB & FAT32? Check STDERR {e}.",
+        )
 
-
-        pipe=None
+        pipe = None
         raise BrokenPipeError
 
     return pipe
