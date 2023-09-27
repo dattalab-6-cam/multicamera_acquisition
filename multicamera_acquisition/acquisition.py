@@ -377,6 +377,7 @@ def acquire_video(
                 ffmpeg_options=ffmpeg_options,
                 depth=True,
             )
+
             cam = get_camera(**camera_dict)
 
         else:

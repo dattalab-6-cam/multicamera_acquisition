@@ -107,6 +107,8 @@ def create_ffmpeg_pipe_command(
             "-an",
             "-vcodec",
             codec,
+            # "-c:v",
+            # "libx264",
             str(filename),
         ]
 

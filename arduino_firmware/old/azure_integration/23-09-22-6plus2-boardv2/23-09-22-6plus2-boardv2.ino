@@ -29,11 +29,9 @@ int BASLER2 = 3;
 int BASLER3 = 5;
 int BASLER4 = 7;
 int BASLER5 = 9;  // Top camera
-int BASLER6 = 11;  // Bottom camera
-int BASLER7 = 24;  // unused
-int BASLER8 = 26;  // unused
-
-
+int BASLER6 = 11; // Bottom camera
+int BASLER7 = 24; // unused
+int BASLER8 = 26; // unused
 
 // Camera trigger pins
 int num_cams_TOP = 4;
@@ -45,15 +43,13 @@ int basler_trigger_pins_BOTTOM[2] = {BASLER5, BASLER6};
 // AZURE trigger pin
 int azure_trigger_pin = 0;
 
-
 // LED pins TODO - make this ans array
 int LED_IR_TOP[6] = {LED1, LED2, LED3, LED4, LED5, LED6};
 int LED_IR_BOTTOM[5] = {LED7, LED8, LED9, LED10, LED11}; // Adjusted size and values
 
-
 // Define the input GPIOs
 int num_input = 4;
-const int input_pins[4] = {33,34,35,36};
+const int input_pins[4] = {33, 34, 35, 36};
 
 // Azure timing params
 const unsigned int AZURE_INV_RATE_USEC = 33333;            // sync pulses will be sent at this rate (1/30 of a second)
@@ -252,7 +248,7 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
     else
     {
       // last index due to IR pulses from azure starting before trigger
-      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f3 + 2*AZURE_INTERSUBFRAME_PERIOD_USEC - 1000};
+      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f3 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC - 1000};
     }
   }
   else if (inv_framerate == 11111)
@@ -352,7 +348,7 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_TOP >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_TOP == 1)
   {
-    //digitalWrite(IR1_top, HIGH);
+    // digitalWrite(IR1_top, HIGH);
     for (int pin : LED_IR_TOP)
     {
       digitalWrite(pin, LOW);
@@ -399,7 +395,7 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_BOTTOM >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_BOTTOM == 1)
   {
-    //digitalWrite(IR1_bottom, HIGH);
+    // digitalWrite(IR1_bottom, HIGH);
     for (int pin : LED_IR_BOTTOM)
     {
       digitalWrite(pin, LOW);

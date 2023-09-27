@@ -163,7 +163,7 @@ class Writer(mp.Process):
                     "preset": "P1",  # P1 is fastest, P7 is slowest
                     "codec": "hevc",
                     "s": f"{data.shape[1]}x{data.shape[0]}",
-                    "profile": "high",
+                    "profile": "high",  # "baseline",
                     "fps": str(int(self.fps)),
                     "multipass": "0",
                     "tuning_info": "ultra_low_latency",
