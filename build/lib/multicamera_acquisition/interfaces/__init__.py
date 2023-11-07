@@ -75,8 +75,7 @@ def get_camera(
             cam.TriggerSource = trigger_line
             cam.TriggerOverlap = "ReadOut"
             cam.TriggerSelector = "FrameStart"
-            cam.TriggerActivation = "RisingEdge"
-            # cam.TriggerActivation = "FallingEdge"
+            cam.TriggerActivation = "FallingEdge"
             cam.TriggerMode = "On"
 
         else:
@@ -128,8 +127,7 @@ def get_camera(
             cam.cam.TriggerMode.SetValue("Off")
             cam.cam.TriggerSource.SetValue(trigger_line)
             cam.cam.TriggerSelector.SetValue("FrameStart")
-            # cam.cam.TriggerActivation.SetValue("FallingEdge")
-            cam.cam.TriggerActivation.SetValue("RisingEdge")
+            cam.cam.TriggerActivation.SetValue("FallingEdge")
             cam.cam.TriggerMode.SetValue("On")
 
         else:
@@ -146,8 +144,6 @@ def get_camera(
         else:
             raise ValueError("Azure camera requires name")
 
-        cam = Camera(
-            serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
-        )
+        cam = Camera(index=str(serial), name=name)
 
     return cam

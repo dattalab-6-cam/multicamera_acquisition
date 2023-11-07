@@ -20,24 +20,24 @@ import subprocess
 
 
 class AzureCamera(BaseCamera):
-    def __init__(self, name, azure_index, serial_number=0, lock=True, **kwargs):
+    def __init__(self, name, index=0, lock=True, **kwargs):
         """
         Parameters
         ----------
-        serial_number : int or str (default: 0)
-            If an int, the serial_number of the camera to acquire.  If a string,
+        index : int or str (default: 0)
+            If an int, the index of the camera to acquire.  If a string,
             the serial number of the camera.
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
         """
 
-        self.serial_number = serial_number
+        self.serial_number = index
         self.name = name
         # TODO: what is this?
         sync_delay, sync_delay_step = 0, 500
 
-        # camera_indexes = get_camera_indexes({self.name: self.serial_number})
+        camera_indexes = get_camera_indexes({self.name: self.serial_number})
 
         camera_config = Config(
             color_resolution=ColorResolution.OFF,
@@ -47,7 +47,7 @@ class AzureCamera(BaseCamera):
             subordinate_delay_off_master_usec=sync_delay,
         )
 
-        self.cam = PyK4A(camera_config, device_id=azure_index)
+        self.cam = PyK4A(camera_config, device_id=camera_indexes[self.name])
         self.timeout_warning_flag = False
 
     def init(self):
@@ -152,9 +152,6 @@ def get_camera_indexes(serial_numbers):
     info = subprocess.check_output(
         ["k4arecorder", "--list"]
     )  # MJ: need full path to k4arecorder.exe
-    if "error" in str(info):
-        raise ValueError(f"k4arecorder error: {info}")
-
     for l in info.decode("utf-8").split("\n")[:-1]:
         print(l)
         index = int(l.split("\t")[0].split(":")[1])

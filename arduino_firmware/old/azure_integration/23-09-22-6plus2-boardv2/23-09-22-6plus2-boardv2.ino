@@ -1,6 +1,7 @@
 
-// #include <Arduino.h>
+#include <Arduino.h>
 #include <elapsedMillis.h>
+#include <string.h>
 
 /* MASTER LIST OF CHANGES TO MAKE IN FUTURE CODE
 - allow pins to be defined in python (and take them in via serial)
@@ -9,33 +10,57 @@
 
 const int SERIAL_START_DELAY = 100;
 
+// hardcoded pins
+int LED1 = 38;
+int LED2 = 39;
+int LED3 = 40;
+int LED4 = 41;
+int LED5 = 14;
+int LED6 = 15;
+int LED7 = 16; // side led
+int LED8 = 17; // side led
+int LED9 = 20;
+int LED10 = 21;
+int LED11 = 22; // unused
+int LED12 = 23; // unused
+
+int BASLER1 = 1;
+int BASLER2 = 3;
+int BASLER3 = 5;
+int BASLER4 = 7;
+int BASLER5 = 9;  // Top camera
+int BASLER6 = 11; // Bottom camera
+int BASLER7 = 24; // unused
+int BASLER8 = 26; // unused
+
 // Camera trigger pins
-int num_cams_TOP = 5;
-int basler_trigger_pins_TOP[5] = {A0};
-int num_cams_BOTTOM = 1;
-int basler_trigger_pins_BOTTOM[1] = {A3};
+int num_cams_TOP = 4;
+int basler_trigger_pins_TOP[4] = {BASLER1, BASLER2, BASLER3, BASLER4};
+
+int num_cams_BOTTOM = 2;
+int basler_trigger_pins_BOTTOM[2] = {BASLER5, BASLER6};
 
 // AZURE trigger pin
-int azure_trigger_pin = A5;
+int azure_trigger_pin = 0;
 
-// LED pins
-int IR1_top = 5;
-int IR1_bottom = 3;
+// LED pins TODO - make this ans array
+int LED_IR_TOP[6] = {LED1, LED2, LED3, LED4, LED5, LED6};
+int LED_IR_BOTTOM[5] = {LED7, LED8, LED9, LED10, LED11}; // Adjusted size and values
 
 // Define the input GPIOs
 int num_input = 4;
-const int input_pins[4] = {22, 24, 26, 28};
+const int input_pins[4] = {33, 34, 35, 36};
 
 // Azure timing params
 const unsigned int AZURE_INV_RATE_USEC = 33333;            // sync pulses will be sent at this rate (1/30 of a second)
 const unsigned int AZURE_TRIG_WIDTH_USEC = 10;             // azure sync pulses last for this long
-const unsigned int AZURE_PULSE_PERIOD_USEC = 160;          // actually 125 usec but microsoft recommends calling it 160 to be safe
+const unsigned int AZURE_PULSE_PERIOD_USEC = 160;          // actually 125 usec but microsoft recommends calling it 160 to be safe, judging by oscope it appears to be 180
 const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575; // I think? 0.125 pulse + 1.45 wait
 
 // Basler timing params
-const unsigned int BASLER_TRIG_WIDTH_USEC = 200;      // some random internet source suggested 100, let's try 50 for now.
+const unsigned int BASLER_TRIG_WIDTH_USEC = 100;      // some random internet source suggested 100, let's try 50 for now.
 const unsigned int BASLER_IR_PULSE_WIDTH_USEC = 1000; // make sure this is less than the separation between top + bottom baslers.
-const int OFFSET_BETWEEN_BASLER_AZURE = 350;          // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
+const int OFFSET_BETWEEN_BASLER_AZURE = 100;          // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
 
 // Timers
 elapsedMicros previous_pulse;
@@ -173,6 +198,101 @@ int azure_pulse_logic()
   return started_frame;
 }
 
+int *getNumFrameTimeElements(int inv_framerate)
+{
+
+  int num_elements = 0;
+
+  if (inv_framerate == 8333)
+  {
+    num_elements = 4;
+  }
+  else if (inv_framerate = 11111)
+  {
+    num_elements = 3;
+  }
+  else if (inv_framerate = 16667)
+  {
+    num_elements = 2;
+  }
+  else if (inv_framerate = 33333)
+  {
+    num_elements = 1;
+  }
+  else
+  {
+    num_elements = 0;
+  }
+
+  return num_elements;
+}
+
+int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char *cams)
+{
+
+  int *basler_frame_times = nullptr;
+  int num_elements = getNumFrameTimeElements(inv_framerate);
+
+  int f0 = num_azures * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
+
+  if (inv_framerate == 8333)
+  {
+    int f1 = f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;
+    int f2 = f1 + inv_framerate - OFFSET_BETWEEN_BASLER_AZURE;
+    int f3 = f2 + inv_framerate;
+
+    if (strcmp(cams, "top") == 0)
+    {
+      basler_frame_times = new int[num_elements]{f0, f1, f2, f3};
+    }
+    else
+    {
+      // last index due to IR pulses from azure starting before trigger
+      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f3 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC - 1000};
+    }
+  }
+  else if (inv_framerate == 11111)
+  {
+    // int f0 = num_azures * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
+    int f1 = f0 + inv_framerate;
+    int f2 = f1 + inv_framerate;
+
+    if (strcmp(cams, "top") == 0)
+    {
+      basler_frame_times = new int[num_elements]{f0, f1, f2};
+    }
+    else
+    {
+      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
+    }
+  }
+  else if (inv_framerate == 16667)
+  {
+    int f1 = f0 + inv_framerate;
+
+    if (strcmp(cams, "top") == 0)
+    {
+      basler_frame_times = new int[num_elements]{f0, f1};
+    }
+    else
+    {
+      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
+    }
+  }
+  else if (inv_framerate == 33333)
+  {
+    if (strcmp(cams, "top") == 0)
+    {
+      basler_frame_times = new int[num_elements]{f0};
+    }
+    else
+    {
+      basler_frame_times = new int[num_elements]{f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
+    }
+  }
+  return basler_frame_times;
+}
+
 void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTimesBottom[])
 {
   /*
@@ -194,7 +314,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   {
     // Start the Basler pulse and turn on the IR lights.
     toggle_camera_triggers(basler_trigger_pins_TOP, HIGH, num_cams_TOP);
-    digitalWrite(IR1_top, LOW);
+    for (int pin : LED_IR_TOP)
+    {
+      digitalWrite(pin, HIGH);
+    }
+    // digitalWrite(IR1_top, LOW);
 
     // Update the state to indicate the pulse and IR lights have started.
     basler_trigger_state_TOP = 1;
@@ -224,7 +348,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_TOP >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_TOP == 1)
   {
-    digitalWrite(IR1_top, HIGH);
+    // digitalWrite(IR1_top, HIGH);
+    for (int pin : LED_IR_TOP)
+    {
+      digitalWrite(pin, LOW);
+    }
     basler_ir_state_TOP = 0;
   }
 
@@ -237,7 +365,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
     //    Serial.println(basler_frame_timer);
 
     toggle_camera_triggers(basler_trigger_pins_BOTTOM, HIGH, num_cams_BOTTOM);
-    digitalWrite(IR1_bottom, LOW);
+    // digitalWrite(IR1_bottom, LOW);
+    for (int pin : LED_IR_BOTTOM)
+    {
+      digitalWrite(pin, HIGH);
+    }
 
     basler_trigger_state_BOTTOM = 1;
     basler_ir_state_BOTTOM = 1;
@@ -263,7 +395,11 @@ void basler_pulse_logic(const int baslerFrameTimesTop[], const int baslerFrameTi
   // after ~1ms, turn off the IR lights
   if ((previous_basler_trigger_BOTTOM >= BASLER_IR_PULSE_WIDTH_USEC) && basler_ir_state_BOTTOM == 1)
   {
-    digitalWrite(IR1_bottom, HIGH);
+    // digitalWrite(IR1_bottom, HIGH);
+    for (int pin : LED_IR_BOTTOM)
+    {
+      digitalWrite(pin, LOW);
+    }
     basler_ir_state_BOTTOM = 0;
   }
 }
@@ -312,13 +448,21 @@ void setup()
 {
 
   // set up IR pins
-  pinMode(IR1_top, OUTPUT);
+  // pinMode(IR1_top, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(IR1_bottom, OUTPUT);
+  // pinMode(IR1_bottom, OUTPUT);
 
-    // turn LEDs on at end
-    //digitalWrite(IR1_top, HIGH);
-    //digitalWrite(IR1_bottom, HIGH);
+  // turn LEDs on at end
+  // digitalWrite(IR1_top, HIGH);
+  // digitalWrite(IR1_bottom, HIGH);
+  for (int pin : LED_IR_TOP)
+  {
+    pinMode(pin, OUTPUT);
+  }
+  for (int pin : LED_IR_BOTTOM)
+  {
+    pinMode(pin, OUTPUT);
+  }
 
   // set up camera triggers
   for (int pin : basler_trigger_pins_TOP)
@@ -357,13 +501,13 @@ void loop()
   if (Serial.available() == 8)
   {
     // turn LEDs off at beginning
-    //digitalWrite(IR1_top, HIGH);
-    //digitalWrite(IR1_bottom, HIGH);
-
+    // digitalWrite(IR1_top, HIGH);
+    // digitalWrite(IR1_bottom, HIGH);
 
     // Read in user params
     long num_cycles = readLongFromSerial();
     long inv_framerate = readLongFromSerial();
+    // long mult_const = readLongFromSerial();
     // long num_azures = readLongFromSerial(); // TODO implement this
     // long num_baslers = readLongFromSerial(); // TODO implement this
 
@@ -375,26 +519,43 @@ void loop()
     Serial.println(num_cycles);
 
     //
-    const unsigned int NUM_AZURES = 2;                            // needed to determine basler frame times
-    const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333; // 120 hz TODO: get from inv_framerate
+    const unsigned int NUM_AZURES = 2; // needed to determine basler frame times
+    // const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = 8333; // 120 hz TODO: get from inv_framerate
+    const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = inv_framerate;
+    Serial.print("Desired avg basler interframe usec:");
+    Serial.println(DESIRED_AVG_BASLER_INTERFRAME_USEC);
+    // // Basler frame times are defined relative to each sync pulse being 0.
+    // const int basler_f0 = NUM_AZURES * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
+    // const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5; // want to be as close to 8333 as possible here
+    // const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - OFFSET_BETWEEN_BASLER_AZURE;
+    // const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
+    // const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3}; // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
+    // // nb as currently written, if f3 is > 33,333 it will break.
+    // const int basler_frame_times_BOTTOM[4] = {basler_f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f3 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
 
-    // Basler frame times are defined relative to each sync pulse being 0.
-    const int basler_f0 = NUM_AZURES * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
-    const int basler_f1 = basler_f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5; // want to be as close to 8333 as possible here
-    const int basler_f2 = basler_f1 + DESIRED_AVG_BASLER_INTERFRAME_USEC - OFFSET_BETWEEN_BASLER_AZURE;
-    const int basler_f3 = basler_f2 + DESIRED_AVG_BASLER_INTERFRAME_USEC;
-    const int basler_frame_times_TOP[4] = {basler_f0, basler_f1, basler_f2, basler_f3}; // and the period betw f3 and f0 will be slightly longer than 8.333, so it averages out correctly.
-    // nb as currently written, if f3 is > 33,333 it will break.
-    const int basler_frame_times_BOTTOM[4] = {basler_f0 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC, basler_f3 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
+    const char cam_str_top[] = "top";
+    const char cam_str_bottom[] = "bottom";
 
-    for (int t : basler_frame_times_TOP)
+    int *basler_frame_times_TOP = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_top);
+    int *basler_frame_times_BOTTOM = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_bottom);
+
+    int num_elements = getNumFrameTimeElements(inv_framerate);
+    Serial.print("Num elements:");
+    Serial.println(num_elements);
+
+    // Print basler_frame_times_TOP
+    for (int i = 0; i < num_elements; i++)
     {
+      int t = basler_frame_times_TOP[i];
       Serial.print(t);
       Serial.print(',');
     }
     Serial.println();
-    for (int t : basler_frame_times_BOTTOM)
+
+    // Print basler_frame_times_BOTTOM
+    for (int i = 0; i < num_elements; i++)
     {
+      int t = basler_frame_times_BOTTOM[i];
       Serial.print(t);
       Serial.print(',');
     }
@@ -406,13 +567,12 @@ void loop()
         basler_frame_times_TOP,
         basler_frame_times_BOTTOM);
 
-
     // send message that recording is finished
     Serial.println("Finished");
     serial_flush();
     // turn LEDs on at end
-    //digitalWrite(IR1_top, HIGH);
-    //digitalWrite(IR1_bottom, HIGH);
+    // digitalWrite(IR1_top, HIGH);
+    // digitalWrite(IR1_bottom, HIGH);
   }
   // If we receive more than 8 bytes, flush the serial buffer and wait for something new to happen
   else if (Serial.available() > 8)

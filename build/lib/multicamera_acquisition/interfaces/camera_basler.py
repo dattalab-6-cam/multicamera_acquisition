@@ -39,7 +39,7 @@ class BaslerCamera(BaseCamera):
             self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[index]))
 
         del devices
-        
+
         self.running = False
 
     def init(self):
@@ -114,7 +114,7 @@ class BaslerCamera(BaseCamera):
         else:
             return img_array
 
-    def get_info(self, name=None):
+    def get_info(self, name):
         """Gen information on a camera node (attribute or method).
         Parameters
         ----------

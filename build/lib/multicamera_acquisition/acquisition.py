@@ -1,12 +1,11 @@
 from multicamera_acquisition.interfaces import get_camera
-from multicamera_acquisition.video_io_ffmpeg import write_frame
+from multicamera_acquisition.video_io import write_frame
 from multicamera_acquisition.paths import ensure_dir
 from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
 )
 from multicamera_acquisition.visualization import MultiDisplay
-from multicamera_acquisition.writer import Writer
 
 import multiprocessing as mp
 import csv
@@ -21,7 +20,7 @@ import numpy as np
 
 import serial
 from pathlib2 import Path
-from multicamera_acquisition.video_io_ffmpeg import count_frames
+from multicamera_acquisition.video_io import count_frames
 
 
 class AcquisitionLoop(mp.Process):
@@ -176,6 +175,108 @@ class AcquisitionLoop(mp.Process):
         logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
 
 
+class Writer(mp.Process):
+    def __init__(
+        self,
+        queue,
+        video_file_name,
+        metadata_file_name,
+        camera_serial,
+        camera_name,
+        camera_brand,
+        fps,
+        ffmpeg_options,
+        max_video_frames=60 * 60,
+        depth=False,
+    ):
+        super().__init__()
+        self.pipe = None
+        self.queue = queue
+        self.video_file_name = video_file_name
+        self.ffmpeg_options = ffmpeg_options
+        self.metadata_file_name = metadata_file_name
+        self.camera_name = camera_name
+        self.camera_serial = camera_serial
+        self.orig_stem = self.video_file_name.stem
+        self.orig_stem_metadata = self.metadata_file_name.stem
+        self.max_video_frames = max_video_frames
+        self.camera_brand = camera_brand
+        self.fps = fps
+        self.depth = depth
+        if (camera_brand == "azure") & (depth == True):
+            self.pixel_format = "gray16"
+        else:
+            self.pixel_format = "gray8"
+
+        self.initialize_metadata()
+
+    def initialize_metadata(self):
+        with open(self.metadata_file_name, "w") as metadata_f:
+            metadata_writer = csv.writer(metadata_f)
+            metadata_writer.writerow(
+                ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
+            )
+
+    def run(self):
+        frame_id = 0
+        with open(self.metadata_file_name, "a") as metadata_f:
+            metadata_writer = csv.writer(metadata_f)
+            while True:
+                data = self.queue.get()
+                if len(data) == 0:
+                    break
+                else:
+                    # get the computer datetime of the frame
+                    frame_image_uid = str(round(time.time(), 5)).zfill(5)
+                    img, camera_timestamp, current_frame = data
+
+                    qsize = self.queue.qsize()
+
+                    # if the frame is corrupted
+                    if img is None:
+                        continue
+                    metadata_writer.writerow(
+                        [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
+                    )
+                    self.append(img)
+
+                    frame_id += 1
+
+                    # if the current frame is greater than the max, create a new video and metadata file
+                    if frame_id > self.max_video_frames:
+                        self.close()
+                        self.video_file_name = (
+                            self.video_file_name.parent
+                            / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
+                        )
+                        logging.log(
+                            logging.DEBUG, f"Creating new file self.video_file_name"
+                        )
+                        self.pipe = None
+                        frame_id = 0
+
+            logging.log(logging.DEBUG, f"Closing writer pipe ({self.camera_name})")
+            self.close()
+
+        logging.log(logging.DEBUG, f"Writer run finished ({self.camera_name})")
+
+    def append(self, data):
+        self.pipe = write_frame(
+            self.video_file_name,
+            data,
+            fps = self.fps,
+            pipe=self.pipe,
+            pixel_format=self.pixel_format,
+            **self.ffmpeg_options,
+        )
+
+    def close(self):
+        # indicate that no more data will be written
+        if self.pipe is not None:
+            self.pipe.stdin.close()
+        logging.log(logging.DEBUG, f"Writer pipe closed ({self.camera_name})")
+
+
 def end_processes(acquisition_loops, writers, disp):
     # end acquisition loops
     for acquisition_loop in acquisition_loops:
@@ -203,7 +304,7 @@ def end_processes(acquisition_loops, writers, disp):
             #     while writer.queue.qsize() > 0:
             #         print(writer.queue.qsize())
             #         time.sleep(0.1)
-            writer.join(timeout=60)
+            writer.join()
 
     # end display
     if disp is not None:
@@ -245,12 +346,6 @@ def acquire_video(
     # ensure that framerate is a multiple of display_framerate
     if framerate % display_framerate != 0:
         raise ValueError("Framerate must be a multiple of display_framerate")
-
-    exp_times = [
-        cd["exposure_time"] for cd in camera_list if "exposure_time" in cd.keys()
-    ]
-    if not all(exp <= 1000 for exp in exp_times):
-        raise ValueError("Max exposure time is 1000 microseconds")
 
     if max_video_frames == "default":
         # set max video frames to 1 hour
@@ -301,6 +396,7 @@ def acquire_video(
     # ensure that a directory exists to save data in
     ensure_dir(save_location)
 
+
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
@@ -312,7 +408,6 @@ def acquire_video(
     acquisition_loops = []
     display_queues = []
     camera_names = []
-    display_ranges = []  # range for displaying (for azure mm)
 
     num_azures = len([v for v in camera_list if "azure" in v["brand"]])
     num_baslers = len(camera_list) - num_azures
@@ -322,9 +417,7 @@ def acquire_video(
         name = camera_dict["name"]
         serial_number = camera_dict["serial"]
 
-        camera_framerate = (
-            azure_framerate if camera_dict["brand"] == "azure" else framerate
-        )
+        camera_framerate = azure_framerate if camera_dict["brand"] == "azure" else framerate
 
         ffmpeg_options = {}
         for key in ["gpu", "quality"]:
@@ -339,7 +432,7 @@ def acquire_video(
         if verbose:
             logging.log(logging.INFO, f"Camera {name}...")
 
-        video_file = save_location / f"{name}.{serial_number}.mp4"
+        video_file = save_location / f"{name}.{serial_number}.avi"
         metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
 
         if video_file.exists() and (overwrite == False):
@@ -352,7 +445,7 @@ def acquire_video(
             video_file_name=video_file,
             metadata_file_name=metadata_file,
             camera_serial=serial_number,
-            fps=camera_framerate,
+            fps = camera_framerate,
             camera_name=name,
             camera_brand=camera_dict["brand"],
             max_video_frames=max_video_frames,
@@ -371,13 +464,12 @@ def acquire_video(
                 metadata_file_name=metadata_file,
                 camera_serial=serial_number,
                 camera_name=name,
-                fps=camera_framerate,
+                fps = camera_framerate,
                 camera_brand=camera_dict["brand"],
                 max_video_frames=max_video_frames,
                 ffmpeg_options=ffmpeg_options,
                 depth=True,
             )
-
             cam = get_camera(**camera_dict)
 
         else:
@@ -389,10 +481,6 @@ def acquire_video(
             # create a writer queue
             display_queue = mp.Queue()
             camera_names.append(name)
-            if "display_range" in camera_dict:
-                display_ranges.append(camera_dict["display_range"])
-            else:
-                display_ranges.append(None)
             display_queues.append(display_queue)
 
         # prepare the acuqisition loop in a separate thread
@@ -427,7 +515,6 @@ def acquire_video(
             display_queues,
             camera_names,
             display_downsample=display_downsample,
-            display_ranges=display_ranges,
         )
         disp.start()
     else:
@@ -479,8 +566,6 @@ def acquire_video(
     """
     # Tell the arduino to start recording by sending along the recording parameters
     inv_framerate = int(1e6 / framerate)
-    # TODO: 600 and 1575 hardcoded
-    # const_mult = np.ceil((inv_framerate - 600) / 1575).astype(int)
     if azure_recording:
         num_cycles = int(recording_duration_s * azure_framerate)
     else:
@@ -495,7 +580,6 @@ def acquire_video(
             (
                 num_cycles,
                 inv_framerate,
-                # const_mult,
                 # num_azures,
                 # num_baslers,
                 *arduino_args,
@@ -525,8 +609,6 @@ def acquire_video(
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
         while datetime.now() < endtime:
             confirmation = arduino.readline().decode("utf-8").strip("\r\n")
-            if len(confirmation) > 0:
-                print(confirmation)
             if confirmation == "Finished":
                 break
             if (datetime.now() - datetime_prev).seconds > 0:
@@ -549,7 +631,7 @@ def acquire_video(
         if confirmation == "Finished":
             print("Confirmation recieved: {}".format(confirmation))
         else:
-            logging.log(logging.LOG, "Waiting for finished confir mation")
+            logging.log(logging.LOG, "Waiting for finished confirmation")
             try:
                 confirmation = wait_for_serial_confirmation(
                     arduino, expected_confirmation="Finished", seconds_to_wait=10
@@ -574,8 +656,18 @@ def acquire_video(
     except KeyboardInterrupt as e:
         pass
 
+
     end_processes(acquisition_loops, writers, disp)
 
     pbar.close()
 
-    return save_location, camera_list
+    if verbose:
+        # count each frame
+        for camera_dict in camera_list:
+            name = camera_dict["name"]
+            serial_number = camera_dict["serial"]
+            video_file = save_location / f"{name}.{serial_number}.avi"
+            print(f"Frames ({name}):", count_frames(video_file.as_posix()))
+
+    
+    return save_location

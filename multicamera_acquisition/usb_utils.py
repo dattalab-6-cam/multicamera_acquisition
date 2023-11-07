@@ -1,23 +1,32 @@
 import usb.core
 
-import usb.core
 
-
-def reset_usb(venders = ['Basler', 'Flir'], verbose=False):
-    # Find all USB devices
+def reset_usb(
+    products=[
+        "a2A1920-160umBAS",
+        "Azure Kinect 4K Camera",
+        "Azure Kinect Depth Camera",
+        "Azure Kinect Microphone Array",
+    ],
+    verbose=False,
+):
     devs = usb.core.find(find_all=True)
-
-    basler_devices = []
-
+    verbose = True
     # Iterate over the devices and save their details if the manufacturer is 'Basler'
     for dev in devs:
         try:
-            manufacturer = usb.util.get_string(dev, dev.iManufacturer)
-            if manufacturer in venders:
-                basler_devices.append((hex(dev.idVendor), hex(dev.idProduct)))
-                dev.reset()
+            product = dev.product
         except Exception as e:
             if verbose:
-                print(f"Error retrieving manufacturer for device: {dev}")
-                print(f"Error: {e}")
-            
+                print(f"Error retrieving product info")
+                continue
+
+        if product in products:
+            try:
+                if verbose:
+                    print(
+                        f"resetting {product} ({hex(dev.idVendor)}, {hex(dev.idProduct)}))"
+                    )
+                dev.reset()
+            except:
+                print(f"Error resetting device: {product}")
