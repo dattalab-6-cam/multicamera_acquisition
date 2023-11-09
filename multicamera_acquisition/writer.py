@@ -95,6 +95,8 @@ class Writer(mp.Process):
         self.encFile = None
         if (camera_brand == "azure") & (depth == True):
             self.pixel_format = "gray16"
+        elif (camera_brand == "lucid"):
+            self.pixel_format = "gray16"
         else:
             self.pixel_format = "gray8"
 

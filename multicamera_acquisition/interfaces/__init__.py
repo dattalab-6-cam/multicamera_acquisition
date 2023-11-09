@@ -1,5 +1,8 @@
 # TODO
 # - camera specific code (e.g. setting ain for basler) doesn't need to be in this file
+# - there is no reason these parameters should be set in init file, we should move this 
+#   to the init of the camera instead... 
+
 
 # define the base camera
 
@@ -149,5 +152,15 @@ def get_camera(
         cam = Camera(
             serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
         )
+
+
+    elif brand == 'lucid':
+        from multicamera_acquisition.interfaces.camera_lucid import (
+            LucidCamera as Camera,
+        )
+        cam = Camera(
+            index=str(serial)
+        )
+        cam.init()
 
     return cam

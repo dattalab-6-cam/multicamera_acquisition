@@ -20,7 +20,7 @@ from tqdm import tqdm
 import numpy as np
 
 import serial
-from pathlib2 import Path
+from pathlib import Path
 from multicamera_acquisition.video_io_ffmpeg import count_frames
 
 
@@ -265,7 +265,7 @@ def acquire_video(
     camera_brands = np.array([i["brand"] for i in camera_list])
     # if there are cameras that are not flir or basler, raise an error
     for i in camera_brands:
-        if i not in ["flir", "basler", "azure"]:
+        if i not in ["flir", "basler", "azure", "lucid"]:
             raise ValueError(
                 "Camera brand must be either 'flir' or 'basler', azure, not {}".format(
                     i
@@ -299,8 +299,11 @@ def acquire_video(
         save_location = save_location / date_str
 
     # ensure that a directory exists to save data in
-    ensure_dir(save_location)
-
+    save_location.mkdir(parents=True, exist_ok=True)
+    print(f'Save location exists: {save_location.exists()}')
+    if save_location.exists() == False:
+        raise ValueError(f"Save location {save_location} does not exist")
+    
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
@@ -339,25 +342,50 @@ def acquire_video(
         if verbose:
             logging.log(logging.INFO, f"Camera {name}...")
 
-        video_file = save_location / f"{name}.{serial_number}.mp4"
-        metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
-
-        if video_file.exists() and (overwrite == False):
-            raise FileExistsError(f"Video file {video_file} already exists")
 
         # create a writer queue
-        write_queue = mp.Queue()
-        writer = Writer(
-            queue=write_queue,
-            video_file_name=video_file,
-            metadata_file_name=metadata_file,
-            camera_serial=serial_number,
-            fps=camera_framerate,
-            camera_name=name,
-            camera_brand=camera_dict["brand"],
-            max_video_frames=max_video_frames,
-            ffmpeg_options=ffmpeg_options,
-        )
+        if camera_dict["brand"] == "lucid":
+            
+            video_file = save_location / f"{name}.{serial_number}.avi"
+            metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+
+            if video_file.exists() and (overwrite == False):
+                raise FileExistsError(f"Video file {video_file} already exists")
+
+            
+            write_queue = mp.Queue()
+            writer = Writer(
+                queue=write_queue,
+                video_file_name=video_file,
+                metadata_file_name=metadata_file,
+                camera_serial=serial_number,
+                fps=camera_framerate,
+                camera_name=name,
+                camera_brand=camera_dict["brand"],
+                max_video_frames=max_video_frames,
+                ffmpeg_options=ffmpeg_options,
+                depth = True # uses 16 bit depth
+            )
+        else:
+            
+            video_file = save_location / f"{name}.{serial_number}.mp4"
+            metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+
+            if video_file.exists() and (overwrite == False):
+                raise FileExistsError(f"Video file {video_file} already exists")
+
+            write_queue = mp.Queue()
+            writer = Writer(
+                queue=write_queue,
+                video_file_name=video_file,
+                metadata_file_name=metadata_file,
+                camera_serial=serial_number,
+                fps=camera_framerate,
+                camera_name=name,
+                camera_brand=camera_dict["brand"],
+                max_video_frames=max_video_frames,
+                ffmpeg_options=ffmpeg_options,
+            )
 
         if camera_dict["brand"] == "azure":
             # create asecond write queue for the depth data
@@ -512,7 +540,7 @@ def acquire_video(
     except:
         # kill everything if we can't get confirmation
         end_processes(acquisition_loops, writers, disp)
-        return save_location
+        return save_location, camera_list
 
     if verbose:
         logging.log(logging.INFO, f"Starting Acquisition...")
