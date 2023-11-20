@@ -102,6 +102,10 @@ class LucidCamera(BaseCamera):
         self.nodemap['TriggerMode'].value = 'On' # 'On'
         self.nodemap['TriggerSource'].value = 'Line2' # Software, Line2
         
+        #self.nodemap['ExposureTime'].value = 995.0
+        self.nodemap['AcquisitionFrameRateEnable'].value = True
+        self.nodemap['AcquisitionFrameRate'].max = 100.0
+        
         logging.log(logging.DEBUG, f"almost done running init for camera {self.serial_number}")
         #print('STILL RUNNING INIT')
         
