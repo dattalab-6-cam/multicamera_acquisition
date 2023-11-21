@@ -13,6 +13,7 @@ from pyk4a import (
     ColorResolution,
     DepthMode,
     WiredSyncMode,
+    connected_device_count
 )
 import numpy as np
 import warnings
@@ -147,17 +148,19 @@ class AzureCamera(BaseCamera):
         raise NotImplementedError
 
 
-def get_camera_indexes(serial_numbers):
-    serials_to_indexes = {}
-    info = subprocess.check_output(
-        ["k4arecorder", "--list"]
-    )  # MJ: need full path to k4arecorder.exe
-    if "error" in str(info):
-        raise ValueError(f"k4arecorder error: {info}")
-
-    for l in info.decode("utf-8").split("\n")[:-1]:
-        print(l)
-        index = int(l.split("\t")[0].split(":")[1])
-        serial = l.split("\t")[1].split(":")[1]
-        serials_to_indexes[serial] = index
-    return {name: serials_to_indexes[sn] for name, sn in serial_numbers.items()}
+def get_camera_indexes():
+    """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py
+    """
+    count = connected_device_count()
+    if not count:
+        print("No Azures available")
+        return
+    print(f"Available Azures: {count}")
+    idx_to_sn ={}
+    for device_id in range(count):
+        device = PyK4A(device_id=device_id)
+        device.open()
+        print(f"{device_id}: {device.serial}")
+        idx_to_sn[device_id] = device.serial
+        device.close()
+    return idx_to_sn
