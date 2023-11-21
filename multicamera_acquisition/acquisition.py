@@ -4,6 +4,7 @@ from multicamera_acquisition.paths import ensure_dir
 from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
+    find_serial_ports,
 )
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.writer import Writer
@@ -18,6 +19,7 @@ import glob
 import logging
 from tqdm import tqdm
 import numpy as np
+import sys
 
 import serial
 from pathlib import Path
@@ -464,12 +466,26 @@ def acquire_video(
     if verbose:
         logging.log(logging.INFO, f"Initializing Arduino...")
 
-    # prepare communication with arduino
-    serial_ports = glob.glob("/dev/ttyACM*")
-    # check that there is an arduino available
-    if len(serial_ports) == 0:
-        raise ValueError("No serial device (i.e. Arduino) available to capture frames")
-    port = glob.glob("/dev/ttyACM*")[0]
+    # Find the arduino to be used for triggering
+    # TODO: allow user to specify a port
+    ports = find_serial_ports()
+    found_arduino = False
+    for port in ports:
+        with serial.Serial(port=port, timeout=0.1) as arduino:
+            try:
+                wait_for_serial_confirmation(
+                    arduino, 
+                    expected_confirmation="Waiting...", 
+                    seconds_to_wait=2
+                    )
+                found_arduino = True
+                break
+            except ValueError:
+                continue
+    if found_arduino is False:
+        raise RuntimeError("Could not find waiting arduino to do triggers!")
+    else:
+        logging.info(f"Using port {port} for arduino.")
     arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
 
     # delay recording to allow serial connection to connect
@@ -587,6 +603,9 @@ def acquire_video(
 
         if verbose:
             logging.log(logging.INFO, f"Closing")
+
+        # Close the arduino just in case
+        arduino.close()
 
         # TODO wait until all acquisition loops are finished
         #   the proper way to do this would be to use a event.wait()
