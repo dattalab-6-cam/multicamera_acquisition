@@ -620,7 +620,7 @@ def acquire_video(
 
     # unless there is a keyboard interrupt, in which case we should catch the error and still
     #   return the save location
-    except KeyboardInterrupt as e:
+    except (KeyboardInterrupt, serial.SerialException) as e:
         pass
 
     end_processes(acquisition_loops, writers, disp)
