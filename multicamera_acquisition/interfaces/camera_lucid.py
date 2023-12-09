@@ -78,10 +78,12 @@ class LucidCamera(BaseCamera):
         #   'HighSpeedDistance625mmSingleFreq',
         #   'HighSpeedDistance1250mmSingleFreq', 
         #   'HighSpeedDistance2500mmSingleFreq'
-        self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance2500mmSingleFreq'#'HighSpeedDistance625mmSingleFreq'
-        
+        # self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance2500mmSingleFreq'#'HighSpeedDistance625mmSingleFreq'
+        self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance1250mmSingleFreq'  # JP
+
         # set pixel format
-        pixel_format = PixelFormat.Coord3D_ABCY16
+        # pixel_format = PixelFormat.Coord3D_ABCY16
+        pixel_format = PixelFormat.Coord3D_C16  # JP
         self.nodemap.get_node('PixelFormat').value = pixel_format
         
         # set exposure time
@@ -163,7 +165,8 @@ class LucidCamera(BaseCamera):
             #while trigger_armed is False:
             #    trigger_armed = bool(self.nodemap['TriggerArmed'].value)
             buffer_3d = self.cam.get_buffer(timeout=timeout)
-            depth_image = get_depth_image(buffer_3d, self.scale_z)
+            # depth_image = get_depth_image(buffer_3d, self.scale_z, px_fmt="Coord3D_ABCY16")
+            depth_image = get_depth_image(buffer_3d, self.scale_z, px_fmt="Coord3D_C16")
             timestamp = buffer_3d.timestamp_ns
             self.cam.requeue_buffer(buffer_3d)
             return depth_image, timestamp
@@ -268,44 +271,54 @@ def find_helios_devices(tries_max = 6, sleep_time_secs = 1):
     return devices
 
 
-def get_depth_image(buffer_3d, scale_z):
+def get_depth_image(buffer_3d, scale_z, px_fmt="Coord3D_ABCY16"):
 
-    # 3D buffer info -------------------------------------------------
 
-    # "Coord3D_ABCY16s" and "Coord3D_ABCY16" pixelformats have 4
-    # channels pre pixel. Each channel is 16 bits and they represent:
-    #   - x position
-    #   - y postion
-    #   - z postion
-    #   - intensity
-    # the value can be dynamically calculated this way:
-    #   int(buffer_3d.bits_per_pixel/16) # 16 is the size of each channel
-    Coord3D_ABCY16_channels_per_pixel = buffer_3d_step_size = 4
+    if px_fmt == "Coord3D_ABCY16":
+        # 3D buffer info -------------------------------------------------
 
-    # Buffer.pdata is a (uint8, ctypes.c_ubyte) pointer. "Coord3D_ABCY16"
-    # pixelformat has 4 channels, and each channel is 16 bits.
-    # It is easier to deal with Buffer.pdata if it is casted to 16bits
-    # so each channel value is read/accessed easily.
-    # "Coord3D_ABCY16" might be suffixed with "s" to indicate that the data
-    # should be interpereted as signed.
-    pdata_16bit = ctypes.cast(buffer_3d.pdata, ctypes.POINTER(ctypes.c_int16))
+        # "Coord3D_ABCY16s" and "Coord3D_ABCY16" pixelformats have 4
+        # channels pre pixel. Each channel is 16 bits and they represent:
+        #   - x position
+        #   - y postion
+        #   - z postion
+        #   - intensity
+        # the value can be dynamically calculated this way:
+        #   int(buffer_3d.bits_per_pixel/16) # 16 is the size of each channel
+        Coord3D_ABCY16_channels_per_pixel = buffer_3d_step_size = 4
 
-    number_of_pixels = buffer_3d.width * buffer_3d.height
+        # Buffer.pdata is a (uint8, ctypes.c_ubyte) pointer. "Coord3D_ABCY16"
+        # pixelformat has 4 channels, and each channel is 16 bits.
+        # It is easier to deal with Buffer.pdata if it is casted to 16bits
+        # so each channel value is read/accessed easily.
+        # "Coord3D_ABCY16" might be suffixed with "s" to indicate that the data
+        # should be interpereted as signed.
+        pdata_16bit = ctypes.cast(buffer_3d.pdata, ctypes.POINTER(ctypes.c_int16))
 
-    # Calculate the total size of the buffer in 16-bit units
-    total_size = number_of_pixels * buffer_3d_step_size
+        number_of_pixels = buffer_3d.width * buffer_3d.height
 
-    # Create a NumPy array that views the data as 16-bit signed integers
-    buffer_as_array = np.ctypeslib.as_array(pdata_16bit, shape=(total_size,))
+        # Calculate the total size of the buffer in 16-bit units
+        total_size = number_of_pixels * buffer_3d_step_size
 
-    # Extract every fourth value starting from the third value, which is the Z coordinate
-    z_values = buffer_as_array[2::buffer_3d_step_size]
+        # Create a NumPy array that views the data as 16-bit signed integers
+        buffer_as_array = np.ctypeslib.as_array(pdata_16bit, shape=(total_size,))
 
-    # Convert z values from device units to millimeters (if necessary)
-    depth_array_mm = z_values * scale_z
+        # Extract every fourth value starting from the third value, which is the Z coordinate
+        z_values = buffer_as_array[2::buffer_3d_step_size]
 
-    # Reshape the flat array into the 2D image format (height, width)
-    depth_image = depth_array_mm.reshape((buffer_3d.height, buffer_3d.width))
+        # Convert z values from device units to millimeters (if necessary)
+        depth_array_mm = z_values * scale_z
+
+        # Reshape the flat array into the 2D image format (height, width)
+        depth_image = depth_array_mm.reshape((buffer_3d.height, buffer_3d.width))
+
+    elif px_fmt == "Coord3D_C16":
+        pdata_16bit = ctypes.cast(buffer_3d.pdata, ctypes.POINTER(ctypes.c_int16))
+        number_of_pixels = buffer_3d.width * buffer_3d.height
+        total_size = number_of_pixels
+        buffer_as_array = np.ctypeslib.as_array(pdata_16bit, shape=(total_size,))
+        z_values = buffer_as_array[:]
+        depth_array_mm = z_values * scale_z
+        depth_image = depth_array_mm.reshape((buffer_3d.height, buffer_3d.width))
 
     return depth_image
-
