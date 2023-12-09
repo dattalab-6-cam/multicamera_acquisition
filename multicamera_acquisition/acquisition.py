@@ -4,6 +4,7 @@ from multicamera_acquisition.paths import ensure_dir
 from multicamera_acquisition.interfaces.arduino import (
     packIntAsLong,
     wait_for_serial_confirmation,
+    find_serial_ports,
 )
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.writer import Writer
@@ -18,6 +19,7 @@ import glob
 import logging
 from tqdm import tqdm
 import numpy as np
+import sys
 
 import serial
 from pathlib import Path
@@ -308,6 +310,47 @@ def acquire_video(
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
 
+    
+    if verbose:
+        logging.log(logging.INFO, f"Initializing Arduino...")
+
+    # Find the arduino to be used for triggering
+    # TODO: allow user to specify a port
+    ports = find_serial_ports()
+    found_arduino = False
+    for port in ports:
+        with serial.Serial(port=port, timeout=0.1) as arduino:
+            try:
+                wait_for_serial_confirmation(
+                    arduino, 
+                    expected_confirmation="Waiting...", 
+                    seconds_to_wait=2
+                    )
+                found_arduino = True
+                break
+            except ValueError:
+                continue
+    if found_arduino is False:
+        raise RuntimeError("Could not find waiting arduino to do triggers!")
+    else:
+        logging.info(f"Using port {port} for arduino.")
+    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
+
+    # delay recording to allow serial connection to connect
+    sleep_duration = 2
+    logging.log(
+        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
+    )
+    time.sleep(sleep_duration)
+
+    # create a triggerdata file
+    with open(triggerdata_file, "w") as triggerdata_f:
+        triggerdata_writer = csv.writer(triggerdata_f)
+        triggerdata_writer.writerow(
+            ["pulse_id", "arduino_ms"]
+            + [f"flag_{i}" for i in range(n_input_trigger_states)]
+        )
+
     if verbose:
         logging.log(logging.INFO, "Initializing cameras...")
     # initialize cameras
@@ -461,31 +504,6 @@ def acquire_video(
     else:
         disp = None
 
-    if verbose:
-        logging.log(logging.INFO, f"Initializing Arduino...")
-
-    # prepare communication with arduino
-    serial_ports = glob.glob("/dev/ttyACM*")
-    # check that there is an arduino available
-    if len(serial_ports) == 0:
-        raise ValueError("No serial device (i.e. Arduino) available to capture frames")
-    port = glob.glob("/dev/ttyACM*")[0]
-    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
-
-    # delay recording to allow serial connection to connect
-    sleep_duration = 2
-    logging.log(
-        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
-    )
-    time.sleep(sleep_duration)
-
-    # create a triggerdata file
-    with open(triggerdata_file, "w") as triggerdata_f:
-        triggerdata_writer = csv.writer(triggerdata_f)
-        triggerdata_writer.writerow(
-            ["pulse_id", "arduino_ms"]
-            + [f"flag_{i}" for i in range(n_input_trigger_states)]
-        )
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
@@ -506,7 +524,7 @@ def acquire_video(
     It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
     """
     # Tell the arduino to start recording by sending along the recording parameters
-    inv_framerate = int(1e6 / framerate)
+    inv_framerate = int(np.round(1e6 / framerate, 0))
     # TODO: 600 and 1575 hardcoded
     # const_mult = np.ceil((inv_framerate - 600) / 1575).astype(int)
     if azure_recording:
@@ -577,7 +595,7 @@ def acquire_video(
         if confirmation == "Finished":
             print("Confirmation recieved: {}".format(confirmation))
         else:
-            logging.log(logging.LOG, "Waiting for finished confir mation")
+            logging.log(logging.INFO, "Waiting for finished confirmation")
             try:
                 confirmation = wait_for_serial_confirmation(
                     arduino, expected_confirmation="Finished", seconds_to_wait=10
@@ -587,6 +605,9 @@ def acquire_video(
 
         if verbose:
             logging.log(logging.INFO, f"Closing")
+
+        # Close the arduino just in case
+        arduino.close()
 
         # TODO wait until all acquisition loops are finished
         #   the proper way to do this would be to use a event.wait()
@@ -599,7 +620,7 @@ def acquire_video(
 
     # unless there is a keyboard interrupt, in which case we should catch the error and still
     #   return the save location
-    except KeyboardInterrupt as e:
+    except (KeyboardInterrupt, serial.SerialException) as e:
         pass
 
     end_processes(acquisition_loops, writers, disp)
