@@ -310,6 +310,47 @@ def acquire_video(
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
 
+    
+    if verbose:
+        logging.log(logging.INFO, f"Initializing Arduino...")
+
+    # Find the arduino to be used for triggering
+    # TODO: allow user to specify a port
+    ports = find_serial_ports()
+    found_arduino = False
+    for port in ports:
+        with serial.Serial(port=port, timeout=0.1) as arduino:
+            try:
+                wait_for_serial_confirmation(
+                    arduino, 
+                    expected_confirmation="Waiting...", 
+                    seconds_to_wait=2
+                    )
+                found_arduino = True
+                break
+            except ValueError:
+                continue
+    if found_arduino is False:
+        raise RuntimeError("Could not find waiting arduino to do triggers!")
+    else:
+        logging.info(f"Using port {port} for arduino.")
+    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
+
+    # delay recording to allow serial connection to connect
+    sleep_duration = 2
+    logging.log(
+        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
+    )
+    time.sleep(sleep_duration)
+
+    # create a triggerdata file
+    with open(triggerdata_file, "w") as triggerdata_f:
+        triggerdata_writer = csv.writer(triggerdata_f)
+        triggerdata_writer.writerow(
+            ["pulse_id", "arduino_ms"]
+            + [f"flag_{i}" for i in range(n_input_trigger_states)]
+        )
+
     if verbose:
         logging.log(logging.INFO, "Initializing cameras...")
     # initialize cameras
@@ -463,45 +504,6 @@ def acquire_video(
     else:
         disp = None
 
-    if verbose:
-        logging.log(logging.INFO, f"Initializing Arduino...")
-
-    # Find the arduino to be used for triggering
-    # TODO: allow user to specify a port
-    ports = find_serial_ports()
-    found_arduino = False
-    for port in ports:
-        with serial.Serial(port=port, timeout=0.1) as arduino:
-            try:
-                wait_for_serial_confirmation(
-                    arduino, 
-                    expected_confirmation="Waiting...", 
-                    seconds_to_wait=2
-                    )
-                found_arduino = True
-                break
-            except ValueError:
-                continue
-    if found_arduino is False:
-        raise RuntimeError("Could not find waiting arduino to do triggers!")
-    else:
-        logging.info(f"Using port {port} for arduino.")
-    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
-
-    # delay recording to allow serial connection to connect
-    sleep_duration = 2
-    logging.log(
-        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
-    )
-    time.sleep(sleep_duration)
-
-    # create a triggerdata file
-    with open(triggerdata_file, "w") as triggerdata_f:
-        triggerdata_writer = csv.writer(triggerdata_f)
-        triggerdata_writer.writerow(
-            ["pulse_id", "arduino_ms"]
-            + [f"flag_{i}" for i in range(n_input_trigger_states)]
-        )
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
