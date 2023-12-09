@@ -595,7 +595,7 @@ def acquire_video(
         if confirmation == "Finished":
             print("Confirmation recieved: {}".format(confirmation))
         else:
-            logging.log(logging.LOG, "Waiting for finished confirmation")
+            logging.log(logging.INFO, "Waiting for finished confirmation")
             try:
                 confirmation = wait_for_serial_confirmation(
                     arduino, expected_confirmation="Finished", seconds_to_wait=10
