@@ -522,7 +522,7 @@ def acquire_video(
     It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
     """
     # Tell the arduino to start recording by sending along the recording parameters
-    inv_framerate = int(1e6 / framerate)
+    inv_framerate = int(np.round(1e6 / framerate, 0))
     # TODO: 600 and 1575 hardcoded
     # const_mult = np.ceil((inv_framerate - 600) / 1575).astype(int)
     if azure_recording:
