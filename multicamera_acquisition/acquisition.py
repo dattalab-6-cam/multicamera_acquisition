@@ -251,8 +251,8 @@ def acquire_video(
     exp_times = [
         cd["exposure_time"] for cd in camera_list if "exposure_time" in cd.keys()
     ]
-    if not all(exp <= 1000 for exp in exp_times):
-        raise ValueError("Max exposure time is 1000 microseconds")
+    # if not all(exp <= 1000 for exp in exp_times):
+    #    raise ValueError("Max exposure time is 1000 microseconds")
 
     if max_video_frames == "default":
         # set max video frames to 1 hour
