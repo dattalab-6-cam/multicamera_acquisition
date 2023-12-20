@@ -163,11 +163,11 @@ class Writer(mp.Process):
             if not self.pipe:
                 encoder_dictionary = {
                     "preset": "P1",  # P1 is fastest, P7 is slowest
-                    "codec": "hevc",
+                    "codec": "h264",  # "hevc",
                     "s": f"{data.shape[1]}x{data.shape[0]}",
                     "profile": "high",  # "baseline",
                     "fps": str(int(self.fps)),
-                    "multipass": "0",
+                    "multipass": "0",  # "fullres",  # "0",
                     "tuning_info": "ultra_low_latency",
                     "fmt": "YUV420",
                     # "lookahead": "1", # how far to look ahead (more is slower but better quality)
