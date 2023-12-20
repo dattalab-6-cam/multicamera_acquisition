@@ -89,7 +89,7 @@ class MultiDisplay(mp.Process):
         while True:
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
-            for qi, queue in enumerate(self.queues):
+            for qi, (queue, camera_name) in enumerate(zip(self.queues, self.camera_names)):
                 try:
                     if queue.qsize() > 1:
                         while queue.qsize() > 1:
@@ -100,7 +100,7 @@ class MultiDisplay(mp.Process):
                     if initialized[qi]:
                         logging.info(
                             "{}: Timeout occurred {}".format(
-                                self.camera_names[qi], str(error)
+                                camera_name, str(error)
                             )
                         )
                     continue
@@ -116,7 +116,7 @@ class MultiDisplay(mp.Process):
                     frame = cv2.resize(frame, self.display_size)
 
                     # int16 should be azure data
-                    if frame.dtype == np.uint16:
+                    if frame.dtype == np.uint16 or ("lucid" in camera_name):
                         # normalize in range
                         if self.display_ranges[qi] is not None:
                             frame = normalize_array(

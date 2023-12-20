@@ -25,7 +25,7 @@ class BaslerCamera(BaseCamera):
         )
 
         n_devices = len(devices)
-        debug: print("Found %d camera(s)" % n_devices)
+        # debug: print("Found %d camera(s)" % n_devices)
         camera_serials = np.array([c.GetSerialNumber() for c in devices])
 
         if n_devices == 0:
