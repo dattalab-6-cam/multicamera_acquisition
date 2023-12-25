@@ -95,7 +95,7 @@ class Writer(mp.Process):
         self.encFile = None
         if (camera_brand == "azure") & (depth == True):
             self.pixel_format = "gray16"
-        elif (camera_brand == "lucid"):
+        elif camera_brand == "lucid":
             self.pixel_format = "gray16"
         else:
             self.pixel_format = "gray8"
@@ -170,8 +170,9 @@ class Writer(mp.Process):
                     "multipass": "0",  # "fullres",  # "0",
                     "tuning_info": "ultra_low_latency",
                     "fmt": "YUV420",
-                    # "lookahead": "1", # how far to look ahead (more is slower but better quality)
-                    # "gop": "15", # larger = faster
+                    "idrperiod": "256",
+                    "gop": "30",
+                    # "bitrate": "10M",
                 }
                 logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
 
