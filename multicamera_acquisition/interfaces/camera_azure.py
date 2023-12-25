@@ -35,8 +35,6 @@ class AzureCamera(BaseCamera):
 
         self.serial_number = serial_number
         self.name = name
-        # TODO: what is this?
-        sync_delay, sync_delay_step = 0, 500
 
         # camera_indexes = get_camera_indexes({self.name: self.serial_number})
 
@@ -45,7 +43,7 @@ class AzureCamera(BaseCamera):
             depth_mode=DepthMode.NFOV_UNBINNED,
             synchronized_images_only=False,
             wired_sync_mode=WiredSyncMode.SUBORDINATE,
-            subordinate_delay_off_master_usec=sync_delay,
+            subordinate_delay_off_master_usec=serial_number*160,
         )
 
         self.cam = PyK4A(camera_config, device_id=azure_index)

@@ -60,7 +60,7 @@ const unsigned int NUM_AZURES = 2; // needed to determine basler frame times
 const unsigned int AZURE_INV_RATE_USEC = 33333;            // sync pulses will be sent at this rate (1/30 of a second)
 const unsigned int AZURE_TRIG_WIDTH_USEC = 10;             // azure sync pulses last for this long
 const unsigned int AZURE_PULSE_PERIOD_USEC = 160;          // actually 125 usec but microsoft recommends calling it 160 to be safe, judging by oscope it appears to be 180
-const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1400; // 1575; // I think? 0.125 pulse + 1.45 wait
+const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575; // 1575; // I think? 0.125 pulse + 1.45 wait
 
 // Basler timing params
 const unsigned int BASLER_TRIG_WIDTH_USEC = 100;      // some random internet source suggested 100, let's try 50 for now.
@@ -286,9 +286,8 @@ int *getBaslerFrameTimes(int _inv_framerate, unsigned int num_azures, const char
     else if (_inv_framerate == 8333)
     {
         int f1 = f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;
-        int f2 = f1 + _inv_framerate;
-        int f3 = f2 + _inv_framerate;
-
+        int f2 = f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 10;
+        int f3 = f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 15;
         if (strcmp(cams, "top") == 0)
         {
             basler_frame_times = new int[num_elements]{f0, f1, f2, f3};
