@@ -58,12 +58,12 @@ const unsigned int NUM_AZURES = 2; // needed to determine basler frame times
 
 // Azure timing params
 const unsigned int AZURE_INV_RATE_USEC = 33333;            // sync pulses will be sent at this rate (1/30 of a second)
-const unsigned int AZURE_TRIG_WIDTH_USEC = 10;             // azure sync pulses last for this long
+const unsigned int AZURE_TRIG_WIDTH_USEC = 500;             // azure sync pulses last for this long
 const unsigned int AZURE_PULSE_PERIOD_USEC = 160;          // actually 125 usec but microsoft recommends calling it 160 to be safe, judging by oscope it appears to be 180
 const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1575; // 1575; // I think? 0.125 pulse + 1.45 wait
 
 // Basler timing params
-const unsigned int BASLER_TRIG_WIDTH_USEC = 100;      // some random internet source suggested 100, let's try 50 for now.
+const unsigned int BASLER_TRIG_WIDTH_USEC = 500;      // some random internet source suggested 100, let's try 50 for now.
 const unsigned int BASLER_IR_PULSE_WIDTH_USEC = 1000; // make sure this is less than the separation between top + bottom baslers.
 const int OFFSET_BETWEEN_BASLER_AZURE = 100;          // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
 const int N_VALID_FRS = 5;
