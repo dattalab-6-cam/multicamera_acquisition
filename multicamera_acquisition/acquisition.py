@@ -229,6 +229,7 @@ def acquire_video(
     display_downsample=4,
     overwrite=False,
     append_datetime=True,
+    append_camera_serial=True,
     verbose=True,
     dropped_frame_warnings=False,
     n_input_trigger_states=4,
@@ -302,15 +303,14 @@ def acquire_video(
 
     # ensure that a directory exists to save data in
     save_location.mkdir(parents=True, exist_ok=True)
-    print(f'Save location exists: {save_location.exists()}')
+    print(f"Save location exists: {save_location.exists()}")
     if save_location.exists() == False:
         raise ValueError(f"Save location {save_location} does not exist")
-    
+
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
 
-    
     if verbose:
         logging.log(logging.INFO, f"Initializing Arduino...")
 
@@ -322,10 +322,8 @@ def acquire_video(
         with serial.Serial(port=port, timeout=0.1) as arduino:
             try:
                 wait_for_serial_confirmation(
-                    arduino, 
-                    expected_confirmation="Waiting...", 
-                    seconds_to_wait=2
-                    )
+                    arduino, expected_confirmation="Waiting...", seconds_to_wait=2
+                )
                 found_arduino = True
                 break
             except ValueError:
@@ -385,17 +383,18 @@ def acquire_video(
         if verbose:
             logging.log(logging.INFO, f"Camera {name}...")
 
-
         # create a writer queue
         if camera_dict["brand"] == "lucid":
-            
-            video_file = save_location / f"{name}.{serial_number}.avi"
-            metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+            if append_camera_serial:
+                video_file = save_location / f"{name}.{serial_number}.avi"
+                metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+            else:
+                video_file = save_location / f"{name}.avi"
+                metadata_file = save_location / f"{name}.metadata.csv"
 
             if video_file.exists() and (overwrite == False):
                 raise FileExistsError(f"Video file {video_file} already exists")
 
-            
             write_queue = mp.Queue()
             writer = Writer(
                 queue=write_queue,
@@ -407,12 +406,15 @@ def acquire_video(
                 camera_brand=camera_dict["brand"],
                 max_video_frames=max_video_frames,
                 ffmpeg_options=ffmpeg_options,
-                depth = True # uses 16 bit depth
+                depth=True,  # uses 16 bit depth
             )
         else:
-            
-            video_file = save_location / f"{name}.{serial_number}.mp4"
-            metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+            if append_camera_serial:
+                video_file = save_location / f"{name}.{serial_number}.mp4"
+                metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
+            else:
+                video_file = save_location / f"{name}.mp4"
+                metadata_file = save_location / f"{name}.metadata.csv"
 
             if video_file.exists() and (overwrite == False):
                 raise FileExistsError(f"Video file {video_file} already exists")
@@ -433,8 +435,15 @@ def acquire_video(
         if camera_dict["brand"] == "azure":
             # create asecond write queue for the depth data
             # create a writer queue
-            video_file_depth = save_location / f"{name}.{serial_number}.depth.avi"
-            metadata_file = save_location / f"{name}.{serial_number}.metadata.depth.csv"
+            if append_camera_serial:
+                video_file_depth = save_location / f"{name}.{serial_number}.depth.avi"
+                metadata_file = (
+                    save_location / f"{name}.{serial_number}.metadata.depth.csv"
+                )
+            else:
+                video_file_depth = save_location / f"{name}.depth.avi"
+                metadata_file = save_location / f"{name}.metadata.depth.csv"
+
             write_queue_depth = mp.Queue()
             writer_depth = Writer(
                 queue=write_queue_depth,
@@ -503,7 +512,6 @@ def acquire_video(
         disp.start()
     else:
         disp = None
-
 
     if verbose:
         logging.log(logging.INFO, f"Preparing acquisition loops")
