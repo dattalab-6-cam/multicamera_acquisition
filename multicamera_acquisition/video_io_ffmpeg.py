@@ -153,11 +153,6 @@ def write_frame(
     """
 
     if not pipe:
-        
-        print(frame.shape, type(frame), type(frame[0,0]), frame[0,0])
-        
-        print('frame bounds', np.max(frame), np.min(frame), np.median(frame))
-        
         command = create_ffmpeg_pipe_command(
             filename,
             frame,
@@ -167,7 +162,7 @@ def write_frame(
             gpu=gpu,
             depth=depth,
         )
-        print(' '.join(command))
+
         # Create a subprocess pipe to write frames
         with open(f"{str(filename)}.stdout.txt", "w") as f_out, open(
             f"{str(filename)}.stderr.txt", "w"
@@ -195,7 +190,7 @@ def write_frame(
 
         pipe = None
         print("ADD THIS BACK IN")
-        #raise BrokenPipeError
+        # raise BrokenPipeError
 
     return pipe
 
