@@ -79,3 +79,6 @@ class TestBaslerEmulated():
         # End the acquisition loop
         end_processes([acquisition_loop], [writer], None, writer_timeout=3)
         logging.info("Processes ended.")
+
+        # TODO - pytest says this passes, but the process doesn't fully return
+        # and so there's no video actualyl written, and pytest never closes.
