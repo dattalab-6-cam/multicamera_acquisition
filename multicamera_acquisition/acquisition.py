@@ -86,9 +86,16 @@ class AcquisitionLoop(mp.Process):
         self.primed.set()
 
     def run(self):
+        """Acquire frames. This is run when mp.Process.start() is called.
+        """
+
         # get the camera if it hasn't been passed in (e.g. for azure)
         if self.cam is None:
-            cam = get_camera(brand=self.brand, **self.camera_params)
+            try:
+                cam = get_camera(brand=self.brand, **self.camera_params)
+            except Exception as e:
+                logging.log(logging.ERROR, f"{self.brand}:{e}")
+                raise e
         else:
             cam = self.cam
         self.ready.set()
@@ -178,7 +185,7 @@ class AcquisitionLoop(mp.Process):
         logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
 
 
-def end_processes(acquisition_loops, writers, disp):
+def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     # end acquisition loops
     for acquisition_loop in acquisition_loops:
         if acquisition_loop.is_alive():
@@ -205,7 +212,7 @@ def end_processes(acquisition_loops, writers, disp):
             #     while writer.queue.qsize() > 0:
             #         print(writer.queue.qsize())
             #         time.sleep(0.1)
-            writer.join(timeout=60)
+            writer.join(timeout=writer_timeout)
 
     # end display
     if disp is not None:
