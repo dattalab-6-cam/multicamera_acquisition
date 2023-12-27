@@ -135,3 +135,76 @@ class BaslerCamera(BaseCamera):
     def document(self):
         """Creates a MarkDown documentation string for the camera."""
         raise NotImplementedError
+
+
+def enumerate_basler_cameras(behav_on_none="raise"):
+    """ Enumerate all Basler cameras connected to the system.
+    
+    Parameters
+    ----------
+    behav_on_none : str (default: 'raise')
+        If 'raise', raises an error if no cameras are found.
+        If 'pass', returns None if no cameras are found.
+
+    Returns
+    -------
+    cameras : list of strings
+        A list of serial numbers of all connected cameras.
+    """
+
+    # Instantiate an object for the camera finder
+    tl_factory = pylon.TlFactory.GetInstance()
+    devices = tl_factory.EnumerateDevices()
+
+    # If no camera is found
+    if len(devices) == 0 and behav_on_none == "raise":
+        raise RuntimeError("No cameras found.")
+    elif len(devices) == 0 and behav_on_none == "pass":
+        return None
+
+    # Otherwise, loop through all found devices 
+    # and print their serial numbers
+    serial_nos = []
+    models = []
+    for i, device in enumerate(devices):
+        camera = pylon.InstantCamera(tl_factory.CreateDevice(device))
+        camera.Open()
+        sn = camera.GetDeviceInfo().GetSerialNumber()
+        model = camera.GetDeviceInfo().GetModelName()
+        print(f"Camera {i+1}:")
+        print(f"\tSerial Number: {sn}")
+        print(f"\tModel: {model}")
+        camera.Close()
+        serial_nos.append(sn)
+        models.append(model)
+
+    # Return a list of serial numbers
+    return  serial_nos, models
+
+
+class EmulatedBaslerCamera(BaslerCamera):
+    """Emulated basler camera for testing.
+    """
+    from ..tests.interfaces.test_camera_basler import PylonEmuTestCase
+
+    # Override the init method to use the emulated camera
+    def __init__(self, **kwargs):
+        """
+        Parameters
+        ----------
+        """
+        self.serial_number = "Emulated"
+        self.cam = self.PylonEmuTestCase.create_first()
+        self.running = False
+
+    def init(self):
+        """Initializes the camera.  Automatically called if the camera is opened
+        using a `with` clause."""
+        self.cam.Open()
+
+        # reset to default settings
+        self.cam.UserSetSelector = "Default"
+        self.cam.UserSetLoad.Execute()
+
+        # set to do a grayscale grating drift
+        self.cam.TestPattern.Value = "Testimage2"
