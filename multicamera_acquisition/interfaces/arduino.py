@@ -1,7 +1,6 @@
 import struct
 import numpy
 import warnings
-from tqdm.autonotebook import tqdm
 import sys
 import glob
 import serial
