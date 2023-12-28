@@ -203,16 +203,22 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             acquisition_loop.join(timeout=1)
             # kill if necessary
             if acquisition_loop.is_alive():
+                # debug: notify user we had to terminate the acq loop
+                logging.debug("Terminating acquisition loop (join timed out)")
                 acquisition_loop.terminate()
 
     # end writers
     for writer in writers:
         if writer.is_alive():
-            #     # wait to finish writing
-            #     while writer.queue.qsize() > 0:
-            #         print(writer.queue.qsize())
-            #         time.sleep(0.1)
+            # wait to finish writing
+            while writer.queue.qsize() > 0:
+                print(writer.queue.qsize())
+                time.sleep(0.1)
+            logging.debug(f"joining writer ({writer.camera_name})")
             writer.join(timeout=writer_timeout)
+
+    # Debug: printer the writer's exitcode
+    logging.debug(f"Writer exitcode: {writer.exitcode}")
 
     # end display
     if disp is not None:
