@@ -10,20 +10,15 @@ from multicamera_acquisition.acquisition import (
 )
 
 
-class EmulatedBaslerTestCase(unittest.TestCase):
+class BaslerTestCase(unittest.TestCase):
 
     def setUp(self):
         # Parameters for an emulated basler
         self.camera_dict = {
-            "brand": "basler_emulated",
-            "name": "emulated",  # shouldnt be required
+            "brand": "basler",
+            "name": "test",  # shouldnt be required
             "gpu": 0,  # shouldnt be required
-            "gain": 0,
-            "exposure_time": 1000,
-            "trigger": "software",
-            "frame_timeout": 1000,
-            "roi": None,
-            "readout_mode": "SensorReadoutMode_Normal",
+            "index": 0,
         }
 
         self.ffmpeg_options = {"fps": 90, "gpu": 0}
@@ -45,9 +40,9 @@ class EmulatedBaslerTestCase(unittest.TestCase):
             queue=write_queue,
             video_file_name=vid_path,
             metadata_file_name=metadata_path,
-            camera_serial="emulated",
+            camera_serial="test",
             fps=90,
-            camera_name="emulated",
+            camera_name="test",
             camera_brand=self.camera_dict["brand"],
             ffmpeg_options=self.ffmpeg_options
         )
@@ -71,7 +66,7 @@ class EmulatedBaslerTestCase(unittest.TestCase):
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 0.5)
         while datetime.now() < endtime:
             pass
-        
+
         # End the acquisition loop
         end_processes([acquisition_loop], [writer], None, writer_timeout=3)
 

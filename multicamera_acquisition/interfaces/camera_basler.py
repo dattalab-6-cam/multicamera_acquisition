@@ -1,47 +1,55 @@
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
+from multicamera_acquisition.configs.default_basler_config import default_basler_config
 from pypylon import pylon
 import numpy as np
 
 
 class BaslerCamera(BaseCamera):
 
-
-    def __init__(self, index=0):
-        """
+    def __init__(self, index=0, config_file=None):
+        """Create a camera instance connected to a camera, without actually ".open()"ing it (i.e. without starting the connection).
         Parameters
         ----------
         index : int or str (default: 0)
             If an int, the index of the camera to acquire.  
             If a string, the serial number of the camera.
+
+        config : path-like str or Path (default: None)
+            Path to config file. If None, uses the camera's default config file.
         """
         
         # Init the parent class
-        super().__init__(index=index)
+        super().__init__(index=index, config_file=config_file)
 
+        ### SET UP THE CAMERA ###
         # Start the pylon device layer
         self.system = pylon.TlFactory.GetInstance()
         di = pylon.DeviceInfo()
         self.devices = self.system.EnumerateDevices([di,])
 
-         # Get the serial numbers of all connected cameras
+        # Get the serial numbers of all connected cameras
         camera_serials, model_names = self._enumerate_cameras()
-       
+
         # If user wants a specific serial no, find the index of that camera
         if isinstance(index, str):
             if not np.any(camera_serials == index):
                 raise CameraError("Camera with serial number %s not found." % index)
             index = camera_serials.index(index)
-        
+
         # Create the camera with the desired index
         self.cam = pylon.InstantCamera(self.system.CreateDevice(self.devices[index]))
         self.model_name = model_names[index]
-        
+
         # Delete the device attribute (to allow other camera objects to use it? unclear.)
         delattr(self, "devices")
-        
-        # Specify that we're not yet running the camera
+
+        # Specify that we're not yet running the camera (necessary?)
         self.running = False
 
+        # If no config file is specified, use the default
+        if self.config_file is None:
+            self.config = default_basler_config()
+            # TODO: save the default config to a file once we know where acquisition is happening.
 
     def _enumerate_cameras(self, behav_on_none="raise"):
         """ Enumerate all Basler cameras connected to the system.
@@ -78,21 +86,71 @@ class BaslerCamera(BaseCamera):
 
         return  serial_nos, models
 
-
-    def __configure_basler(self):
-        
-
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
+        
+        # Open the connection to the camera
         self.cam.Open()
 
+        # House keeping
         self.serial_number = self.cam.GetDeviceInfo().GetSerialNumber()
         self.model = self.cam.GetDeviceInfo().GetModelName()
 
-        # reset to default settings
+        # Reset to default settings, for safety (i.e. if user was messing around with the camera and didn't reset the settings)
         self.cam.UserSetSelector = "Default"
         self.cam.UserSetLoad.Execute()
+
+        # Configure the camera according to the config file
+        self._configure_basler()
+
+    def _configure_basler(self):
+        """ Load in the config file and set up the basler for acquisition with the config therein.
+        """
+
+        # Check the config file for any missing or conflicting params 
+        status = self.check_config()
+        if status is not None:  # TODO: actually implement telling user what was wrong with the config
+            raise CameraError(status)
+
+        # Set gain
+        self.cam.GainAuto.SetValue("Off")
+        self.cam.Gain.SetValue(self.config["camera"]["gain"])
+
+        # Set exposure time
+        self.cam.ExposureAuto.SetValue("Off")
+        self.cam.ExposureTime.SetValue(self.config["camera"]["exposure"])
+
+        # Set readout mode
+        self.cam.SensorReadoutMode.SetValue(self.config["camera"]["readout_mode"])
+
+        # Set roi
+        roi = self.config["camera"]["roi"]
+        if roi is not None:
+            self.cam.Width.SetValue(roi[2])
+            self.cam.Height.SetValue(roi[3])
+            self.cam.OffsetX.SetValue(roi[0])
+            self.cam.OffsetY.SetValue(roi[1])
+
+        # Set trigger
+        trigger = self.config["camera"]["trigger"]
+        if trigger["short_name"] == "arduino":
+            self.cam.AcquisitionMode.SetValue(trigger["acquisition_mode"])
+            # self.cam.AcquisitionFrameRateEnable.SetValue('On')
+            max_fps = self.cam.AcquisitionFrameRate.GetMax()
+            self.cam.AcquisitionFrameRate.SetValue(max_fps)
+            self.cam.TriggerMode.SetValue("Off")  # why have to set to off here?
+            self.cam.TriggerSource.SetValue(trigger["trigger_source"])
+            self.cam.TriggerSelector.SetValue(trigger["trigger_selector"])
+            self.cam.TriggerActivation.SetValue(trigger["trigger_activation"])
+            self.cam.TriggerMode.SetValue("On")
+
+        elif trigger["short_name"] == "software":
+            # TODO - implement software trigger
+            # TODO - this error isn't raised in the main thread. how to propagate it?
+            raise NotImplementedError("Software trigger not implemented for Basler cameras")
+        else:
+            raise ValueError("Trigger must be 'arduino' or 'software'")
 
     def start(self):
         "Start recording images."

@@ -1,5 +1,5 @@
 import numpy as np
-
+import yaml
 
 class CameraError(Exception):
     pass
@@ -55,8 +55,8 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, index=0, config=None):
-        """
+    def __init__(self, index=0, config_file=None):
+        """Create a camera instance connected to a camera, without actually "open"ing it (i.e. without starting the connection).
         Parameters
         ----------
         index : int or str (default: 0)
@@ -66,6 +66,51 @@ class BaseCamera(object):
             Path to config file. If None, uses the camera's default config file.
         """
         self.index = index
+        self.config_file = config_file
+
+    def save_config(self):
+        """Save the current camera configuration to a YAML file.
+        """
+        with open(self.config_file, 'w') as f:
+            yaml.dump(self.config, f, default_flow_style=False)
+
+    def load_config(self, check_if_valid=False):
+        """Load a camera configuration YAML file.
+        """
+        with open(self.config_file, 'r') as f:
+            config = yaml.load(f)
+        self.config = config
+
+        if check_if_valid:
+            self.check_config()
+
+    def update_config(self, new_config):
+        """Update the config file.
+
+        Parameters
+        ----------
+        new_config: dict
+            Dictionary of new config values
+        """
+        def recursive_update(config, updates):
+            for key, value in updates.items():
+                if key in config and isinstance(config[key], dict):
+                    # If the key is a dictionary, recurse
+                    recursive_update(config[key], value)
+                else:
+                    # Otherwise, update the value directly
+                    config[key] = value
+            return config
+        
+        tmp_config = recursive_update(self.config, new_config)
+        if self.check_config(tmp_config):
+            self.config = tmp_config
+            self.save_config()
+
+    def check_config(self, config=None):
+        """Check if the camera configuration is valid.
+        """
+        pass  # defined in each camera subclass
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
