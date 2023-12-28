@@ -210,11 +210,10 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     # end writers
     for writer in writers:
         if writer.is_alive():
-            # wait to finish writing
-            while writer.queue.qsize() > 0:
-                print(writer.queue.qsize())
-                time.sleep(0.1)
-            logging.debug(f"joining writer ({writer.camera_name})")
+            #     # wait to finish writing
+            #     while writer.queue.qsize() > 0:
+            #         print(writer.queue.qsize())
+            #         time.sleep(0.1)
             writer.join(timeout=writer_timeout)
 
     # Debug: printer the writer's exitcode
