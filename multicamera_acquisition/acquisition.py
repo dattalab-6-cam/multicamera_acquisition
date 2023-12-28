@@ -98,14 +98,14 @@ class AcquisitionLoop(mp.Process):
                 raise e
         else:
             cam = self.cam
-        self.ready.set()
-        self.primed.wait()
+        self.ready.set()  # report to the main loop that the camera is ready
+        self.primed.wait()  # wait until the main loop is ready to start
 
         # tell the camera to start grabbing
         cam.start()
         # once the camera is started grabbing, allow the main
         # process to continue
-        self.ready.set()
+        self.ready.set()  # report to the main loop that the camera is ready
 
         current_frame = 0
         initialized = False
@@ -499,7 +499,7 @@ def acquire_video(
             writers.append(writer_depth)
 
         acquisition_loop.start()
-        acquisition_loop.ready.wait()
+        acquisition_loop.ready.wait()  # blocks until the acq loop reports that it is ready
         acquisition_loops.append(acquisition_loop)
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")
