@@ -194,7 +194,7 @@ class EmulatedBaslerCamera(BaslerCamera):
         ----------
         """
         self.serial_number = "Emulated"
-        self.cam = self.PylonEmuTestCase.create_first()
+        self.cam = self.PylonEmuTestCase().create_first()
         self.running = False
 
     def init(self):
@@ -203,8 +203,8 @@ class EmulatedBaslerCamera(BaslerCamera):
         self.cam.Open()
 
         # reset to default settings
-        self.cam.UserSetSelector = "Default"
-        self.cam.UserSetLoad.Execute()
+        # self.cam.UserSetSelector = "Default"
+        # self.cam.UserSetLoad.Execute()
 
         # set to do a grayscale grating drift
-        self.cam.TestPattern.Value = "Testimage2"
+        # self.cam.TestPattern.Value = "TestImage2"

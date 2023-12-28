@@ -143,33 +143,29 @@ def get_camera(
             raise ValueError("Trigger must be 'arduino' or 'software'")
 
     elif brand == "basler_emulated":
-        from multicamera_acquisition.interfaces import (
+        from multicamera_acquisition.interfaces.camera_basler import (
             EmulatedBaslerCamera as Camera,
         )
         cam = Camera()
         cam.init()
 
         # set gain
-        cam.cam.GainAuto.SetValue("Off")
-        cam.cam.Gain.SetValue(gain)
+        # cam.cam.GainAuto.SetValue("Off")
+        # cam.cam.Gain.SetValue(gain)
 
-        # set exposure time
-        cam.cam.ExposureAuto.SetValue("Off")
-        cam.cam.ExposureTime.SetValue(exposure_time)
+        # # set exposure time
+        # cam.cam.ExposureAuto.SetValue("Off")
+        # cam.cam.ExposureTime.SetValue(exposure_time)
 
-        # set readout mode
-        # cam.cam.SensorReadoutMode.SetValue(readout_mode)
+        # # set readout mode
+        # # cam.cam.SensorReadoutMode.SetValue(readout_mode)
 
-        # set roi
-        if roi is not None:
-            cam.cam.Width.SetValue(roi[2])
-            cam.cam.Height.SetValue(roi[3])
-            cam.cam.OffsetX.SetValue(roi[0])
-            cam.cam.OffsetY.SetValue(roi[1])
-
-        # set trigger
-        if trigger == "arduino":
-            pass
+        # # set roi
+        # if roi is not None:
+        #     cam.cam.Width.SetValue(roi[2])
+        #     cam.cam.Height.SetValue(roi[3])
+        #     cam.cam.OffsetX.SetValue(roi[0])
+        #     cam.cam.OffsetY.SetValue(roi[1])
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import (
