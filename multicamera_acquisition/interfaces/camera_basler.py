@@ -4,48 +4,91 @@ import numpy as np
 
 
 class BaslerCamera(BaseCamera):
-    def __init__(self, index=0, lock=True, **kwargs):
+
+
+    def __init__(self, index=0):
         """
         Parameters
         ----------
         index : int or str (default: 0)
-            If an int, the index of the camera to acquire.  If a string,
-            the serial number of the camera.
-        lock : bool (default: True)
-            If True, setting new attributes after initialization results in
-            an error.
+            If an int, the index of the camera to acquire.  
+            If a string, the serial number of the camera.
         """
-        self.serial_number = index
+        
+        # Init the parent class
+        super().__init__(index=index)
+
+        # Start the pylon device layer
         self.system = pylon.TlFactory.GetInstance()
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices(
-            [
-                di,
-            ]
-        )
+        self.devices = self.system.EnumerateDevices([di,])
 
-        n_devices = len(devices)
-        # debug: print("Found %d camera(s)" % n_devices)
-        camera_serials = np.array([c.GetSerialNumber() for c in devices])
-
-        if n_devices == 0:
-            raise CameraError("No cameras detected.")
-        if isinstance(index, int):
-            self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[index]))
-        elif isinstance(index, str):
+         # Get the serial numbers of all connected cameras
+        camera_serials, model_names = self._enumerate_cameras()
+       
+        # If user wants a specific serial no, find the index of that camera
+        if isinstance(index, str):
             if not np.any(camera_serials == index):
                 raise CameraError("Camera with serial number %s not found." % index)
-            index = np.where(camera_serials == index)[0][0]
-            self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[index]))
-
-        del devices
+            index = camera_serials.index(index)
         
+        # Create the camera with the desired index
+        self.cam = pylon.InstantCamera(self.system.CreateDevice(self.devices[index]))
+        self.model_name = model_names[index]
+        
+        # Delete the device attribute (to allow other camera objects to use it? unclear.)
+        delattr(self, "devices")
+        
+        # Specify that we're not yet running the camera
         self.running = False
+
+
+    def _enumerate_cameras(self, behav_on_none="raise"):
+        """ Enumerate all Basler cameras connected to the system.
+        
+        Parameters
+        ----------
+        behav_on_none : str (default: 'raise')
+            If 'raise', raises an error if no cameras are found.
+            If 'pass', returns None if no cameras are found.
+
+        Returns
+        -------
+        (serial_nos, models) : tuple of list of strings
+            Lists of serial numbers and models of all connected cameras.
+        """
+       
+        # If no camera is found
+        if len(self.devices) == 0 and behav_on_none == "raise":
+            raise RuntimeError("No cameras found.")
+        elif len(self.devices) == 0 and behav_on_none == "pass":
+            return None
+
+        # Otherwise, loop through all found devices and get their sn's + model names
+        serial_nos = []
+        models = []
+        for i, device in enumerate(self.devices):
+            camera = pylon.InstantCamera(self.system.CreateDevice(device))
+            camera.Open()
+            sn = camera.GetDeviceInfo().GetSerialNumber()
+            model = camera.GetDeviceInfo().GetModelName()
+            camera.Close()
+            serial_nos.append(sn)
+            models.append(model)
+
+        return  serial_nos, models
+
+
+    def __configure_basler(self):
+        
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
         self.cam.Open()
+
+        self.serial_number = self.cam.GetDeviceInfo().GetSerialNumber()
+        self.model = self.cam.GetDeviceInfo().GetModelName()
 
         # reset to default settings
         self.cam.UserSetSelector = "Default"
@@ -54,7 +97,7 @@ class BaslerCamera(BaseCamera):
     def start(self):
         "Start recording images."
         max_recording_hours = 60
-        max_recording_frames = max_recording_hours * 60 * 60 * 200
+        max_recording_frames = max_recording_hours * 60 * 60 * 200  # ??
         self.cam.StartGrabbingMax(max_recording_frames)
         self.running = True
 
@@ -97,15 +140,13 @@ class BaslerCamera(BaseCamera):
 
         img = self.get_image(timeout)
 
+        img_array = None
+        tstamp = None
+        
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
             if get_timestamp:
                 tstamp = img.GetTimeStamp()
-            else:
-                tstamp = None
-        else:
-            img_array = None
-            tstamp = None
 
         img.Release()
 

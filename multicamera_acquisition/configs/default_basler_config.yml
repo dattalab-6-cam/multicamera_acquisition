@@ -1,0 +1,20 @@
+# A default config file for a Basler camera
+---
+gain: 6  # 0-12
+exposure: 1000  # microseconds
+fps: 30  # frames per second
+roi:
+  offset_x: 0
+  offset_y: 0
+  width: 1936
+  height: 1216
+trigger: 
+  short_name: arduino  # arduino, software, or none
+  acquisition_mode: continuous
+  trigger_source: Line2
+  trigger_selector: FrameStart
+  trigger_activation: RisingEdge
+
+  
+
+```

@@ -55,17 +55,17 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, index=0, lock=True):
+    def __init__(self, index=0, config=None):
         """
         Parameters
         ----------
         index : int or str (default: 0)
             If an int, the index of the camera to acquire.  If a string,
             the serial number of the camera.
-        lock : bool (default: True)
-            If True, setting new attributes after initialization results in
-            an error.
+        config : path-like str or Path (default: None)
+            Path to config file. If None, uses the camera's default config file.
         """
+        self.index = index
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
