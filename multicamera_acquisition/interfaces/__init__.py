@@ -12,7 +12,7 @@ import struct
 
 def get_camera(
     brand="flir",
-    serial=None,
+    index=0,
     config_file=None,
 ):
     """Get a camera object.
@@ -22,9 +22,9 @@ def get_camera(
         The brand of camera to use.  Currently only 'flir' is supported. If
         'flir', the software PySpin is used. if 'basler', the software pypylon
         is used.
-    serial : string (default: None)
-        The serial number of the camera to use.  If None, the first camera
-        found will be used.
+    index : int or str (default: 0)
+            If an int, the index of the camera to acquire.  
+            If a string, the serial number of the camera.
     config_file : string (default: None)
         Path to a config file.  If None, the default config file for the given
         camera brand will be used.
@@ -38,7 +38,7 @@ def get_camera(
     if brand == "flir":
         from multicamera_acquisition.interfaces.camera_flir import FlirCamera as Camera
 
-        cam = Camera(index=str(serial))
+        cam = Camera(index=str(index))
 
         cam.init()
 
@@ -83,49 +83,8 @@ def get_camera(
             BaslerCamera as Camera,
         )
 
-        cam = Camera(index=str(serial), config_file=config_file)
+        cam = Camera(index=index, config_file=config_file)
         cam.init()
-
-        # # set gain
-        # cam.cam.GainAuto.SetValue("Off")
-        # cam.cam.Gain.SetValue(gain)
-
-        # # set exposure time
-        # cam.cam.ExposureAuto.SetValue("Off")
-        # cam.cam.ExposureTime.SetValue(exposure_time)
-
-        # # set readout mode
-        # # cam.cam.SensorReadoutMode.SetValue(readout_mode)
-
-        # # set roi
-        # if roi is not None:
-        #     cam.cam.Width.SetValue(roi[2])
-        #     cam.cam.Height.SetValue(roi[3])
-        #     cam.cam.OffsetX.SetValue(roi[0])
-        #     cam.cam.OffsetY.SetValue(roi[1])
-
-        # # set trigger
-        # if trigger == "arduino":
-        #     # see https://github.com/basler/pypylon/issues/119
-        #     # set external trigger / input line
-        #     # Acquisition mode
-        #     cam.cam.AcquisitionMode.SetValue("Continuous")
-        #     # cam.cam.AcquisitionFrameRateEnable.SetValue('On')
-        #     max_fps = cam.cam.AcquisitionFrameRate.GetMax()
-        #     cam.cam.AcquisitionFrameRate.SetValue(max_fps)
-        #     cam.cam.TriggerMode.SetValue("Off")
-        #     cam.cam.TriggerSource.SetValue(trigger_line)
-        #     cam.cam.TriggerSelector.SetValue("FrameStart")
-        #     # cam.cam.TriggerActivation.SetValue("FallingEdge")
-        #     cam.cam.TriggerActivation.SetValue("RisingEdge")
-        #     cam.cam.TriggerMode.SetValue("On")
-
-        # elif trigger == "software":
-        #     # TODO - implement software trigger
-        #     # TODO - this error isn't raised in the main thread. how to propagate it?
-        #     raise NotImplementedError("Software trigger not implemented for Basler cameras")
-        # else:
-        #     raise ValueError("Trigger must be 'arduino' or 'software'")
 
     elif brand == "basler_emulated":
         from multicamera_acquisition.interfaces.camera_basler import (

@@ -16,7 +16,7 @@ def default_basler_config():
             'roi': None,  # ie use the entire roi
             'gain': 6,
             'exposure': 1000,
-            'readout_mode': 'Normal',  # options are 'Fast' and 'Normal'. 'Fast' is required for >160 fps but might lead to lower image quality.
+            # 'readout_mode': 'Normal',  # options are 'Fast' and 'Normal'. 'Fast' is required for >160 fps but might lead to lower image quality.
             'trigger': {
                 'short_name': 'arduino',
                 'acquisition_mode': 'Continuous',

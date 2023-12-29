@@ -92,7 +92,9 @@ class AcquisitionLoop(mp.Process):
         # get the camera if it hasn't been passed in (e.g. for azure)
         if self.cam is None:
             try:
-                cam = get_camera(brand=self.brand, **self.camera_params)
+                if "serial" in self.camera_params:
+                    self.camera_params["index"] = self.camera_params["serial"]
+                cam = get_camera(brand=self.brand, index=self.camera_params["index"])
             except Exception as e:
                 logging.log(logging.ERROR, f"{self.brand}:{e}")
                 raise e

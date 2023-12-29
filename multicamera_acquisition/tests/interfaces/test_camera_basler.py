@@ -1,6 +1,8 @@
 import unittest
 import os
 import sys
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+import numpy as np
 
 num_devices = 1
 os.environ["PYLON_CAMEMU"] = f"{num_devices}"
@@ -24,6 +26,7 @@ class PylonEmuTestCase(unittest.TestCase):
 
 
 class GrabTestSuite(PylonEmuTestCase):
+
     """Simple pypylon emulation test.
     Taken directly from: https://github.com/basler/pypylon/tree/master/tests/pylon_tests/emulated
     """
@@ -63,3 +66,57 @@ class GrabTestSuite(PylonEmuTestCase):
             grabResult.Release()
         self.assertEqual(countOfImagesToGrab, imageCounter)
         camera.Close()
+
+
+class BaslerCameraTestCase(unittest.TestCase):
+    """Test the basler camera subclas
+    """
+
+    def setUp(self):
+        self.cam = BaslerCamera(index=0)
+
+    def test_a_init(self):
+        self.cam.init()
+
+    def test_b_start(self):
+        self.cam.start()
+        self.cam.stop()
+
+    def test_c_grab_one(self):
+        self.cam.init()  # have to run init() after stop() currently; not my fave way of doing it.
+        self.cam.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
+        self.cam.start()
+        img = self.cam.get_array(timeout=1000)
+        self.assertEqual(type(img), np.ndarray)
+        self.cam.stop()
+
+    def tearDown(self):
+        self.cam.close()  # basically same as .stop() but also deletes the cam attr
+        return super().tearDown()
+    
+    
+class EmulatedBaslerCameraTestCase(unittest.TestCase):
+    """Test the emulated basler camera subclas
+    """
+
+    def setUp(self):
+        self.cam = BaslerCamera(index=0)
+
+    def test_a_init(self):
+        self.cam.init()
+
+    def test_b_start(self):
+        self.cam.start()
+        self.cam.stop()
+
+    def test_c_grab_one(self):
+        self.cam.init()  # have to run init() after stop() currently; not my fave way of doing it.
+        self.cam.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
+        self.cam.start()
+        img = self.cam.get_array(timeout=1000)
+        self.assertEqual(type(img), np.ndarray)
+        self.cam.stop()
+
+    def tearDown(self):
+        self.cam.close()  # basically same as .stop() but also deletes the cam attr
+        return super().tearDown()
