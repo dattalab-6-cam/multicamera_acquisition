@@ -1,1 +1,1 @@
-from . import camera_base
+from .camera_base import get_camera
