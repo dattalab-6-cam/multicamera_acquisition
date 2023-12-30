@@ -39,3 +39,34 @@ def most_recent_subdirectory(dataset_loc):
         datetime.strptime(i.name, "%Y-%m-%d_%H-%M-%S") for i in subdir_list
     ]
     return subdir_list[np.argsort(directory_dates)[-1]]
+
+
+def prepare_rec_dir(save_location, append_datetime=True):
+    """Create a directory for saving the recording, optionally further 
+    nested in a subdir named with the date and time.
+
+    Parameters
+    ----------
+    save_location : str or Path
+        The location to save the recording.
+    """
+
+    # Convert arg to Path, if necessary
+    if not isinstance(save_location, Path):
+        save_location = Path(save_location)
+
+    # Resolve subfolder name, if requested
+    if append_datetime:
+        date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+        save_location = save_location.joinpath(date_str)
+
+    # Create the directory
+    save_location.mkdir(parents=True, exist_ok=True)
+
+    # Sanity check
+    if not save_location.exists():
+        raise ValueError(f"Failed to create save location {save_location}!")
+    else:
+        print(f'Created save location {save_location}')
+
+    return save_location
