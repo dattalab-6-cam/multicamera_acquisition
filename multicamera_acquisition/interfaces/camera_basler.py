@@ -340,19 +340,33 @@ def enumerate_basler_cameras(behav_on_none="raise"):
 class EmulatedBaslerCamera(BaslerCamera):
     """Emulated basler camera for testing.
     """
-    from ..tests.interfaces.test_camera_basler import PylonEmuTestCase
+    from ..tests.interfaces.test_emulated_basler import PylonEmuTestCase
+
+    @staticmethod
+    def get_class_and_filter_emulated():
+        device_class = "BaslerCamEmu"
+        di = pylon.DeviceInfo()
+        di.SetDeviceClass(device_class)
+        return device_class, [di]
+
+    def __init__(self, id=None, name=None, config_file=None, lock=True):
+        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
 
     def _create_pylon_sys(self):
-        """Override the camera creation to make an emulated camera
-        Creates the following attributes:
-            - self.system: the pylon system (pylon.TlFactory.GetInstance())
-            - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
-            - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
+        """Override the system creation to make an emulated camera
         """
-        self.system = None
+
+        # Prepare the emulation
+        self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
 
     def _create_pylon_cam(self):
         """Override the camera creation to make an emulated camera
         """
         self.model_name = "Emulated"
-        self.cam = self.PylonEmuTestCase().create_first()
+        self.cam = self._create_first()
+
+    def _create_first(self):
+        tlf = pylon.TlFactory.GetInstance()
+        return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[0]))
