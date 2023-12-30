@@ -24,8 +24,8 @@ def test_refactor_acquire_video():
     # Params
     save_location = f"{PACKAGE_DIR}/scratch/test_recording"
     camera_list = [
-        {"name": "top", "brand": "basler"},
-        {"name": "bottom", "brand": "basler"}
+        {"name": "top", "brand": "basler_emulated", "id": 0},
+        {"name": "bottom", "brand": "basler_emulated", "id": 1}
     ]
     fps = 30
     recording_duration_s = 60 
