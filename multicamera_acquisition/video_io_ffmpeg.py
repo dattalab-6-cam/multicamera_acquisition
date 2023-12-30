@@ -57,7 +57,7 @@ def create_ffmpeg_pipe_command(
             # GPU encoding options using h264_nvenc codec
             command += [
                 "-c:v",
-                "h264_nvenc",  # "av1_nvenc", "h264_nvenc" "hevc_nvenc"
+                "h264_nvenc",  # "av1_nvenc", "h264_nvenc" "hevc_nvenc"  # TODO: this still requires nvenc to be installed?
                 "-preset",
                 "p1",
                 "-qp",
