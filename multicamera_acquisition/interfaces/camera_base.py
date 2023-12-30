@@ -199,7 +199,10 @@ class BaseCamera(object):
             warn("No camera ID provided.  Using device index 0.")
         else:
             raise ValueError("Invalid camera ID")
+        
         self.config_file = config_file
+        self.name = name
+        self.lock = lock
 
     def _resolve_device_index(self):
         """Given a serial number, find the index of the camera in the system.

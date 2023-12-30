@@ -53,6 +53,7 @@ class BaslerCamera(BaseCamera):
     #TODO: make this a static method?
     def _enumerate_cameras(self, behav_on_none="raise"):
         """ Enumerate all Basler cameras connected to the system.
+        Called by self._resolve_device_index() in __init__.
         Parameters
         ----------
         behav_on_none : str (default: 'raise')
@@ -110,10 +111,6 @@ class BaslerCamera(BaseCamera):
         # Record camera model name
         self.model = self.cam.GetDeviceInfo().GetModelName()
 
-        # Reset to default settings, for safety (i.e. if user was messing around with the camera and didn't reset the settings)
-        self.cam.UserSetSelector.Value = "Default"
-        self.cam.UserSetLoad.Execute()
-
         # Configure the camera according to the config file
         self._configure_basler()
 
@@ -132,8 +129,12 @@ class BaslerCamera(BaseCamera):
         )
 
     def _configure_basler(self):
-        """ Load in the config file and set up the basler for acquisition with the config therein.
+        """ Given the loaded config, set up the basler for acquisition with the config therein.
         """
+        # Reset to default settings, for safety (i.e. if user was messing around with the camera and didn't reset the settings)
+        self.cam.UserSetSelector.Value = "Default"
+        self.cam.UserSetLoad.Execute()
+
         # Check the config file for any missing or conflicting params 
         assert hasattr(self, "config"), "Must load config file before configuring camera (see load_config())."
         status = self.check_config()
@@ -199,9 +200,6 @@ class BaslerCamera(BaseCamera):
 
     def start(self):
         "Start recording images."
-        # max_recording_hours = 60
-        # max_recording_frames = max_recording_hours * 60 * 60 * 200  # ??
-        # self.cam.StartGrabbingMax(max_recording_frames)
         self.cam.StartGrabbing(pylon.GrabStrategy_OneByOne)
         self.running = True
 
