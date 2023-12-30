@@ -87,8 +87,24 @@ class GrabTestSuite(PylonEmuTestCase):
     def tearDown(self):
         return super().tearDown()
 
+
 @pytest.mark.emulated_camera
 class EmulatedBaslerCamera_InitAndStart_TestCase(BaslerCamera_InitAndStart_TestCase):
+    """Test the emulated basler camera subclas
+    """
+
+    def setUp(self):
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+        super().setUp()
+
+    def tearDown(self):
+        super().tearDown()
+        del os.environ['PYLON_CAMEMU']
+
+
+@pytest.mark.emulated_camera
+class EmulatedBaslerCamera_VariousIDMethods_TestCase(BaslerCamera_VariousIDMethods_TestCase):
     """Test the emulated basler camera subclas
     """
 
