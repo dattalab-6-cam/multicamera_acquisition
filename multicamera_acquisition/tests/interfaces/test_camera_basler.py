@@ -73,17 +73,18 @@ class BaslerCameraTestCase(unittest.TestCase):
     """
 
     def setUp(self):
+        """ Called before each test
+        """
         self.cam = BaslerCamera(id=0)
-
-    def test_a_init(self):
         self.cam.init()
 
-    def test_b_start(self):
+    def test_a_start(self):
+        self.cam.init()
         self.cam.start()
         self.cam.stop()
 
-    def test_c_grab_one(self):
-        self.cam.init()  # have to run init() after stop() currently; not my fave way of doing it.
+    def test_b_grab_one(self):
+        self.cam.init()
         self.cam.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
         self.cam.start()
         img = self.cam.get_array(timeout=1000)
@@ -103,14 +104,15 @@ class BaslerCamera_VariousIDMethods_TestCase(unittest.TestCase):
         pass
 
     def test_a_id_int(self):
-        
         # should default to 0
-        cam = BaslerCamera(id=0)
-        self.assertEqual(cam.id, 0)
+        cam = BaslerCamera()
+        cam.init()
+        self.assertEqual(cam.device_index, 0)
         cam.close()
 
         cam = BaslerCamera(id=0)
-        self.assertEqual(cam.id, 0)
+        cam.init()
+        self.assertEqual(cam.device_index, 0)
         cam.close()
 
     def test_b_id_errs(self):
@@ -133,6 +135,7 @@ class EmulatedBaslerCameraTestCase(unittest.TestCase):
         self.cam.init()
 
     def test_b_start(self):
+        self.cam.init()
         self.cam.start()
         self.cam.stop()
 

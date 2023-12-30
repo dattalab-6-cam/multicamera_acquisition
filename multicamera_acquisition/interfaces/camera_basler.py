@@ -7,7 +7,7 @@ import numpy as np
 class BaslerCamera(BaseCamera):
 
     def __init__(self, id=None, name=None, config_file=None, lock=True):
-        """Create a camera instance connected to a camera, without actually ".open()"ing it (i.e. without starting the connection).
+        """Set up a camera object, instance ready to connect to a camera.
         Parameters
         ----------
         id : int or str (default: 0)
@@ -30,7 +30,6 @@ class BaslerCamera(BaseCamera):
         # Create the camera object
         self._create_pylon_sys()  # init the pylon API software layer
         self._resolve_device_index()  # sets self.device_index based on the id the user provides
-        self._create_pylon_cam()  # uses that device index to create a camera object
 
         # Specify that we're not yet running the camera (necessary?)
         self.running = False
@@ -91,24 +90,13 @@ class BaslerCamera(BaseCamera):
 
         return serial_nos, models
 
-    def _create_pylon_cam(self):
-        """
-        Creates the following attributes:
-            - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
-            - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
-        """
-        di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices([di,])
-
-        # Create the camera with the desired index
-        self.cam = pylon.InstantCamera(
-            self.system.CreateDevice(devices[self.device_index])
-        )
-
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
-        
+
+        # Create the pypylon camera object
+        self._create_pylon_cam()
+
         # Open the connection to the camera
         self.cam.Open()
 
@@ -128,6 +116,20 @@ class BaslerCamera(BaseCamera):
 
         # Configure the camera according to the config file
         self._configure_basler()
+
+    def _create_pylon_cam(self):
+        """
+        Creates the following attributes:
+            - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
+            - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
+        """
+        di = pylon.DeviceInfo()
+        devices = self.system.EnumerateDevices([di,])
+
+        # Create the camera with the desired index
+        self.cam = pylon.InstantCamera(
+            self.system.CreateDevice(devices[self.device_index])
+        )
 
     def _configure_basler(self):
         """ Load in the config file and set up the basler for acquisition with the config therein.
@@ -205,7 +207,7 @@ class BaslerCamera(BaseCamera):
 
     def stop(self):
         "Stop recording images."
-        self.cam.Close()
+        self.cam.StopGrabbing()
         self.running = False
 
     def get_image(self, timeout=None):
