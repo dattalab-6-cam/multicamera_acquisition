@@ -71,14 +71,14 @@ def create_config_from_camera_list(camera_list, baseline_recording_config=None):
         if camera_name not in user_camera_list_names:
             continue
 
+        this_user_cam_dict = user_camera_dict[camera_name]
+
         # If the camera is in the user camera list but not the recording config,
         # then we need to create a new config for it. 
-        # Otherwise, use what's already in the recording config as the starting point.
-        this_user_cam_dict = user_camera_dict[camera_name]
-        camera_brand = this_user_cam_dict["brand"]
         if camera_name not in recording_config["cameras"].keys():
 
             # Find the correct default camera and writer configs
+            camera_brand = this_user_cam_dict["brand"]
             if camera_brand == "basler":
                 cam_config = BaslerCamera.default_camera_config()
                 writer_config = BaslerCamera.default_writer_config()
@@ -91,6 +91,8 @@ def create_config_from_camera_list(camera_list, baseline_recording_config=None):
             else:
                 raise NotImplementedError
 
+        # Otherwise, if the camera is already in the recording config, 
+        # use what's already there as the starting point.
         elif camera_name in recording_config["cameras"].keys():
             cam_config = recording_config["cameras"][camera_name]
             writer_config = recording_config["cameras"][camera_name]["writer"]
