@@ -38,9 +38,6 @@ class BaslerCamera(BaseCamera):
         self._create_pylon_sys()  # init the pylon API software layer
         self._resolve_device_index()  # sets self.device_index based on the id the user provides
 
-        # Specify that we're not yet running the camera (necessary?)
-        self.running = False
-
         # Load the config
         # (NB: we load the config info here, but we don't actually 
         # configure the camera itself until *after* .open()'ing it, 
@@ -51,9 +48,6 @@ class BaslerCamera(BaseCamera):
             raise ValueError("Cannot specify both config_file and config.")
         elif self.config_file is not None:
             self.load_config(check_if_valid=False)  # TODO: could set check to be true by default? unsure.
-            # TODO: this config might be a full recording config, in which case it will contain
-            # configs for all cameras in a given recording. Will need to resolve which part of the 
-            # config is for this camera (i.e. by serial number or by name)
         elif self.config is not None:
             pass
 
