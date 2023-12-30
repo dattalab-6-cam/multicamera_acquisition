@@ -18,7 +18,6 @@ from multicamera_acquisition.config.config import (
     add_rt_display_params_to_config,
     create_config_from_camera_list,
 )
-
 from multicamera_acquisition.paths import prepare_rec_dir
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
