@@ -79,12 +79,10 @@ class BaslerCameraTestCase(unittest.TestCase):
         self.cam.init()
 
     def test_a_start(self):
-        self.cam.init()
         self.cam.start()
         self.cam.stop()
 
     def test_b_grab_one(self):
-        self.cam.init()
         self.cam.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
         self.cam.start()
         img = self.cam.get_array(timeout=1000)
@@ -130,16 +128,13 @@ class EmulatedBaslerCameraTestCase(unittest.TestCase):
 
     def setUp(self):
         self.cam = BaslerCamera(id=0)
-
-    def test_a_init(self):
         self.cam.init()
 
-    def test_b_start(self):
-        self.cam.init()
+    def test_a_start(self):
         self.cam.start()
         self.cam.stop()
 
-    def test_c_grab_one(self):
+    def test_b_grab_one(self):
         self.cam.init()  # have to run init() after stop() currently; not my fave way of doing it.
         self.cam.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
         self.cam.start()
