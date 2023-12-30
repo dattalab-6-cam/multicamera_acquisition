@@ -10,6 +10,7 @@ import numpy as np
 import serial
 
 from tqdm import tqdm
+from multicamera_acquisition.interfaces.camera_base import get_camera
 from multicamera_acquisition.config.config import (
     load_config,
     save_config,
@@ -17,6 +18,9 @@ from multicamera_acquisition.config.config import (
     add_rt_display_params_to_config,
     create_config_from_camera_list,
 )
+
+from multicamera_acquisition.paths import prepare_rec_dir
+
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 # from multicamera_acquisition.interfaces.arduino import (
     # find_serial_ports, packIntAsLong, wait_for_serial_confirmation)
@@ -262,6 +266,27 @@ def refactor_acquire_video(
     # Save the config file before starting the recording
     config_filepath = save_location / "recording_config.yaml"
     save_config(config_filepath, config)
+
+    # (...other stuff happens...)
+
+    # Example of how to get a camera based on the config
+    for camera_name, camera_dict in config["cameras"].items():
+        cam = get_camera(
+            brand=camera_dict["brand"],
+            id=camera_dict["id"],
+            config=camera_dict,
+        )
+        cam.name = camera_name
+
+    # All attrs easily accessible
+    cam.init()
+    print(cam.config)
+    print(cam.cam.AcquisitionMode.Value)
+
+    # and then to start recording...
+    cam.start()
+    cam.stop()
+    cam.close()
 
 """
 pesudo code for refactor of acquire_video
