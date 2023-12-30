@@ -1,33 +1,54 @@
-from multicamera_acquisition.interfaces import get_camera
-from multicamera_acquisition.video_io_ffmpeg import write_frame
-from multicamera_acquisition.paths import ensure_dir
-from multicamera_acquisition.interfaces.arduino import (
-    packIntAsLong,
-    wait_for_serial_confirmation,
-    find_serial_ports,
-)
-from multicamera_acquisition.visualization import MultiDisplay
-from multicamera_acquisition.writer import Writer
-
-import multiprocessing as mp
 import csv
-import warnings
-import time
-import csv
-from datetime import datetime, timedelta
-import glob
 import logging
-from tqdm import tqdm
-import numpy as np
-import sys
-
-import serial
+import multiprocessing as mp
+import time
+import warnings
+from datetime import datetime, timedelta
 from pathlib import Path
-from multicamera_acquisition.video_io_ffmpeg import count_frames
+
+import numpy as np
+import serial
+import yaml
+from tqdm import tqdm
+
+from multicamera_acquisition.configs.default_display_config import \
+    default_display_config
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+# from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+# from multicamera_acquisition.interfaces.arduino import (
+    # find_serial_ports, packIntAsLong, wait_for_serial_confirmation)
+# from multicamera_acquisition.visualization import MultiDisplay
+# from multicamera_acquisition.writer import Writer
+
+ALL_CAM_PARAMS = [
+    "name",
+    "brand",
+    "serial",
+    "exposure_time",
+    "display",
+]
+
+ALL_WRITER_PARAMS = [
+    "gpu",
+    "quality",
+]
+
+ALL_DISPLAY_PARAMS = [
+    "display_range",  # (min, max) for display colormap
+]
+
+# Since we will match params 1:1 with the user-provided camera list, we need to
+# ensure that the param names are never redundant.
+# TODO: could decide to un-flatten the camera list, which would also solve this.
+assert all([param not in ALL_CAM_PARAMS for param in ALL_WRITER_PARAMS])
+assert all([param not in ALL_CAM_PARAMS for param in ALL_DISPLAY_PARAMS])
+assert all([param not in ALL_WRITER_PARAMS for param in ALL_DISPLAY_PARAMS])
 
 
 class AcquisitionLoop(mp.Process):
-    """A process that acquires images from a camera and writes them to a queue."""
+    """A process that acquires images from a camera
+    and writes them to a queue.
+    """
 
     def __init__(
         self,
@@ -230,6 +251,225 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             disp.terminate()
 
 
+def prepare_rec_dir(save_location, append_datetime=True):
+    """Create a directory for saving the recording, optionally further 
+    nested in a subdir named with the date and time.
+
+    Parameters
+    ----------
+    save_location : str or Path
+        The location to save the recording.
+    """
+
+    # Convert arg to Path, if necessary
+    if not isinstance(save_location, Path):
+        save_location = Path(save_location)
+
+    # Resolve subfolder name, if requested
+    if append_datetime:
+        date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+        save_location = save_location.joinpath(date_str)
+
+    # Create the directory
+    save_location.mkdir(parents=True, exist_ok=True)
+
+    # Sanity check
+    if not save_location.exists():
+        raise ValueError(f"Failed to create save location {save_location}!")
+    else:
+        print(f'Created save location {save_location}')
+
+    return save_location
+
+
+def create_config_from_camera_list(camera_list, baseline_recording_config=None):
+    """Create a recording config from a list of camera dicts.
+
+    If baseline_recording_config is None, each camera's config will be 
+    created from the default config for the brand. If baseline_recording_config
+    is a dict containing a config for the cameras, it will be used as the
+    starting point for each camera's config. 
+
+    In either case, the default config is then overwritten with any 
+    user-provided config values. 
+
+    This process is repated for the Writer config for each camera.
+    """
+
+    # Create the recording config, from the baseline one if provided
+    if baseline_recording_config is None:
+        recording_config = {}
+        recording_config["cameras"] = {}
+        baseline_camera_names = []
+    else:
+        recording_config = baseline_recording_config.copy()
+        baseline_camera_names = list(recording_config["cameras"].keys())
+
+    # Copy the camera list so that we don't modify the original
+    # as we pop stuff out of it
+    user_camera_list = camera_list.copy()  
+    user_camera_dict = {cam["name"]: cam for cam in user_camera_list}
+
+    # Iterate over the union of camera names in the camera list plus 
+    # camera names in the baseline recording config.
+    user_camera_list_names = [cam.pop('name') for cam in user_camera_list]
+    camera_names = set(user_camera_list_names + baseline_camera_names)
+
+    for camera_name in camera_names:
+
+        # If the camera is in the recording config but not the user camera list,
+        # then we don't need to do anything, since the user didn't specify a config.
+        if camera_name not in user_camera_list_names:
+            continue
+
+        # If the camera is in the user camera list but not the recording config,
+        # then we need to create a new config for it. 
+        # Otherwise, use what's already in the recording config as the starting point.
+        this_user_cam_dict = user_camera_dict[camera_name]
+        camera_brand = this_user_cam_dict.pop("brand")
+        if camera_name not in recording_config["cameras"].keys():
+
+            # Find the correct default camera and writer configs
+            if camera_brand == "basler":
+                cam_config = BaslerCamera.default_camera_config()
+                writer_config = BaslerCamera.default_writer_config()
+            elif camera_brand == "azure":
+                cam_config = AzureCamera.default_config()
+                writer_config = AzureCamera.default_writer_config()
+            else:
+                raise NotImplementedError
+
+        elif camera_name in recording_config["cameras"].keys():
+            cam_config = recording_config["cameras"][camera_name]
+            writer_config = recording_config["cameras"][camera_name]["writer"]
+
+        # Update the camera config with any user-provided config values
+        for key in this_user_cam_dict.keys():
+            if key in ALL_CAM_PARAMS:
+                cam_config[key] = this_user_cam_dict.pop(key)
+
+            if key in ALL_WRITER_PARAMS:
+                writer_config[key] = this_user_cam_dict.pop(key)
+
+            if key == "display":
+                cam_config[key] = this_user_cam_dict.pop(key)
+
+        # Save this writer config into this camera's config
+        cam_config["writer"] = writer_config
+
+        # Set display to false if not already specified
+        if "display" not in cam_config:
+            cam_config["display"] = False
+
+        # Save this camera's config in the recording config
+        recording_config["cameras"][camera_name] = cam_config
+
+        # Ensure we've used all the params in the camera dict, 
+        # if not the user is trying to pass some param that doesn't exist
+        if len(this_user_cam_dict) > 0:
+            raise ValueError(
+                f"Unrecognized camera params: {this_user_cam_dict.keys()}. "
+                "Did you misspell a param?"
+            )
+
+    return recording_config
+
+
+def add_display_params_to_config(recording_config, display_params=None):
+    """Add display params to a recording config.
+    """
+    if display_params is None:
+        recording_config["rt_display_params"] = default_display_config()
+    else: 
+        recording_config["rt_display_params"] = display_params
+    return recording_config
+
+
+def load_config(config_filepath):
+    """Load a recording config from a file.
+    """
+    with open(config_filepath, "r") as f:
+        recording_config = yaml.load(f)
+    return recording_config
+
+
+def save_config(config_filepath, recording_config):
+    """Save a recording config to a file.
+    """
+    with open(config_filepath, "w") as f:
+        yaml.dump(recording_config, f)
+    return
+
+
+def validate_recording_config(recording_config, fps):
+    """Validate a recording config dict.
+
+    This function checks that the recording config dict is valid, 
+    and raises an error if it is not.
+    """
+
+    # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
+    if fps % 30 != 0:
+        raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
+
+    # Ensure that the requested frame rate is a multiple of the display frame rate
+    if fps % recording_config["display_params"]["display_fps"] != 0:
+        raise ValueError("Framerate must be a multiple of the display frame rate")
+
+
+def refactor_acquire_video(
+        save_location, 
+        camera_list, 
+        fps=30, 
+        recording_duration_s=60, 
+        config_file=None,
+        display_params=None, 
+        append_datetime=True, 
+        overwrite=False
+):
+    """
+    """
+
+    # Create the recording directory
+    save_location = prepare_rec_dir(save_location, append_datetime=append_datetime)
+
+    # Create a config file for the recording    
+    if isinstance(config_file, str) or isinstance(config_file, Path):
+        config = load_config(config_file)
+    else:
+        config = None
+    config = create_config_from_camera_list(camera_list, config)  # Create a config file from the camera list + default camera configs
+    config = add_display_params_to_config(config, display_params)  # Add display params to the config
+
+    # TODO: add arduino configs
+
+    # Check that the config is valid
+    validate_recording_config(config, fps)
+
+    # Save the config file before starting the recording
+    config_filepath = save_location / "recording_config.yaml"
+    save_config(config_filepath, config)
+
+"""
+pesudo code for refactor of acquire_video
+
+-- first, get the desired recording dir from the user and make it safely.
+-- in separate funcs, generate a config file for the recording from the user-provided camera list. 
+    This should grab the default configs for each camera, and then overwrite them with any user-provided configs.
+    This should also check that the user-provided configs are valid (e.g. framerate is a multiple of display_framerate).
+    This will get saved in the recording directory.
+    -- There should also be an option for the user to point to a "master config" for a certain experiment, which 
+    will allow easy reproducibility of experiments (ie reuse identical configs each day). A copy of the config
+    should be saved in the recording directory anyways.
+-- once we have good configs, we will start the actual recording funcs.
+-- first, check if we need an arduino; if we do, find one and connect to it, raising err if we can't find it.
+-- then create the writer / acquisition / display loops, hopefully in a more succinct way than it's being done now
+-- then, as it is now, start the acquisition loops (which will wait for the arduino to start recording)
+    , then start the writer and display loops, send a msg to the arduino, and then wait for the arduino to finish recording 
+    while handling errors appropriately.
+"""
+
+
 def acquire_video(
     save_location,
     camera_list,
@@ -305,20 +545,7 @@ def acquire_video(
     if display_frequency < 1:
         display_frequency = 1
 
-    # get Path of save location
-    if type(save_location) != Path:
-        save_location = Path(save_location)
-
-    # create a subfolder for the current datetime
-    if append_datetime:
-        date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
-        save_location = save_location / date_str
-
-    # ensure that a directory exists to save data in
-    save_location.mkdir(parents=True, exist_ok=True)
-    print(f'Save location exists: {save_location.exists()}')
-    if save_location.exists() == False:
-        raise ValueError(f"Save location {save_location} does not exist")
+    
     
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
