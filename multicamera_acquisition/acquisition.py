@@ -413,8 +413,8 @@ def validate_recording_config(recording_config, fps):
         raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
 
     # Ensure that the requested frame rate is a multiple of the display frame rate
-    if fps % recording_config["display_params"]["display_fps"] != 0:
-        raise ValueError("Framerate must be a multiple of the display frame rate")
+    if fps % recording_config["rt_display_params"]["display_fps"] != 0:
+        raise ValueError("Real-time framerate must be a factor of the capture frame rate")
 
 
 def refactor_acquire_video(
