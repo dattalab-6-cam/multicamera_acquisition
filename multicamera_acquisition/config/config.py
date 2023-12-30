@@ -2,12 +2,12 @@ import yaml
 
 from multicamera_acquisition.config.default_display_config import \
     default_display_config
-from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera, EmulatedBaslerCamera
 
 ALL_CAM_PARAMS = [
     "name",
     "brand",
-    "serial",
+    "id",
     "exposure_time",
     "display",
 ]
@@ -75,13 +75,16 @@ def create_config_from_camera_list(camera_list, baseline_recording_config=None):
         # then we need to create a new config for it. 
         # Otherwise, use what's already in the recording config as the starting point.
         this_user_cam_dict = user_camera_dict[camera_name]
-        camera_brand = this_user_cam_dict.pop("brand")
+        camera_brand = this_user_cam_dict["brand"]
         if camera_name not in recording_config["cameras"].keys():
 
             # Find the correct default camera and writer configs
             if camera_brand == "basler":
                 cam_config = BaslerCamera.default_camera_config()
                 writer_config = BaslerCamera.default_writer_config()
+            elif camera_brand == "basler_emulated":
+                cam_config = EmulatedBaslerCamera.default_camera_config()
+                writer_config = EmulatedBaslerCamera.default_writer_config()
             elif camera_brand == "azure":
                 cam_config = AzureCamera.default_config()
                 writer_config = AzureCamera.default_writer_config()
@@ -93,7 +96,7 @@ def create_config_from_camera_list(camera_list, baseline_recording_config=None):
             writer_config = recording_config["cameras"][camera_name]["writer"]
 
         # Update the camera config with any user-provided config values
-        for key in this_user_cam_dict.keys():
+        for key in list(this_user_cam_dict.keys()):
             if key in ALL_CAM_PARAMS:
                 cam_config[key] = this_user_cam_dict.pop(key)
 

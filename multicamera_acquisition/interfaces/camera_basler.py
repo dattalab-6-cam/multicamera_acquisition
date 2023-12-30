@@ -8,7 +8,7 @@ import os
 
 class BaslerCamera(BaseCamera):
 
-    def __init__(self, id=None, name=None, config_file=None, lock=True):
+    def __init__(self, id=None, name=None, config_file=None, config=None, lock=True):
         """Set up a camera object, instance ready to connect to a camera.
         Parameters
         ----------
@@ -19,15 +19,20 @@ class BaslerCamera(BaseCamera):
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
 
-        config : path-like str or Path (default: None)
-            Path to config file. If None, uses the camera's default config file.
+        config_file : path-like str or Path (default: None)
+            Path to config file.
+            If config_file and config are both None, uses the camera's default config file.
+
+        config : dict (default: None)
+            A dictionary of config params. 
+            If config_file and config are both None, uses the camera's default config file.
 
         lock : bool (default: True)
             Not implemented for Baslers, does nothing here.
         """
 
         # Init the parent class
-        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
+        super().__init__(id=id, name=name, config_file=config_file, config=config, lock=lock)
 
         # Create the camera object
         self._create_pylon_sys()  # init the pylon API software layer
@@ -37,14 +42,20 @@ class BaslerCamera(BaseCamera):
         self.running = False
 
         # Load the config
-        # (NB: we must configure the basler after opening it, see self.init() and self._configure_basler().)
-        if self.config_file is None:
+        # (NB: we load the config info here, but we don't actually 
+        # configure the camera itself until *after* .open()'ing it, 
+        # see self.init() and self._configure_basler().)
+        if self.config_file is None and self.config is None:
             self.config = BaslerCamera.default_camera_config()  # If no config file is specified, use the default
-        else:
-            self.load_config(check_if_valid=False)  # could set check to be true by efault? unsure.
+        elif self.config_file is not None and self.config is not None:
+            raise ValueError("Cannot specify both config_file and config.")
+        elif self.config_file is not None:
+            self.load_config(check_if_valid=False)  # TODO: could set check to be true by default? unsure.
             # TODO: this config might be a full recording config, in which case it will contain
             # configs for all cameras in a given recording. Will need to resolve which part of the 
             # config is for this camera (i.e. by serial number or by name)
+        elif self.config is not None:
+            pass
 
     @staticmethod
     def default_camera_config():
@@ -349,8 +360,8 @@ class EmulatedBaslerCamera(BaslerCamera):
         di.SetDeviceClass(device_class)
         return device_class, [di]
 
-    def __init__(self, id=None, name=None, config_file=None, lock=True):
-        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
+    def __init__(self, id=None, name=None, config_file=None, config=None, lock=True):
+        super().__init__(id=id, name=name, config_file=config_file, config=config, lock=lock)
 
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
@@ -358,8 +369,16 @@ class EmulatedBaslerCamera(BaslerCamera):
 
         # Prepare the emulation
         self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
-        num_devices = 1
-        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+        self.num_devices = 6
+        os.environ["PYLON_CAMEMU"] = f"{self.num_devices}"
+
+    def _enumerate_cameras(self, behav_on_none="raise"):
+        """Implemented for compatibility with BaslerCamera.
+
+        Emulated Baslers should be accessed by their index (i.e. id=0, id=1, etc),
+        so there is no need to enumerate them.
+        """
+        return [None] * self.num_devices, [None] * self.num_devices
 
     def _create_pylon_cam(self):
         """Override the camera creation to make an emulated camera

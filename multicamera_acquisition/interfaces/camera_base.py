@@ -9,9 +9,9 @@ class CameraError(Exception):
 
 def get_camera(
     brand="flir",
-    serial_number=None,
-    index=0,
+    id=0,
     config_file=None,
+    config=None,
 ):
     """Get a camera object.
     Parameters
@@ -21,18 +21,17 @@ def get_camera(
         'flir', the software PySpin is used. if 'basler', the software pypylon
         is used.
 
-    serial_number : int or str (default: None)
-        The serial number of the camera. Ultimately used to find the index
-        of the camera in the software layer.
-        TAKES PRECEDENCE OVER INDEX.
+    id: int or str (default: 0)
+        If an int, the index of the camera to acquire.
+        If a string, the serial number of the camera.
 
-    index : int (default: 0)
-        The index of the camera to acquire, in a list of devices
-        enumerated by the software layer of the camera API.
+    config_file : path-like str or Path (default: None)
+        Path to config file. 
+        If config and config_file are both None, uses the camera's default config file.
 
-    config_file : string (default: None)
-        Path to a config file.  If None, the default config file for the given
-        camera brand will be used.
+    config : dict (default: None)
+        A dictionary of config values.  
+        If config and config_file are both None, uses the camera's default config file.
 
     Returns
     -------
@@ -85,12 +84,12 @@ def get_camera(
 
     elif brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
-        cam = BaslerCamera(index=index, config_file=config_file)
+        cam = BaslerCamera(id=id, config_file=config_file, config=config)
         cam.init()
 
     elif brand == "basler_emulated":
         from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
-        cam = EmulatedBaslerCamera()
+        cam = EmulatedBaslerCamera(id=id, config_file=config_file, config=config)
         cam.init()
 
     elif brand == "azure":
@@ -168,17 +167,25 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, id=0, name=None, config_file=None, lock=True):
+    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
         id : int or str (default: 0)
             If an int, the index of the camera to acquire.
             If a string, the serial number of the camera.
+
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
-        config : path-like str or Path (default: None)
-            Path to config file. If None, uses the camera's default config file.
+
+        config_file : path-like str or Path (default: None)
+            Path to config file. 
+            If config and config_file are both None, uses the camera's default config file.
+
+        config : dict (default: None)
+            A dictionary of config values.  
+            If config and config_file are both None, uses the camera's default config file.
+
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
@@ -201,6 +208,7 @@ class BaseCamera(object):
             raise ValueError("Invalid camera ID")
         
         self.config_file = config_file
+        self.config = config
         self.name = name
         self.lock = lock
 
