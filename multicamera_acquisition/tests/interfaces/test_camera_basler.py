@@ -4,9 +4,6 @@ from multicamera_acquisition.interfaces.camera_basler import BaslerCamera, Camer
 from pypylon import pylon
 import numpy as np
 
-num_devices = 1
-os.environ["PYLON_CAMEMU"] = f"{num_devices}"
-
 
 def get_class_and_filter_emulated():
     device_class = "BaslerCamEmu"
@@ -20,16 +17,30 @@ class PylonEmuTestCase(unittest.TestCase):
     """
     device_class, device_filter = get_class_and_filter_emulated()
 
+    def setUp(self):
+        """ Called before each test
+        """
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+
     def create_first(self):
         tlf = pylon.TlFactory.GetInstance()
         return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[0]))
 
+    def tearDown(self):
+        del os.environ['PYLON_CAMEMU']
+        super().tearDown()
 
 class GrabTestSuite(PylonEmuTestCase):
 
     """Simple pypylon emulation test.
     Taken directly from: https://github.com/basler/pypylon/tree/master/tests/pylon_tests/emulated
     """
+
+    def setUp(self):
+        """ Called before each test
+        """
+        super().setUp()
 
     def test_grabone(self):
 
@@ -67,6 +78,9 @@ class GrabTestSuite(PylonEmuTestCase):
         self.assertEqual(countOfImagesToGrab, imageCounter)
         camera.Close()
 
+    def tearDown(self):
+        return super().tearDown()
+
 
 class BaslerCameraTestCase(unittest.TestCase):
     """Test the basler camera subclas
@@ -75,6 +89,9 @@ class BaslerCameraTestCase(unittest.TestCase):
     def setUp(self):
         """ Called before each test
         """
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+
         self.cam = BaslerCamera(id=0)
         self.cam.init()
 
@@ -92,13 +109,16 @@ class BaslerCameraTestCase(unittest.TestCase):
     def tearDown(self):
         self.cam.close()  # basically same as .stop() but also deletes the cam attr
         return super().tearDown()
-    
+
 
 class BaslerCamera_VariousIDMethods_TestCase(unittest.TestCase):
     """Test the basler camera subclas
     """
 
     def setUp(self):
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+
         pass
 
     def test_a_id_int(self):
@@ -127,6 +147,9 @@ class EmulatedBaslerCameraTestCase(unittest.TestCase):
     """
 
     def setUp(self):
+        num_devices = 1
+        os.environ["PYLON_CAMEMU"] = f"{num_devices}"
+
         self.cam = BaslerCamera(id=0)
         self.cam.init()
 
@@ -144,4 +167,5 @@ class EmulatedBaslerCameraTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.cam.close()  # basically same as .stop() but also deletes the cam attr
+        del os.environ['PYLON_CAMEMU']
         return super().tearDown()
