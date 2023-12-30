@@ -10,6 +10,7 @@ from multicamera_acquisition.acquisition import (
 )
 
 
+#TODO: refactor this! (works with main branch)
 class EmulatedBaslerTestCase(unittest.TestCase):
 
     def setUp(self):
