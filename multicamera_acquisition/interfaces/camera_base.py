@@ -165,17 +165,23 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, index=0, config_file=None):
+    def __init__(self, id=0, config_file=None):
         """Create a camera instance connected to a camera, without actually "open"ing it (i.e. without starting the connection).
         Parameters
         ----------
-        index : int or str (default: 0)
-            If an int, the index of the camera to acquire.  If a string,
-            the serial number of the camera.
+        id : int or str (default: 0)
+            If an int, the index of the camera to acquire.
+            If a string, the serial number of the camera.
         config : path-like str or Path (default: None)
             Path to config file. If None, uses the camera's default config file.
         """
-        self.index = index
+        self.id = id
+        if isinstance(id, int):
+            self.serial_number = None
+            self.index = id
+        elif isinstance(id, str):
+            self.serial_number = id
+            self.index = None
         self.config_file = config_file
 
     def save_config(self):

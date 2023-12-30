@@ -6,11 +6,11 @@ import numpy as np
 
 class BaslerCamera(BaseCamera):
 
-    def __init__(self, index=0, config_file=None):
+    def __init__(self, id=0, config_file=None):
         """Create a camera instance connected to a camera, without actually ".open()"ing it (i.e. without starting the connection).
         Parameters
         ----------
-        index : int or str (default: 0)
+        id : int or str (default: 0)
             If an int, the index of the camera to acquire.  
             If a string, the serial number of the camera.
 
@@ -19,7 +19,7 @@ class BaslerCamera(BaseCamera):
         """
         
         # Init the parent class
-        super().__init__(index=index, config_file=config_file)
+        super().__init__(id=id, config_file=config_file)
 
         # Create the camera object
         self._create_pylon_sys()
@@ -56,12 +56,12 @@ class BaslerCamera(BaseCamera):
         camera_serials, model_names = self._enumerate_cameras(devices)
 
         # If user wants a specific serial no, find the index of that camera
-        if isinstance(self.index, str):
-            if not np.any(camera_serials == self.index):
-                raise CameraError("Camera with serial number %s not found." % self.index)
-            device_index = camera_serials.index(self.index)
+        if isinstance(self.id, str):
+            if not np.any(camera_serials == self.id):
+                raise CameraError(f"Camera with serial number {self.id} not found.")
+            device_index = camera_serials.index(self.id)
         else:
-            device_index = self.index
+            device_index = self.id
 
         # Create the camera with the desired index
         self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[device_index]))
@@ -111,10 +111,14 @@ class BaslerCamera(BaseCamera):
         # Open the connection to the camera
         self.cam.Open()
 
-        # House keeping
-        self.serial_number = self.cam.GetDeviceInfo().GetSerialNumber()
-        if isinstance(self.index, str):
-            assert self.serial_number == self.index
+        # Sanity check on serial number
+        _sn = self.cam.GetDeviceInfo().GetSerialNumber()
+        if self.serial_number is None:
+            self.serial_number = _sn
+        else:
+            assert self.serial_number == _sn, "Unexpected camera serial number mismatch."
+
+        # Record camera model name
         self.model = self.cam.GetDeviceInfo().GetModelName()
 
         # Reset to default settings, for safety (i.e. if user was messing around with the camera and didn't reset the settings)

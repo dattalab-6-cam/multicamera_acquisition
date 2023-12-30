@@ -1,12 +1,12 @@
 import unittest
 import os
-import sys
 from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+from pypylon import pylon
 import numpy as np
 
 num_devices = 1
 os.environ["PYLON_CAMEMU"] = f"{num_devices}"
-from pypylon import pylon
+
 
 def get_class_and_filter_emulated():
     device_class = "BaslerCamEmu"
@@ -73,7 +73,7 @@ class BaslerCameraTestCase(unittest.TestCase):
     """
 
     def setUp(self):
-        self.cam = BaslerCamera(index=0)
+        self.cam = BaslerCamera(id=0)
 
     def test_a_init(self):
         self.cam.init()
@@ -93,14 +93,14 @@ class BaslerCameraTestCase(unittest.TestCase):
     def tearDown(self):
         self.cam.close()  # basically same as .stop() but also deletes the cam attr
         return super().tearDown()
-    
-    
+
+
 class EmulatedBaslerCameraTestCase(unittest.TestCase):
     """Test the emulated basler camera subclas
     """
 
     def setUp(self):
-        self.cam = BaslerCamera(index=0)
+        self.cam = BaslerCamera(id=0)
 
     def test_a_init(self):
         self.cam.init()
