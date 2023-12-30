@@ -1,3 +1,5 @@
+import numpy as np
+from warnings import warn
 import yaml
 
 
@@ -115,12 +117,13 @@ def get_camera(
 
     return cam
 
+
 class BaseCamera(object):
     """
     A class used to encapsulate a Camera.
     Attributes
     ----------
-    cam : PySpin Camera
+    cam : an abstracted Camera
     running : bool
         True if acquiring images
     camera_attributes : dictionary
@@ -165,24 +168,57 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, id=0, config_file=None):
-        """Create a camera instance connected to a camera, without actually "open"ing it (i.e. without starting the connection).
+    def __init__(self, id=0, name=None, config_file=None, lock=True):
+        """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
         id : int or str (default: 0)
             If an int, the index of the camera to acquire.
             If a string, the serial number of the camera.
+        name: str (default: None)
+            The name of the camera in the experiment. For example, "top" or "side2".
         config : path-like str or Path (default: None)
             Path to config file. If None, uses the camera's default config file.
+        lock : bool (default: True)
+            If True, setting new attributes after initialization results in
+            an error.
+            (Currently only implemented for FLIR cameras)
         """
         self.id = id
         if isinstance(id, int):
             self.serial_number = None
             self.index = id
+            if id > 10:
+                warn("Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int.")
         elif isinstance(id, str):
             self.serial_number = id
             self.index = None
+        elif id is None:
+            self.serial_number = None
+            self.index = 0
+            warn("No camera ID provided.  Using device index 0.")
+        else:
+            raise ValueError("Invalid camera ID")
         self.config_file = config_file
+
+    def _resolve_device_index(self):
+        """Given a serial number, find the index of the camera in the system.
+        """
+        # Get the serial numbers of all connected cameras
+        camera_serials, model_names = self._enumerate_cameras()
+
+        # If user wants a specific serial no, find the index of that camera
+        if self.serial_number is not None:
+            if not np.any(camera_serials == self.serial_number):
+                raise CameraError(f"Camera with serial number {self.id} not found.")
+            device_index = camera_serials.index(self.id)
+        elif self.index is not None:
+            device_index = self.index
+        else:
+            raise CameraError("Must specify either serial number or index of camera to connect to.")
+
+        self.device_index = device_index
+        self.model_name = model_names[device_index]
 
     def save_config(self):
         """Save the current camera configuration to a YAML file.
@@ -217,7 +253,7 @@ class BaseCamera(object):
                     # Otherwise, update the value directly
                     config[key] = value
             return config
-        
+
         tmp_config = recursive_update(self.config, new_config)
         if self.check_config(tmp_config):
             self.config = tmp_config

@@ -6,7 +6,7 @@ import numpy as np
 
 class BaslerCamera(BaseCamera):
 
-    def __init__(self, id=0, config_file=None):
+    def __init__(self, id=None, name=None, config_file=None, lock=True):
         """Create a camera instance connected to a camera, without actually ".open()"ing it (i.e. without starting the connection).
         Parameters
         ----------
@@ -14,23 +14,31 @@ class BaslerCamera(BaseCamera):
             If an int, the index of the camera to acquire.  
             If a string, the serial number of the camera.
 
+        name: str (default: None)
+            The name of the camera in the experiment. For example, "top" or "side2".
+
         config : path-like str or Path (default: None)
             Path to config file. If None, uses the camera's default config file.
+
+        lock : bool (default: True)
+            Not implemented for Baslers, does nothing here.
         """
-        
+
         # Init the parent class
-        super().__init__(id=id, config_file=config_file)
+        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
 
         # Create the camera object
-        self._create_pylon_sys()
-        self._create_pylon_cam()
+        self._create_pylon_sys()  # init the pylon API software layer
+        self._resolve_device_index()  # sets self.device_index based on the id the user provides
+        self._create_pylon_cam()  # uses that device index to create a camera object
 
         # Specify that we're not yet running the camera (necessary?)
         self.running = False
 
-        # If no config file is specified, use the default
+        # Load the config
+        # (NB: we must configure the basler after opening it, see self.init() and self._configure_basler().)
         if self.config_file is None:
-            self.config = default_basler_config()
+            self.config = default_basler_config()  # If no config file is specified, use the default
             # TODO: save the default config to a file once we know where acquisition is happening.
         else:
             self.load_config(check_if_valid=False)  # could set check to be true by efault? unsure.
@@ -40,41 +48,14 @@ class BaslerCamera(BaseCamera):
         Creates the following attributes:
             - self.system: the pylon system (pylon.TlFactory.GetInstance())
         """
-         # Start the pylon device layer
+        # Start the pylon device layer
         self.system = pylon.TlFactory.GetInstance()
 
-    def _create_pylon_cam(self):
-        """
-        Creates the following attributes:
-            - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
-            - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
-        """
-        di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices([di,])
-
-        # Get the serial numbers of all connected cameras
-        camera_serials, model_names = self._enumerate_cameras(devices)
-
-        # If user wants a specific serial no, find the index of that camera
-        if isinstance(self.id, str):
-            if not np.any(camera_serials == self.id):
-                raise CameraError(f"Camera with serial number {self.id} not found.")
-            device_index = camera_serials.index(self.id)
-        else:
-            device_index = self.id
-
-        # Create the camera with the desired index
-        self.cam = pylon.InstantCamera(self.system.CreateDevice(devices[device_index]))
-        self.model_name = model_names[device_index]
-        self.device_index = device_index
-
-    def _enumerate_cameras(self, devices, behav_on_none="raise"):
+    #TODO: make this a static method?
+    def _enumerate_cameras(self, behav_on_none="raise"):
         """ Enumerate all Basler cameras connected to the system.
-        
         Parameters
         ----------
-        devices : list of pylon.DeviceInfo objects from pylon.TlFactory.GetInstance().EnumerateDevices()
-
         behav_on_none : str (default: 'raise')
             If 'raise', raises an error if no cameras are found.
             If 'pass', returns None if no cameras are found.
@@ -84,11 +65,14 @@ class BaslerCamera(BaseCamera):
         (serial_nos, models) : tuple of list of strings
             Lists of serial numbers and models of all connected cameras.
         """
+        di = pylon.DeviceInfo()
+        devices = self.system.EnumerateDevices([di,])
+
         # If no camera is found
         if len(devices) == 0 and behav_on_none == "raise":
             raise RuntimeError("No cameras found.")
         elif len(devices) == 0 and behav_on_none == "pass":
-            return None
+            pass
 
         # Otherwise, loop through all found devices and get their sn's + model names
         serial_nos = []
@@ -102,7 +86,24 @@ class BaslerCamera(BaseCamera):
             serial_nos.append(sn)
             models.append(model)
 
-        return  serial_nos, models
+        # Delete the devices instance to free them up (maybe not nec?)
+        del devices
+
+        return serial_nos, models
+
+    def _create_pylon_cam(self):
+        """
+        Creates the following attributes:
+            - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
+            - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
+        """
+        di = pylon.DeviceInfo()
+        devices = self.system.EnumerateDevices([di,])
+
+        # Create the camera with the desired index
+        self.cam = pylon.InstantCamera(
+            self.system.CreateDevice(devices[self.device_index])
+        )
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
@@ -139,17 +140,17 @@ class BaslerCamera(BaseCamera):
 
         # Set gain
         self.cam.GainAuto.SetValue("Off")
-        self.cam.Gain.SetValue(self.config["camera"]["gain"])
+        self.cam.Gain.SetValue(self.config["gain"])
 
         # Set exposure time
         self.cam.ExposureAuto.SetValue("Off")
-        self.cam.ExposureTime.SetValue(self.config["camera"]["exposure"])
+        self.cam.ExposureTime.SetValue(self.config["exposure"])
 
         # Set readout mode
-        # self.cam.SensorReadoutMode.SetValue(self.config["camera"]["readout_mode"])
+        # self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
 
         # Set roi
-        roi = self.config["camera"]["roi"]
+        roi = self.config["roi"]
         if roi is not None:
             self.cam.Width.SetValue(roi[2])
             self.cam.Height.SetValue(roi[3])
@@ -157,7 +158,7 @@ class BaslerCamera(BaseCamera):
             self.cam.OffsetY.SetValue(roi[1])
 
         # Set trigger
-        trigger = self.config["camera"]["trigger"]
+        trigger = self.config["trigger"]
         if trigger["short_name"] == "arduino":
             self.cam.AcquisitionMode.SetValue(trigger["acquisition_mode"])
             # self.cam.AcquisitionFrameRateEnable.SetValue('On')
@@ -196,9 +197,10 @@ class BaslerCamera(BaseCamera):
 
     def start(self):
         "Start recording images."
-        max_recording_hours = 60
-        max_recording_frames = max_recording_hours * 60 * 60 * 200  # ??
-        self.cam.StartGrabbingMax(max_recording_frames)
+        # max_recording_hours = 60
+        # max_recording_frames = max_recording_hours * 60 * 60 * 200  # ??
+        # self.cam.StartGrabbingMax(max_recording_frames)
+        self.cam.StartGrabbing(pylon.GrabStrategy_OneByOne)
         self.running = True
 
     def stop(self):
@@ -320,7 +322,7 @@ def enumerate_basler_cameras(behav_on_none="raise"):
         models.append(model)
 
     # Return a list of serial numbers
-    return  serial_nos, models
+    return serial_nos, models
 
 
 class EmulatedBaslerCamera(BaslerCamera):
@@ -328,13 +330,17 @@ class EmulatedBaslerCamera(BaslerCamera):
     """
     from ..tests.interfaces.test_camera_basler import PylonEmuTestCase
 
-    def _create_pylon_sys_and_cam(self):
+    def _create_pylon_sys(self):
         """Override the camera creation to make an emulated camera
         Creates the following attributes:
             - self.system: the pylon system (pylon.TlFactory.GetInstance())
             - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
         """
-        self.model_name = "Emulated"
         self.system = None
+
+    def _create_pylon_cam(self):
+        """Override the camera creation to make an emulated camera
+        """
+        self.model_name = "Emulated"
         self.cam = self.PylonEmuTestCase().create_first()

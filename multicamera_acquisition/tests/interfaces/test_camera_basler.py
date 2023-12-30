@@ -1,6 +1,6 @@
 import unittest
 import os
-from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera, CameraError
 from pypylon import pylon
 import numpy as np
 
@@ -92,6 +92,33 @@ class BaslerCameraTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.cam.close()  # basically same as .stop() but also deletes the cam attr
+        return super().tearDown()
+    
+
+class BaslerCamera_VariousIDMethods_TestCase(unittest.TestCase):
+    """Test the basler camera subclas
+    """
+
+    def setUp(self):
+        pass
+
+    def test_a_id_int(self):
+        
+        # should default to 0
+        cam = BaslerCamera(id=0)
+        self.assertEqual(cam.id, 0)
+        cam.close()
+
+        cam = BaslerCamera(id=0)
+        self.assertEqual(cam.id, 0)
+        cam.close()
+
+    def test_b_id_errs(self):
+        self.assertRaises(CameraError, BaslerCamera, id="0")  # id is a string whose sn doesn't exist, should raise error
+
+        # todo: figure out the serial no of a basler that's connected and test that
+
+    def tearDown(self):
         return super().tearDown()
 
 
