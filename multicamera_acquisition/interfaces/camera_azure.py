@@ -7,7 +7,7 @@ basler and flir, but with some pecularities.
 """
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from multicamera_acquisition.configs.default_azure_config import default_azure_config
+from multicamera_acquisition.config.default_azure_config import default_azure_config
 from pyk4a import (
     PyK4A,
     Config,

@@ -1,6 +1,6 @@
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from multicamera_acquisition.configs.default_basler_config import default_basler_config
-from multicamera_acquisition.configs.default_nvc_writer_config import default_nvc_writer_config
+from multicamera_acquisition.config.default_basler_config import default_basler_config
+from multicamera_acquisition.config.default_nvc_writer_config import default_nvc_writer_config
 from pypylon import pylon
 import numpy as np
 import os
