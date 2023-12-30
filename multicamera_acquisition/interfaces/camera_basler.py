@@ -1,7 +1,9 @@
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 from multicamera_acquisition.configs.default_basler_config import default_basler_config
+from multicamera_acquisition.configs.default_nvc_writer_config import default_nvc_writer_config
 from pypylon import pylon
 import numpy as np
+import os
 
 
 class BaslerCamera(BaseCamera):
@@ -37,10 +39,20 @@ class BaslerCamera(BaseCamera):
         # Load the config
         # (NB: we must configure the basler after opening it, see self.init() and self._configure_basler().)
         if self.config_file is None:
-            self.config = default_basler_config()  # If no config file is specified, use the default
-            # TODO: save the default config to a file once we know where acquisition is happening.
+            self.config = BaslerCamera.default_camera_config()  # If no config file is specified, use the default
         else:
             self.load_config(check_if_valid=False)  # could set check to be true by efault? unsure.
+            # TODO: this config might be a full recording config, in which case it will contain
+            # configs for all cameras in a given recording. Will need to resolve which part of the 
+            # config is for this camera (i.e. by serial number or by name)
+
+    @staticmethod
+    def default_camera_config():
+        return default_basler_config()
+    
+    @staticmethod
+    def default_writer_config():
+        return default_nvc_writer_config()
 
     def _create_pylon_sys(self):
         """
