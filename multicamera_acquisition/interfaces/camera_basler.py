@@ -112,7 +112,7 @@ class BaslerCamera(BaseCamera):
         for i, device in enumerate(devices):
             camera = pylon.InstantCamera(self.system.CreateDevice(device))
             camera.Open()
-            sn = camera.GetDeviceInfo().GetSerialNumber()
+            sn = str(camera.GetDeviceInfo().GetSerialNumber())
             model = camera.GetDeviceInfo().GetModelName()
             camera.Close()
             serial_nos.append(sn)
