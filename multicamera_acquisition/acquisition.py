@@ -279,8 +279,8 @@ def refactor_acquire_video(
 
     # All attrs easily accessible
     cam.init()
-    print(cam.config)
-    print(cam.cam.AcquisitionMode.Value)
+    # print(cam.config)
+    # print(cam.cam.AcquisitionMode.Value)
 
     # and then to start recording...
     cam.start()
