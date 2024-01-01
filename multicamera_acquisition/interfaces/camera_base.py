@@ -44,7 +44,7 @@ def get_camera(
 
         cam = Camera(index=str(index))
 
-        cam.init()
+        # cam.init()
 
         # # set gain
         # cam.GainAuto = "Off"
@@ -85,12 +85,10 @@ def get_camera(
     elif brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
         cam = BaslerCamera(id=id, config_file=config_file, config=config)
-        cam.init()
 
     elif brand == "basler_emulated":
         from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
         cam = EmulatedBaslerCamera(id=id, config_file=config_file, config=config)
-        cam.init()
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
@@ -112,7 +110,6 @@ def get_camera(
         cam = Camera(
             index=str(serial)
         )
-        cam.init()
 
     return cam
 
@@ -212,6 +209,7 @@ class BaseCamera(object):
         self.name = name
         self.lock = lock
         self.running = False
+        self.model = None
 
     def _resolve_device_index(self):
         """Given a serial number, find the index of the camera in the system.
@@ -221,7 +219,7 @@ class BaseCamera(object):
 
         # If user wants a specific serial no, find the index of that camera
         if self.serial_number is not None:
-            if not np.any(camera_serials == self.serial_number):
+            if not np.any([sn == self.serial_number for sn in camera_serials]):
                 raise CameraError(f"Camera with serial number {self.id} not found.")
             device_index = camera_serials.index(self.id)
         elif self.index is not None:
