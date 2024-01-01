@@ -364,7 +364,6 @@ def enumerate_basler_cameras(behav_on_none="raise"):
 class EmulatedBaslerCamera(BaslerCamera):
     """Emulated basler camera for testing.
     """
-    from ..tests.interfaces.test_emulated_basler import PylonEmuTestCase
 
     @staticmethod
     def get_class_and_filter_emulated():
@@ -379,11 +378,15 @@ class EmulatedBaslerCamera(BaslerCamera):
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
         """
-
+        
         # Prepare the emulation
         self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
-        self.num_devices = 6
-        os.environ["PYLON_CAMEMU"] = f"{self.num_devices}"
+        try:
+            self.num_devices = int(os.environ["PYLON_CAMEMU"]) + 1
+            os.environ["PYLON_CAMEMU"] = str(self.num_devices)
+        except KeyError:
+            self.num_devices = 1
+            os.environ["PYLON_CAMEMU"] = "1"
 
     def _enumerate_cameras(self, behav_on_none="raise"):
         """Implemented for compatibility with BaslerCamera.
