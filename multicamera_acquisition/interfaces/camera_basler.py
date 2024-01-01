@@ -51,6 +51,21 @@ class BaslerCamera(BaseCamera):
         elif self.config is not None:
             pass
 
+    def __repr__(self):
+        """
+        Returns a string representation of the camera object.
+        """
+        
+        # Typical python info
+        address = hex(id(self))
+        basic_info = f'<{self.__class__.__module__ + "." + self.__class__.__qualname__} object at {address}>'
+
+        # Add camera-specific info
+        attrs_to_list = ["id", "name", "serial_number", "model", "running"]
+        cam_info = "Basler Camera: \n" + "\n\t".join([f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list])
+
+        return basic_info + "\n" + cam_info
+
     @staticmethod
     def default_camera_config():
         return default_basler_config()
