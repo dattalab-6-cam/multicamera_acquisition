@@ -156,10 +156,14 @@ class BaslerCamera(BaseCamera):
         devices = self.system.EnumerateDevices([di,])
 
         # Create the camera with the desired index
-        self.cam = pylon.InstantCamera(
-            self.system.CreateDevice(devices[self.device_index])
-        )
-
+        # print(f"Creating camera with index {self.device_index}, id {self.id}, sn {self.serial_number}.")
+        try:
+            self.cam = pylon.InstantCamera(
+                self.system.CreateDevice(devices[self.device_index])
+            )
+        except Exception as e:
+            raise RuntimeError(f"Camera with id {self.id} failed to open: {e}")
+        
     def _configure_basler(self):
         """ Given the loaded config, set up the basler for acquisition with the config therein.
         """
