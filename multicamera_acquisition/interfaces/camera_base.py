@@ -164,7 +164,7 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True):
+    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True, fps=None):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
@@ -187,6 +187,11 @@ class BaseCamera(object):
             If True, setting new attributes after initialization results in
             an error.
             (Currently only implemented for FLIR cameras)
+
+        fps : int (default: None)
+            The desired frame rate for the recording. 
+            It is preferred to set this from the config, but this is provided
+            for convenience.
         """
         self.id = id
         if isinstance(id, int):
@@ -210,6 +215,7 @@ class BaseCamera(object):
         self.lock = lock
         self.running = False
         self.model = None
+        self.fps = fps
 
     def _resolve_device_index(self):
         """Given a serial number, find the index of the camera in the system.

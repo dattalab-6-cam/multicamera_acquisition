@@ -19,12 +19,24 @@ def camera_type(pytestconfig):
     """
     return pytestconfig.getoption("camera_type")
 
+@pytest.fixture(scope="session")
+def fps(pytestconfig):
+    """A session-wide fixture to return the desired fps.
+
+    See test_cameras.py::camera for possible camera options.
+
+    Example usage:
+        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
+        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
+    """
+    return pytestconfig.getoption("fps", default=30)
+
 @pytest.fixture(scope="function")
-def camera(camera_type):
+def camera(camera_type, fps):
     if camera_type == 'basler_camera':
-        cam = BaslerCamera(id=0)
+        cam = BaslerCamera(id=0, fps=fps)
     elif camera_type == 'basler_emulated':
-        cam = EmulatedBaslerCamera(id=0)
+        cam = EmulatedBaslerCamera(id=0, fps=fps)
     else:
         raise ValueError("Invalid camera type")
 
@@ -52,9 +64,9 @@ class Test_Camera_InitAndStart():
 class Test_CameraIDMethods():
     """Test the basler camera subclas
     """
-    def test_default_device_index(self):
+    def test_default_device_index(self, fps):
         # should default to 0
-        cam = BaslerCamera()
+        cam = BaslerCamera(fps=fps)
         cam.init()
         assert cam.device_index == 0
         cam.close()
@@ -62,13 +74,13 @@ class Test_CameraIDMethods():
     @pytest.mark.parametrize("id", [0, 1])
     def test_set_device_index(self, id, camera_type):
         if camera_type == 'basler_camera':
-            cam = BaslerCamera(id=id)
+            cam = BaslerCamera(id=id, fps=fps)
         elif camera_type == 'basler_emulated':
-            cam = EmulatedBaslerCamera(id=id)
+            cam = EmulatedBaslerCamera(id=id, fps=fps)
         cam.init()
         assert cam.device_index == id
         cam.close()
 
     def test_id_errs(self):
         with pytest.raises(CameraError):
-            cam = BaslerCamera(id="abc")  # no cam with this sn should exist
+            cam = BaslerCamera(id="abc", fps=fps)  # no cam with this sn should exist
