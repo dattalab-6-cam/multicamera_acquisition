@@ -44,6 +44,7 @@ class AcquisitionLoop(mp.Process):
         dropped_frame_warnings=False,
         write_queue_depth=None,
         cam=None,
+        camera_config=None,
         **camera_params,
     ):
         """
@@ -81,6 +82,7 @@ class AcquisitionLoop(mp.Process):
         self.dropped_frame_warnings = dropped_frame_warnings
         self.write_queue_depth = write_queue_depth
         self.cam = cam
+        self.camera_config = camera_config
 
     def stop(self):
         self.stopped.set()
@@ -95,13 +97,17 @@ class AcquisitionLoop(mp.Process):
 
         # get the camera if it hasn't been passed in (e.g. for azure)
         if self.cam is None:
-            try:
-                if "serial" in self.camera_params:
-                    self.camera_params["index"] = self.camera_params["serial"]
-                cam = get_camera(brand=self.brand, index=self.camera_params["index"])
-            except Exception as e:
-                logging.log(logging.ERROR, f"{self.brand}:{e}")
-                raise e
+            # try:
+            #     if "serial" in self.camera_params:
+            #         self.camera_params["index"] = self.camera_params["serial"]
+            #     cam = get_camera(brand=self.brand, index=self.camera_params["index"])
+            # except Exception as e:
+            #     logging.log(logging.ERROR, f"{self.brand}:{e}")
+            #     raise e
+
+            # JP monkeypatch for Tim
+            cam = get_camera(self.camera_params["brand"], self.camera_params["id"], config=self.camera_config)
+            cam.set_trigger_mode("continuous")
         else:
             cam = self.cam
         self.ready.set()  # report to the main loop that the camera is ready
@@ -276,24 +282,92 @@ def refactor_acquire_video(
     # (...other stuff happens...)
 
     # # Example of how to get a camera based on the config
-    for camera_name, camera_dict in final_config["cameras"].items():
-        cam = get_camera(
-            brand=camera_dict["brand"],
-            id=camera_dict["id"],
-            config=camera_dict,
+    # for camera_name, camera_dict in final_config["cameras"].items():
+    #     cam = get_camera(
+    #         brand=camera_dict["brand"],
+    #         id=camera_dict["id"],
+    #         config=camera_dict,
+    #     )
+    #     cam.name = camera_name
+
+    # # All attrs easily accessible
+    # cam.init()
+    # # print(cam.config)
+    # # print(cam.cam.AcquisitionMode.Value)
+
+    # # and then to start recording...
+    # cam.start()
+    # cam.stop()
+    # cam.close()
+
+    # initialize cameras
+    writers = []
+    acquisition_loops = []
+
+    # create acquisition loops
+    for camera_name, camera_dict in config["cameras"].items():
+        name = camera_name
+        id = camera_dict["id"]
+        fps = camera_dict["fps"]
+
+        ffmpeg_options = {}
+        for key in ["gpu", "quality"]:
+            if key in camera_dict:
+                ffmpeg_options[key] = camera_dict[key]
+
+        if "display" in camera_dict.keys():
+            display_frames = camera_dict["display"]
+        else:
+            display_frames = False
+
+        # create a writer queue
+        # from multicamera_acquisition.writer import Writer
+        video_file = save_location / f"{name}.{id}.mp4"
+        metadata_file = save_location / f"{name}.{id}.metadata.csv"
+        if video_file.exists() and (overwrite == False):
+            raise FileExistsError(f"Video file {video_file} already exists")
+        
+        write_queue = mp.Queue()
+        # writer = Writer(
+        #     queue=write_queue,
+        #     video_file_name=video_file,
+        #     metadata_file_name=metadata_file,
+        #     camera_serial=id,
+        #     fps=fps,
+        #     camera_name=name,
+        #     camera_brand=camera_dict["brand"],
+        #     max_video_frames=camera_dict["writer"]["max_video_frames"],
+        #     ffmpeg_options=ffmpeg_options,
+        # )
+        display_queue = None
+
+        # prepare the acuqisition loop in a separate thread
+        acquisition_loop = AcquisitionLoop(
+            write_queue=write_queue,
+            write_queue_depth=None,
+            display_queue=display_queue,
+            display_frames=display_frames,
+            display_frequency=30,
+            cam=None,
+            cam_config=camera_dict,
         )
-        cam.name = camera_name
 
-    # All attrs easily accessible
-    cam.init()
-    # print(cam.config)
-    # print(cam.cam.AcquisitionMode.Value)
+        # initialize acquisition
+        # writer.start()
+        # writers.append(writer)
+        acquisition_loop.start()
+        acquisition_loop.ready.wait()  # blocks until the acq loop reports that it is ready
+        acquisition_loops.append(acquisition_loop)
 
-    # and then to start recording...
-    cam.start()
-    cam.stop()
-    cam.close()
+    # prepare acquisition loops
+    for acquisition_loop in acquisition_loops:
+        # set camera state to ready and primed
+        acquisition_loop.prime()
+        # Don't initialize until all cameras are ready
+        acquisition_loop.ready.wait()
 
+
+    end_processes(acquisition_loops, writers, disp)
 
 """
 pesudo code for refactor of acquire_video
