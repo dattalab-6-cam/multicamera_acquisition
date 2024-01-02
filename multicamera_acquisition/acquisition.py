@@ -16,7 +16,7 @@ from multicamera_acquisition.config.config import (
     save_config,
     validate_recording_config,
     partial_config_from_camera_list,
-    create_full_camera_config,
+    create_full_camera_default_config,
     add_rt_display_params_to_config,
 )
 from multicamera_acquisition.paths import prepare_rec_dir
@@ -264,7 +264,7 @@ def refactor_acquire_video(
     # Configure the cameras + writers
     # TODO: do the cameras need to know the FPS? at least the writers do, if we want the movies to play back in real time
     user_runtime_config = partial_config_from_camera_list(camera_list)  # Create a config file from the camera list + default camera configs
-    final_config = create_full_camera_config(user_runtime_config, config)  # Merge the user's runtime config with the config file and any other defaults
+    final_config = create_full_camera_default_config(user_runtime_config, config)  # Merge the user's runtime config with the config file and any other defaults
 
     # Add the display params to the config
     final_config = add_rt_display_params_to_config(final_config, rt_display_params)

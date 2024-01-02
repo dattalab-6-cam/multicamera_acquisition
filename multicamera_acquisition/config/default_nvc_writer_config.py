@@ -1,10 +1,10 @@
 
-def default_nvc_writer_config(vid_type="ir"):
-    """A default config dict for an NVC writer.
+def default_nvc_writer_config(fps, vid_type="ir"):
+    """Generate a valid config for an NVC Writer.
     """
     config = {
-        'fps': 30,
-        'max_video_frames': 60 * 60 * 30,  # one hour at 30 fps
+        'fps': fps,
+        'max_video_frames': 60 * 60 * fps * 24,  # one day
     }
 
     if vid_type == "ir":

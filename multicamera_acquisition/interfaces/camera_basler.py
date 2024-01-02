@@ -67,12 +67,13 @@ class BaslerCamera(BaseCamera):
         return basic_info + "\n" + cam_info
 
     @staticmethod
-    def default_camera_config():
-        return default_basler_config()
+    def default_camera_config(fps):
+        return default_basler_config(fps)
 
     @staticmethod
-    def default_writer_config():
-        return default_nvc_writer_config()
+    def default_writer_config(fps):
+        writer_config = default_nvc_writer_config(fps, vid_type="ir")
+        return writer_config
 
     def _create_pylon_sys(self):
         """

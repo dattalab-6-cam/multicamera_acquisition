@@ -5,6 +5,8 @@ from multicamera_acquisition.config.default_display_config import \
 from multicamera_acquisition.interfaces.camera_basler import BaslerCamera, EmulatedBaslerCamera
 
 
+import pdb
+
 # Per-camera allowed parameter names
 ALL_CAM_PARAMS = [
     "name",
@@ -87,7 +89,7 @@ def dict_update_with_precedence(*args):
     return final_config
 
 
-def partial_config_from_camera_list(camera_list):
+def partial_config_from_camera_list(camera_list, fps):
     """ Create a partial recording config from a list of camera dicts.
 
     Parameters
@@ -109,17 +111,29 @@ def partial_config_from_camera_list(camera_list):
             gain: int
                 The gain for the camera, in (units?). (TODO: valid ranges?)
 
+    fps : int
+        The desired frame rate for the recording.
+
         Other optional parameters depend on the camera brand. It is also possible to control the Writer parameters for each camera. The syntax is 
         flat (not nested) and follows the same rules as the camera params. For example, to set
         the quality of the writer for the "top" camera to 90, you would do:
             {"name": "top", "quality": 90}
         (It follows that camera param names and writer param names must not overlap!)
     """
+
+    # Set up the partial config
     partial_config = {}
     partial_config["cameras"] = {}
+
     for camera_dict in camera_list:
+
+        # Set up the nested config dicts
         camera_name = camera_dict["name"]
         partial_config["cameras"][camera_name] = {}
+        partial_config["cameras"][camera_name]["writer"] = {}
+        partial_config["cameras"][camera_name]["display"] = {}
+
+        # Add the params to the partial config
         for key in list(camera_dict.keys()):
             if key in ALL_CAM_PARAMS:
                 partial_config["cameras"][camera_name][key] = camera_dict[key]
@@ -128,63 +142,56 @@ def partial_config_from_camera_list(camera_list):
             elif key in ALL_DISPLAY_PARAMS:
                 partial_config["cameras"][camera_name]["display"][key] = camera_dict[key]
 
+        # Add fps to this camera
+        # NB: we don't allow the user to specify fps per camera, since it's a global param
+        partial_config["cameras"][camera_name]["fps"] = fps
+
     return partial_config
 
 
-def create_full_camera_config(runtime_config, baseline_recording_config=None):
-    """Create a full recording config for the cameras + writers.
+def create_full_camera_default_config(partial_config):
+    """Create a full, default recording config for the cameras + writers.
 
     Parameters
     ----------
-    runtime_config : dict
-        The runtime config, generated from the user's camera list by partial_config_from_camera_list().
-
-    baseline_recording_config : dict or None
-        The baseline recording config, if any.
+    partial_config : dict
+        A partial config for cameras + their writers, generated from any user input.
 
     Returns
     -------
     recording_config : dict
-        The full recording config, including all camera and writer params, with all required params filled in with defaults.
+        The full recording config, including all camera and writer params, with 
+        all remaining required params filled in with defaults.
     """
 
     full_recording_config = {}
     full_recording_config["cameras"] = {}
 
-    # Iterate over the union of camera names in the camera list plus 
-    # camera names in the baseline recording config.
-    runtime_cam_names = list(runtime_config["cameras"].keys())
-    if baseline_recording_config is not None:
-        baseline_cam_names = list(baseline_recording_config["cameras"].keys())
-    else:
-        baseline_cam_names = []
-    camera_names = set(runtime_cam_names + baseline_cam_names)
+    camera_names = list(partial_config["cameras"].keys())
     assert len(camera_names) > 0, "No cameras found in configs"
+    assert len(set(camera_names)) == len(camera_names), "Duplicate camera names found in config"
 
     for camera_name in camera_names:
+        fps = partial_config["cameras"][camera_name]["fps"]
 
         cam_config = {}
         cam_config["name"] = camera_name
 
-        # Get the camera's brand and id, from runtime config (higher prec) or baseline config (lower prec)
+        # Get the camera's brand and id from the partial config
         try:
-            if camera_name in runtime_cam_names:
-                cam_config["brand"] = runtime_config["cameras"][camera_name]["brand"]
-                cam_config["id"] = runtime_config["cameras"][camera_name]["id"]
-            else:
-                cam_config["brand"] = baseline_recording_config["cameras"][camera_name]["brand"]
-                cam_config["id"] = baseline_recording_config["cameras"][camera_name]["id"]
+            cam_config["brand"] = partial_config["cameras"][camera_name]["brand"]
+            cam_config["id"] = partial_config["cameras"][camera_name]["id"]
         except KeyError:
             raise KeyError(f"Camera {camera_name} must have a brand and id")
 
         # Find the correct defaults (both camera and writer configs)
         if cam_config["brand"] == "basler":
-            default_cam_conf = BaslerCamera.default_camera_config()
-            default_writer_conf = BaslerCamera.default_writer_config()
+            default_cam_conf = BaslerCamera.default_camera_config(fps)
+            default_writer_conf = BaslerCamera.default_writer_config(fps)
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "basler_emulated":
-            default_cam_conf = EmulatedBaslerCamera.default_camera_config()
-            default_writer_conf = EmulatedBaslerCamera.default_writer_config()
+            default_cam_conf = EmulatedBaslerCamera.default_camera_config(fps)
+            default_writer_conf = EmulatedBaslerCamera.default_writer_config(fps)
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "azure":
             default_cam_conf = AzureCamera.default_config()
@@ -196,8 +203,7 @@ def create_full_camera_config(runtime_config, baseline_recording_config=None):
         # Update this camera's config in the correct order of precedence
         cam_config = dict_update_with_precedence(
             cam_config,
-            runtime_config["cameras"][camera_name] if camera_name in runtime_cam_names else {}, 
-            baseline_recording_config["cameras"][camera_name] if camera_name in baseline_cam_names else {}, 
+            partial_config["cameras"][camera_name],
             defaults,
         )
 
@@ -232,7 +238,7 @@ def load_config(config_filepath):
     """Load a recording config from a file.
     """
     with open(config_filepath, "r") as f:
-        recording_config = yaml.load(f)
+        recording_config = yaml.load(f, Loader=yaml.FullLoader)
     return recording_config
 
 
