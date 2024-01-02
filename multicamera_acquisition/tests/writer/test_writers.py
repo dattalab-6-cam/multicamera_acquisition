@@ -12,7 +12,8 @@ from multicamera_acquisition.config.default_ffmpeg_writer_config import \
     default_ffmpeg_writer_config
 from multicamera_acquisition.config.default_nvc_writer_config import \
     default_nvc_writer_config
-from multicamera_acquisition.writer import FFMPEG_Writer  # NVC_Writer,
+from multicamera_acquisition.writer import FFMPEG_Writer
+# from multicamera_acquisition.writer import NVC_Writer
 
 from multicamera_acquisition.video_io_ffmpeg import count_frames
 
@@ -47,25 +48,48 @@ def get_DummyFrames_process(fps, queue):
 
 
 @pytest.fixture(scope="function")
-def nvc_writer_processes(tmp_path, fps, DummyFrames):
+def nvc_writer_processes(tmp_path, fps):
     """Generate linked NVC_Writer and DummyFrames processes for testing
     """
     config = default_nvc_writer_config(fps)
+    config["camera_name"] = "test"
     queue = mp.Queue()
-    dummy_frames = DummyFrames(queue, fps)
+    dummy_frames_proc = get_DummyFrames_process(fps, queue)
+    # tmp_path = Path('./multicamera_acquisition/scratch/tmp')
     writer = NVC_Writer(
         queue, 
-        video_file_name=str(tmp_path.join("test.mp4")), 
-        metadata_file_name=str(tmp_path.join("test.csv")),
+        # video_file_name=Path(str(tmp_path.join("test.mp4"))), 
+        # metadata_file_name=Path(str(tmp_path.join("test.csv"))),
+        video_file_name=tmp_path / "test.mp4",
+        metadata_file_name=tmp_path / "test.csv",
         config=config,
     )
-    yield (writer, dummy_frames)
+    return (writer, dummy_frames_proc)
 
-    # Stop the writer with an empty tuple
-    queue.put(()) 
 
-    # Join the dummy frames process
-    dummy_frames.join()
+def test_NVC_writer(nvc_writer_processes):
+
+    # Get the writer and dummy frames proc
+    writer, dummy_frames_proc = nvc_writer_processes
+
+    # Check that the writer is not running
+    assert writer.frame_id == 0
+
+    # Start the writer and dummy frames proc
+    writer.start()
+    dummy_frames_proc.start()
+
+    # Wait for the processes to finish
+    dummy_frames_proc.join(timeout=3)
+    writer.join(timeout=3)
+
+    # NB: this won't work! Because multiprocessing stuff runs in its own scope.
+    # Would need to use a pipe / shared value to communicate between the two.
+    # assert writer.frame_id == 20
+
+    # Check that the video exists
+    assert writer.video_file_name.exists()
+    assert count_frames(str(writer.video_file_name)) == 20
 
 
 @pytest.fixture(scope="function")
