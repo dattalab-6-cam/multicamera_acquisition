@@ -23,7 +23,7 @@ def create_ffmpeg_pipe_command(
     frame,
     fps,
     quality=15,
-    pixel_format="grey8",
+    pixel_format="gray8",
     gpu=None,
     depth=False,
 ):
@@ -126,7 +126,7 @@ def write_frame(
     frame,
     fps,
     quality=15,
-    pixel_format="grey8",
+    pixel_format="gray8",
     gpu=None,
     pipe=None,
     depth=False,
