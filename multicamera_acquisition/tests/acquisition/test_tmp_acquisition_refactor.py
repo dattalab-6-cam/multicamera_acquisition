@@ -15,6 +15,10 @@ from tqdm import tqdm
 from multicamera_acquisition.acquisition import (
     refactor_acquire_video
 )
+from multicamera_acquisition.config.config import (
+    create_full_camera_default_config,
+    partial_config_from_camera_list,
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]  # multicamera_acquisition/
 
@@ -60,16 +64,16 @@ def test_refactor_acquire_video(camera_brand):
             {"name": "bottom", "brand": camera_brand, "id": 1}
         ]
     fps = 30
-    recording_duration_s = 60 
-    config_file = None
     rt_display_params = None 
+
+    # set up the configs
+    partial_new_config = partial_config_from_camera_list(camera_list, fps)
+    full_config = create_full_camera_default_config(partial_new_config)
 
     refactor_acquire_video(
         save_location,
-        camera_list,
-        fps,
-        recording_duration_s,
-        config_file=config_file,
+        full_config,
+        recording_duration_s=5,
         rt_display_params=rt_display_params,
         append_datetime=True,
         overwrite=False,

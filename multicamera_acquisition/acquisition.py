@@ -236,10 +236,8 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
 
 def refactor_acquire_video(
         save_location, 
-        camera_list,
-        fps, 
+        config,
         recording_duration_s=60, 
-        config_file=None,
         rt_display_params=None,
         append_datetime=True, 
         overwrite=False
@@ -256,23 +254,20 @@ def refactor_acquire_video(
     #   3. any other required defaults for the camera / writer / display classes
 
     # Load the config file if it exists
-    if isinstance(config_file, str) or isinstance(config_file, Path):
-        config = load_config(config_file)
+    if isinstance(config, str) or isinstance(config, Path):
+        config = load_config(config)
     else:
-        config = None
-
-    # Configure the cameras + writers
-    # TODO: do the cameras need to know the FPS? at least the writers do, if we want the movies to play back in real time
-    user_runtime_config = partial_config_from_camera_list(camera_list)  # Create a config file from the camera list + default camera configs
-    final_config = create_full_camera_default_config(user_runtime_config, config)  # Merge the user's runtime config with the config file and any other defaults
+        assert isinstance(config, dict)
 
     # Add the display params to the config
-    final_config = add_rt_display_params_to_config(final_config, rt_display_params)
+    final_config = add_rt_display_params_to_config(config, rt_display_params)
 
     # TODO: add arduino configs
 
     # Check that the config is valid
-    validate_recording_config(final_config, fps)
+    first_camera = list(final_config["cameras"].keys())[0]
+    fps = final_config["cameras"][first_camera]["fps"]
+    validate_recording_config(final_config, fps)  #TODO: don't need to pass fps separately
 
     # Save the config file before starting the recording
     config_filepath = save_location / "recording_config.yaml"
