@@ -60,8 +60,11 @@ class Test_CameraIDMethods():
         cam.close()
 
     @pytest.mark.parametrize("id", [0, 1])
-    def test_set_device_index(self, id):
-        cam = BaslerCamera(id=id)
+    def test_set_device_index(self, id, camera_type):
+        if camera_type == 'basler_camera':
+            cam = BaslerCamera(id=id)
+        elif camera_type == 'basler_emulated':
+            cam = EmulatedBaslerCamera(id=id)
         cam.init()
         assert cam.device_index == id
         cam.close()
