@@ -15,8 +15,9 @@ from multicamera_acquisition.config.config import (
     load_config,
     save_config,
     validate_recording_config,
+    partial_config_from_camera_list,
+    create_full_camera_config,
     add_rt_display_params_to_config,
-    create_config_from_camera_list,
 )
 from multicamera_acquisition.paths import prepare_rec_dir
 
@@ -235,11 +236,11 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
 
 def refactor_acquire_video(
         save_location, 
-        camera_list, 
-        fps=30, 
+        camera_list,
+        fps, 
         recording_duration_s=60, 
         config_file=None,
-        rt_display_params=None, 
+        rt_display_params=None,
         append_datetime=True, 
         overwrite=False
 ):
@@ -249,27 +250,38 @@ def refactor_acquire_video(
     # Create the recording directory
     save_location = prepare_rec_dir(save_location, append_datetime=append_datetime)
 
-    # Create a config file for the recording    
+    # Create a config file for the recording, following the order of precedence (decreasing):
+    #   1. user's runtime specs
+    #   2. any config file the user specifies
+    #   3. any other required defaults for the camera / writer / display classes
+
+    # Load the config file if it exists
     if isinstance(config_file, str) or isinstance(config_file, Path):
         config = load_config(config_file)
     else:
         config = None
-    config = create_config_from_camera_list(camera_list, config)  # Create a config file from the camera list + default camera configs
-    config = add_rt_display_params_to_config(config, rt_display_params)  # Add rt display params to the config
+
+    # Configure the cameras + writers
+    # TODO: do the cameras need to know the FPS? at least the writers do, if we want the movies to play back in real time
+    user_runtime_config = partial_config_from_camera_list(camera_list)  # Create a config file from the camera list + default camera configs
+    final_config = create_full_camera_config(user_runtime_config, config)  # Merge the user's runtime config with the config file and any other defaults
+
+    # Add the display params to the config
+    final_config = add_rt_display_params_to_config(final_config, rt_display_params)
 
     # TODO: add arduino configs
 
     # Check that the config is valid
-    validate_recording_config(config, fps)
+    validate_recording_config(final_config, fps)
 
     # Save the config file before starting the recording
     config_filepath = save_location / "recording_config.yaml"
-    save_config(config_filepath, config)
+    save_config(config_filepath, final_config)
 
     # (...other stuff happens...)
 
-    # Example of how to get a camera based on the config
-    for camera_name, camera_dict in config["cameras"].items():
+    # # Example of how to get a camera based on the config
+    for camera_name, camera_dict in final_config["cameras"].items():
         cam = get_camera(
             brand=camera_dict["brand"],
             id=camera_dict["id"],
@@ -286,6 +298,7 @@ def refactor_acquire_video(
     cam.start()
     cam.stop()
     cam.close()
+
 
 """
 pesudo code for refactor of acquire_video

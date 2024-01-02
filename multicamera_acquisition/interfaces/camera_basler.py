@@ -4,7 +4,7 @@ from multicamera_acquisition.config.default_nvc_writer_config import default_nvc
 from pypylon import pylon
 import numpy as np
 import os
-
+import time
 
 class BaslerCamera(BaseCamera):
 
@@ -69,7 +69,7 @@ class BaslerCamera(BaseCamera):
     @staticmethod
     def default_camera_config():
         return default_basler_config()
-    
+
     @staticmethod
     def default_writer_config():
         return default_nvc_writer_config()
@@ -378,15 +378,26 @@ class EmulatedBaslerCamera(BaslerCamera):
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
         """
-        
+
         # Prepare the emulation
         self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
         try:
-            self.num_devices = int(os.environ["PYLON_CAMEMU"]) + 1
-            os.environ["PYLON_CAMEMU"] = str(self.num_devices)
+            max_devices = max(int(os.environ["PYLON_CAMEMU"]), self.id + 1)
+
+            # Add a device if necessary
+            if self.id > max_devices:
+                self.num_devices = int(max_devices) + 1
+                os.environ["PYLON_CAMEMU"] = str(self.num_devices)
+            else:
+                self.num_devices = max_devices
         except KeyError:
-            self.num_devices = 1
-            os.environ["PYLON_CAMEMU"] = "1"
+
+            # If no emulated devices exist, make one
+            self.num_devices = self.id + 1  # in case a camera of id=1 tries to be made first, eg.
+            os.environ["PYLON_CAMEMU"] = str(self.num_devices)
+
+        # Sleep to allow the env var to update (??)
+        time.sleep(0.1)
 
     def _enumerate_cameras(self, behav_on_none="raise"):
         """Implemented for compatibility with BaslerCamera.

@@ -62,17 +62,15 @@ def test_refactor_acquire_video(camera_brand):
     fps = 30
     recording_duration_s = 60 
     config_file = None
-    display_params = None 
-    append_datetime = True
-    overwrite = False
+    rt_display_params = None 
 
     refactor_acquire_video(
         save_location,
         camera_list,
         fps,
         recording_duration_s,
-        config_file,
-        display_params,
-        append_datetime,
-        overwrite
+        config_file=config_file,
+        rt_display_params=rt_display_params,
+        append_datetime=True,
+        overwrite=False,
     )
