@@ -1,8 +1,117 @@
 import numpy as np
+from warnings import warn
+import yaml
 
 
 class CameraError(Exception):
     pass
+
+
+def get_camera(
+    brand="flir",
+    id=0,
+    config_file=None,
+    config=None,
+):
+    """Get a camera object.
+    Parameters
+    ----------
+    brand : string (default: 'flir')
+        The brand of camera to use.  Currently only 'flir' is supported. If
+        'flir', the software PySpin is used. if 'basler', the software pypylon
+        is used.
+
+    id: int or str (default: 0)
+        If an int, the index of the camera to acquire.
+        If a string, the serial number of the camera.
+
+    config_file : path-like str or Path (default: None)
+        Path to config file. 
+        If config and config_file are both None, uses the camera's default config file.
+
+    config : dict (default: None)
+        A dictionary of config values.  
+        If config and config_file are both None, uses the camera's default config file.
+
+    Returns
+    -------
+    cam : Camera object
+        The camera object, specific to the brand.
+
+    """
+    if brand == "flir":
+        from multicamera_acquisition.interfaces.camera_flir import FlirCamera as Camera
+
+        cam = Camera(index=str(index))
+
+        # cam.init()
+
+        # # set gain
+        # cam.GainAuto = "Off"
+        # cam.Gain = gain
+
+        # # set exposure
+        # cam.ExposureAuto = "Off"
+        # cam.ExposureTime = exposure_time
+
+        # # set trigger
+        # if trigger == "arduino":
+        #     # TODO - many of these settings are not related to the trigger and should
+        #     # be redistributed
+        #     # TODO - remove hardcoding
+        #     cam.AcquisitionMode = "Continuous"
+        #     cam.AcquisitionFrameRateEnable = True
+        #     max_fps = cam.get_info("AcquisitionFrameRate")["max"]
+        #     cam.AcquisitionFrameRate = max_fps
+        #     cam.TriggerMode = "Off"
+        #     cam.TriggerSource = trigger_line
+        #     cam.TriggerOverlap = "ReadOut"
+        #     cam.TriggerSelector = "FrameStart"
+        #     cam.TriggerActivation = "RisingEdge"
+        #     # cam.TriggerActivation = "FallingEdge"
+        #     cam.TriggerMode = "On"
+
+        # else:
+        #     cam.LineSelector = trigger_line
+        #     cam.AcquisitionMode = "Continuous"
+        #     cam.TriggerMode = "Off"
+        #     cam.TriggerSource = "Software"
+        #     cam.V3_3Enable = True
+        #     cam.TriggerOverlap = "ReadOut"
+
+        # if roi is not None:
+        #     raise NotImplementedError("ROI not implemented for FLIR cameras")
+
+    elif brand == "basler":
+        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
+        cam = BaslerCamera(id=id, config_file=config_file, config=config)
+
+    elif brand == "basler_emulated":
+        from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
+        cam = EmulatedBaslerCamera(id=id, config_file=config_file, config=config)
+
+    elif brand == "azure":
+        from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+
+        if "name" in kwargs:
+            name = kwargs["name"]
+        else:
+            raise ValueError("Azure camera requires name")
+
+        cam = AzureCamera(
+            serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
+        )
+
+
+    elif brand == 'lucid':
+        from multicamera_acquisition.interfaces.camera_lucid import (
+            LucidCamera as Camera,
+        )
+        cam = Camera(
+            index=str(serial)
+        )
+
+    return cam
 
 
 class BaseCamera(object):
@@ -10,7 +119,7 @@ class BaseCamera(object):
     A class used to encapsulate a Camera.
     Attributes
     ----------
-    cam : PySpin Camera
+    cam : an abstracted Camera
     running : bool
         True if acquiring images
     camera_attributes : dictionary
@@ -55,17 +164,115 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, index=0, lock=True):
-        """
+    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True):
+        """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
-        index : int or str (default: 0)
-            If an int, the index of the camera to acquire.  If a string,
-            the serial number of the camera.
+        id : int or str (default: 0)
+            If an int, the index of the camera to acquire.
+            If a string, the serial number of the camera.
+
+        name: str (default: None)
+            The name of the camera in the experiment. For example, "top" or "side2".
+
+        config_file : path-like str or Path (default: None)
+            Path to config file. 
+            If config and config_file are both None, uses the camera's default config file.
+
+        config : dict (default: None)
+            A dictionary of config values.  
+            If config and config_file are both None, uses the camera's default config file.
+
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
+            (Currently only implemented for FLIR cameras)
         """
+        self.id = id
+        if isinstance(id, int):
+            self.serial_number = None
+            self.index = id
+            if id > 10:
+                warn("Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int.")
+        elif isinstance(id, str):
+            self.serial_number = id
+            self.index = None
+        elif id is None:
+            self.serial_number = None
+            self.index = 0
+            warn("No camera ID provided.  Using device index 0.")
+        else:
+            raise ValueError("Invalid camera ID")
+
+        self.config_file = config_file
+        self.config = config
+        self.name = name
+        self.lock = lock
+        self.running = False
+        self.model = None
+
+    def _resolve_device_index(self):
+        """Given a serial number, find the index of the camera in the system.
+        """
+        # Get the serial numbers of all connected cameras
+        camera_serials, model_names = self._enumerate_cameras()
+
+        # If user wants a specific serial no, find the index of that camera
+        if self.serial_number is not None:
+            if not np.any([sn == self.serial_number for sn in camera_serials]):
+                raise CameraError(f"Camera with serial number {self.id} not found.")
+            device_index = camera_serials.index(self.id)
+        elif self.index is not None:
+            device_index = self.index
+        else:
+            raise CameraError("Must specify either serial number or index of camera to connect to.")
+
+        self.device_index = device_index
+        self.model_name = model_names[device_index]
+
+    def save_config(self):
+        """Save the current camera configuration to a YAML file.
+        """
+        with open(self.config_file, 'w') as f:
+            yaml.dump(self.config, f, default_flow_style=False)
+
+    def load_config(self, check_if_valid=False):
+        """Load a camera configuration YAML file.
+        """
+        with open(self.config_file, 'r') as f:
+            config = yaml.load(f)
+        self.config = config
+
+        if check_if_valid:
+            self.check_config()
+
+    def update_config(self, new_config):
+        """Update the config file.
+
+        Parameters
+        ----------
+        new_config: dict
+            Dictionary of new config values
+        """
+        def recursive_update(config, updates):
+            for key, value in updates.items():
+                if key in config and isinstance(config[key], dict):
+                    # If the key is a dictionary, recurse
+                    recursive_update(config[key], value)
+                else:
+                    # Otherwise, update the value directly
+                    config[key] = value
+            return config
+
+        tmp_config = recursive_update(self.config, new_config)
+        if self.check_config(tmp_config):
+            self.config = tmp_config
+            self.save_config()
+
+    def check_config(self, config=None):
+        """Check if the camera configuration is valid.
+        """
+        pass  # defined in each camera subclass
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened

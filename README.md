@@ -12,6 +12,8 @@ Authors
 - Caleb Weinreb
 - Jonah Pearl
 
+- test
+
 Sources:
     - [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) is the basis for the camera object. 
     - [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 

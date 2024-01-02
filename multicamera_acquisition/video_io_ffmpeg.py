@@ -57,7 +57,7 @@ def create_ffmpeg_pipe_command(
             # GPU encoding options using h264_nvenc codec
             command += [
                 "-c:v",
-                "h264_nvenc",  # "av1_nvenc", "h264_nvenc" "hevc_nvenc"
+                "h264_nvenc",  # "av1_nvenc", "h264_nvenc" "hevc_nvenc"  # TODO: this still requires nvenc to be installed?
                 "-preset",
                 "p1",
                 "-qp",
@@ -153,6 +153,11 @@ def write_frame(
     """
 
     if not pipe:
+        
+        print(frame.shape, type(frame), type(frame[0,0]), frame[0,0])
+        
+        print('frame bounds', np.max(frame), np.min(frame), np.median(frame))
+        
         command = create_ffmpeg_pipe_command(
             filename,
             frame,
@@ -162,7 +167,7 @@ def write_frame(
             gpu=gpu,
             depth=depth,
         )
-        # print(' '.join(command))
+        print(' '.join(command))
         # Create a subprocess pipe to write frames
         with open(f"{str(filename)}.stdout.txt", "w") as f_out, open(
             f"{str(filename)}.stderr.txt", "w"
@@ -189,7 +194,8 @@ def write_frame(
         )
 
         pipe = None
-        raise BrokenPipeError
+        print("ADD THIS BACK IN")
+        #raise BrokenPipeError
 
     return pipe
 

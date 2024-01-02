@@ -7,68 +7,130 @@ basler and flir, but with some pecularities.
 """
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
+from multicamera_acquisition.config.default_azure_config import default_azure_config
 from pyk4a import (
     PyK4A,
     Config,
     ColorResolution,
     DepthMode,
     WiredSyncMode,
+    connected_device_count
 )
 import numpy as np
 import warnings
-import subprocess
 
 
 class AzureCamera(BaseCamera):
-    def __init__(self, name, azure_index, serial_number=0, lock=True, **kwargs):
-        """
+    def __init__(self, id=0, name=None, config_file=None, lock=True):
+        """Create an instance of an Azure Kinect camera, without actually "open"ing it (i.e. without starting the connection).
         Parameters
         ----------
-        serial_number : int or str (default: 0)
-            If an int, the serial_number of the camera to acquire.  If a string,
-            the serial number of the camera.
+        id : int or str (default: 0)
+            If an int, the index of the camera to acquire.
+            If a string, the serial number of the camera.
+        name: str (default: None)
+            The name of the camera in the experiment. For example, "top" or "side2".
+        config : path-like str or Path (default: None)
+            Path to config file. If None, uses the camera's default config file.
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
+            (Currently only implemented for FLIR cameras)
         """
 
-        self.serial_number = serial_number
-        self.name = name
-        # TODO: what is this?
-        sync_delay, sync_delay_step = 0, 500
+        # Init the parent class
+        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
 
-        # camera_indexes = get_camera_indexes({self.name: self.serial_number})
+        # Resolve which device to use
+        self._resolve_device_index()  # sets self.device_index based on the id the user provides
 
-        camera_config = Config(
-            color_resolution=ColorResolution.OFF,
-            depth_mode=DepthMode.NFOV_UNBINNED,
-            synchronized_images_only=False,
-            wired_sync_mode=WiredSyncMode.SUBORDINATE,
-            subordinate_delay_off_master_usec=sync_delay,
-        )
-
-        self.cam = PyK4A(camera_config, device_id=azure_index)
-        self.timeout_warning_flag = False
+        # Load the config
+        # (NB: we must configure the Azure *before* opening it, contrary to the other cameras [or so it seems from our existing code])
+        if self.config_file is None:
+            self.config = default_azure_config()  # If no config file is specified, use the default
+            # TODO: save the default config to a file once we know where acquisition is happening.
+        else:
+            self.load_config(check_if_valid=False)  # could set check to be true by efault? unsure.
+        self._load_config(check_if_valid=True)  # this is the only chance we'll have to check if it's valid, so do it here
 
     def init(self):
-        """Initializes the camera.  Automatically called if the camera is opened
-        using a `with` clause."""
+        """Initialize the camera.
+        """
+        # Create the config object
+        camera_config = self._get_azure_config()
 
-        # initialize K4A object
+        # Create the camera object
+        self.cam = PyK4A(camera_config, device_id=self.device_index)
 
-        pass
+        # self.timeout_warning_flag = False  # unused?
+
+    def _get_azure_config(self):
+        """Create a PyK4a config object using the config dict.
+        """
+        config = self.config
+
+        # Set depth sensor acq mode
+        if config["depth_mode"] == "NFOV_UNBINNED":
+            dm = DepthMode.NFOV_UNBINNED
+        else:
+            raise NotImplementedError
+
+        # Set sync mode and other dependent params
+        if config["sync_mode"] == "subordinate":
+            cr = ColorResolution.OFF
+            wsm = WiredSyncMode.SUBORDINATE
+            subordinate_delay_off_master_usec = config["subordinate_delay_off_master_usec"]
+
+        elif config["sync_mode"] == "master":
+            wsm = WiredSyncMode.SUBORDINATE  # if you set this to master, it won't listen for triggers. For us "master" means first subordinate to receive a trigger.
+            cr = ColorResolution.RES_720P
+            subordinate_delay_off_master_usec = 0
+        else:
+            raise ValueError(f"Invalid sync_mode: {config['sync_mode']} (must be 'subordinate' or 'master')")
+
+        camera_config = Config(
+            color_resolution=cr,
+            depth_mode=dm,
+            synchronized_images_only=config["synchronized_images_only"],
+            wired_sync_mode=wsm,
+            subordinate_delay_off_master_usec=subordinate_delay_off_master_usec,
+        )
+
+        return camera_config
+
+    def _enumerate_cameras(self, behav_on_none="raise"):
+        """Enumerate all Azures connected to the system.
+
+        Parameters
+        ----------
+        behav_on_none : str (default: 'raise')
+            If 'raise', raises an error if no cameras are found.
+            If 'pass', returns None if no cameras are found.
+
+        Returns
+        -------
+        (serial_nos, models) : tuple of list of strings
+            Lists of serial numbers and models of all connected cameras.
+        """
+        camera_index_dict = get_camera_indexes()
+        serial_nos = list(camera_index_dict.values())
+        if len(camera_index_dict) == 0:
+            if behav_on_none == "raise":
+                raise CameraError("No cameras found.")
+            else:
+                return [], []
+
+        return serial_nos, []
 
     def start(self):
         "Start recording images."
-        self.cam.start()
+        self.cam.start()  # will wait for a trigger if in subordinate mode
 
     def stop(self):
         "Stop recording images."
-        try:
+        if self.cam.is_running:
             self.cam.stop()
-            # self.cam.close()
-        except Exception as e:
-            warnings.warn(e)
+            self.running = False
 
     def get_image(self, timeout=None):
         """Get an image from the camera.
@@ -147,17 +209,15 @@ class AzureCamera(BaseCamera):
         raise NotImplementedError
 
 
-def get_camera_indexes(serial_numbers):
-    serials_to_indexes = {}
-    info = subprocess.check_output(
-        ["k4arecorder", "--list"]
-    )  # MJ: need full path to k4arecorder.exe
-    if "error" in str(info):
-        raise ValueError(f"k4arecorder error: {info}")
-
-    for l in info.decode("utf-8").split("\n")[:-1]:
-        print(l)
-        index = int(l.split("\t")[0].split(":")[1])
-        serial = l.split("\t")[1].split(":")[1]
-        serials_to_indexes[serial] = index
-    return {name: serials_to_indexes[sn] for name, sn in serial_numbers.items()}
+def get_camera_indexes():
+    """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py
+    """
+    count = connected_device_count()
+    idx_to_sn_dict = {}
+    for device_id in range(count):
+        device = PyK4A(device_id=device_id)
+        device.open()
+        # print(f"{device_id}: {device.serial}")
+        idx_to_sn_dict[device_id] = device.serial
+        device.close()
+    return idx_to_sn_dict

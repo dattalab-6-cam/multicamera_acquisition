@@ -66,6 +66,11 @@ const unsigned int AZURE_INTERSUBFRAME_PERIOD_USEC = 1400; // 1575; // I think? 
 const unsigned int BASLER_TRIG_WIDTH_USEC = 100;      // some random internet source suggested 100, let's try 50 for now.
 const unsigned int BASLER_IR_PULSE_WIDTH_USEC = 1000; // make sure this is less than the separation between top + bottom baslers.
 const int OFFSET_BETWEEN_BASLER_AZURE = 100;          // where to call basler's "0" relative to the pulse we send the Azure. My guess is 0 but might be different.
+const int N_VALID_FRS = 5;
+const int VALID_INV_FRAMERATES[N_VALID_FRS] = {6667, 8333, 11111, 16667, 33333};
+bool ok_framerate = false;
+long num_cycles = 0;
+long inv_framerate = 0;
 
 // Timers
 elapsedMicros previous_pulse;
@@ -203,7 +208,7 @@ int azure_pulse_logic()
     return started_frame;
 }
 
-int *getNumFrameTimeElements(int inv_framerate)
+int getNumFrameTimeElements(int _inv_framerate)
 {
     /*  Returns the number of elements in the basler frame times array based on the inverse framerate.
         This is needed because the number of elements in the array changes based on the framerate.
@@ -211,23 +216,23 @@ int *getNumFrameTimeElements(int inv_framerate)
     */
     int num_elements = 0;
 
-    if (inv_framerate == 6666)
+    if (_inv_framerate == 6667)
     {
         num_elements = 5;
     }
-    else if (inv_framerate = 8333)
+    else if (_inv_framerate == 8333)
     {
         num_elements = 4;
     }
-    else if (inv_framerate = 11111)
+    else if (_inv_framerate == 11111)
     {
         num_elements = 3;
     }
-    else if (inv_framerate = 16667)
+    else if (_inv_framerate == 16667)
     {
         num_elements = 2;
     }
-    else if (inv_framerate = 33333)
+    else if (_inv_framerate == 33333)
     {
         num_elements = 1;
     }
@@ -239,7 +244,7 @@ int *getNumFrameTimeElements(int inv_framerate)
     return num_elements;
 }
 
-int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char *cams)
+int *getBaslerFrameTimes(int _inv_framerate, unsigned int num_azures, const char *cams)
 {
     /* Returns an array of integers representing the timing parameters for triggering Basler frames.
         The function takes three arguments: the inverse framerate, the number of Azure sync pulses,
@@ -252,16 +257,16 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
         integers representing the timing parameters for triggering Basler frames.
     */
     int *basler_frame_times = nullptr;
-    int num_elements = getNumFrameTimeElements(inv_framerate);
+    int num_elements = getNumFrameTimeElements(_inv_framerate);
 
     int f0 = num_azures * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
 
-    if (inv_framerate == 6666)
+    if (_inv_framerate == 6667)
     {
-        int f1 = f0 + inv_framerate;
-        int f2 = f1 + inv_framerate;
-        int f3 = f2 + inv_framerate;
-        int f4 = f3 + inv_framerate;
+        int f1 = f0 + _inv_framerate;
+        int f2 = f1 + _inv_framerate;
+        int f3 = f2 + _inv_framerate;
+        int f4 = f3 + _inv_framerate;
 
         if (strcmp(cams, "top") == 0)
         {
@@ -278,11 +283,11 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
                 f4 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
         }
     }
-    else if (inv_framerate == 8333)
+    else if (_inv_framerate == 8333)
     {
         int f1 = f0 + AZURE_INTERSUBFRAME_PERIOD_USEC * 5;
-        int f2 = f1 + inv_framerate;
-        int f3 = f2 + inv_framerate;
+        int f2 = f1 + _inv_framerate;
+        int f3 = f2 + _inv_framerate;
 
         if (strcmp(cams, "top") == 0)
         {
@@ -298,11 +303,11 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
                 f3 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
         }
     }
-    else if (inv_framerate == 11111)
+    else if (_inv_framerate == 11111)
     {
         // int f0 = num_azures * AZURE_PULSE_PERIOD_USEC + OFFSET_BETWEEN_BASLER_AZURE;
-        int f1 = f0 + inv_framerate;
-        int f2 = f1 + inv_framerate;
+        int f1 = f0 + _inv_framerate;
+        int f2 = f1 + _inv_framerate;
 
         if (strcmp(cams, "top") == 0)
         {
@@ -316,9 +321,9 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
                 f2 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
         }
     }
-    else if (inv_framerate == 16667)
+    else if (_inv_framerate == 16667)
     {
-        int f1 = f0 + inv_framerate;
+        int f1 = f0 + _inv_framerate;
 
         if (strcmp(cams, "top") == 0)
         {
@@ -331,7 +336,7 @@ int *getBaslerFrameTimes(int inv_framerate, unsigned int num_azures, const char 
                 f1 + 2 * AZURE_INTERSUBFRAME_PERIOD_USEC};
         }
     }
-    else if (inv_framerate == 33333)
+    else if (_inv_framerate == 33333)
     {
         if (strcmp(cams, "top") == 0)
         {
@@ -457,6 +462,20 @@ void basler_pulse_logic(int num_elements, const int baslerFrameTimesTop[], const
     }
 }
 
+bool check_requested_framerate(int _inv_framerate)
+{
+    bool valid_val = false;
+    for (int ii = 0; ii < N_VALID_FRS; ii++) 
+    {
+        if (_inv_framerate == VALID_INV_FRAMERATES[ii])
+        {
+            valid_val = true;
+            break;
+        }
+    }
+    return valid_val;
+}
+
 void serial_flush(void)
 {
     while (Serial.available())
@@ -561,64 +580,75 @@ void loop()
         // digitalWrite(IR1_bottom, HIGH);
 
         // Read in user params
-        long num_cycles = readLongFromSerial();
-        long inv_framerate = readLongFromSerial();
+        num_cycles = readLongFromSerial();
+        inv_framerate = readLongFromSerial();
 
-        // tell python that we're starting recording
-        Serial.println("Start");
+        // Validate the params and only start if they're ok
+        ok_framerate = check_requested_framerate(inv_framerate);
+        Serial.print("Inv framerate ");
+        Serial.print(inv_framerate);
+        Serial.print(". OK? ");
+        Serial.println(ok_framerate);
 
-        // Report params back to python
-        Serial.print("Num cycles:");
-        Serial.println(num_cycles);
-
-        // e.g. 8333 for 120 fps, 6666 for 150 fps = 1/fps * 1e6
-        const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = inv_framerate;
-        Serial.print("Desired avg basler interframe usec:");
-        Serial.println(DESIRED_AVG_BASLER_INTERFRAME_USEC);
-
-        const char cam_str_top[] = "top";
-        const char cam_str_bottom[] = "bottom";
-
-        // determine the basler frame times
-        int *basler_frame_times_TOP = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_top);
-        int *basler_frame_times_BOTTOM = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_bottom);
-
-        // determines the number of elements in the basler frame
-        int num_elements = getNumFrameTimeElements(inv_framerate);
-        Serial.print("Num elements:");
-        Serial.println(num_elements);
-
-        // Print basler_frame_times_TOP
-        for (int i = 0; i < num_elements; i++)
+        if (ok_framerate)
         {
-            int t = basler_frame_times_TOP[i];
-            Serial.print(t);
-            Serial.print(',');
+            // tell python that we're starting recording
+            Serial.println("Start");
+            ok_framerate = false;  // reset it
+
+            // Report params back to python
+            Serial.print("Num cycles:");
+            Serial.println(num_cycles);
+
+            // e.g. 8333 for 120 fps, 6667 for 150 fps = 1/fps * 1e6
+            const unsigned int DESIRED_AVG_BASLER_INTERFRAME_USEC = inv_framerate;
+            Serial.print("Desired avg basler interframe usec:");
+            Serial.println(DESIRED_AVG_BASLER_INTERFRAME_USEC);
+
+            const char cam_str_top[] = "top";
+            const char cam_str_bottom[] = "bottom";
+
+            // determine the basler frame times
+            int *basler_frame_times_TOP = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_top);
+            int *basler_frame_times_BOTTOM = getBaslerFrameTimes(inv_framerate, NUM_AZURES, cam_str_bottom);
+
+            // determines the number of elements in the basler frame
+            int num_elements = getNumFrameTimeElements(inv_framerate);
+            Serial.print("Num elements:");
+            Serial.println(num_elements);
+
+            // Print basler_frame_times_TOP
+            for (int i = 0; i < num_elements; i++)
+            {
+                int t = basler_frame_times_TOP[i];
+                Serial.print(t);
+                Serial.print(',');
+            }
+            Serial.println();
+
+            // Print basler_frame_times_BOTTOM
+            for (int i = 0; i < num_elements; i++)
+            {
+                int t = basler_frame_times_BOTTOM[i];
+                Serial.print(t);
+                Serial.print(',');
+            }
+            Serial.println();
+
+            // Run the aquisition loop
+            runAcquisition(
+                num_cycles,
+                num_elements,
+                basler_frame_times_TOP,
+                basler_frame_times_BOTTOM);
+
+            // send message that recording is finished
+            Serial.println("Finished");
+            serial_flush();
+            // turn LEDs on at end
+            // digitalWrite(IR1_top, HIGH);
+            // digitalWrite(IR1_bottom, HIGH);
         }
-        Serial.println();
-
-        // Print basler_frame_times_BOTTOM
-        for (int i = 0; i < num_elements; i++)
-        {
-            int t = basler_frame_times_BOTTOM[i];
-            Serial.print(t);
-            Serial.print(',');
-        }
-        Serial.println();
-
-        // Run the aquisition loop
-        runAcquisition(
-            num_cycles,
-            num_elements,
-            basler_frame_times_TOP,
-            basler_frame_times_BOTTOM);
-
-        // send message that recording is finished
-        Serial.println("Finished");
-        serial_flush();
-        // turn LEDs on at end
-        // digitalWrite(IR1_top, HIGH);
-        // digitalWrite(IR1_bottom, HIGH);
     }
     // If we receive more than 8 bytes, flush the serial buffer and wait for something new to happen
     else if (Serial.available() > 8)
