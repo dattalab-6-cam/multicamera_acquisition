@@ -106,7 +106,8 @@ class AcquisitionLoop(mp.Process):
             #     raise e
 
             # JP monkeypatch for Tim
-            cam = get_camera(self.camera_params["brand"], self.camera_params["id"], config=self.camera_config)
+            cam = get_camera(self.camera_config["brand"], self.camera_config["id"], config=self.camera_config)
+            cam.init()
             cam.set_trigger_mode("continuous")
         else:
             cam = self.cam
@@ -181,7 +182,7 @@ class AcquisitionLoop(mp.Process):
             # )
             current_frame += 1
 
-        logging.debug(f"Writing empties to queue, {self.camera_params['name']}")
+        logging.debug(f"Writing empties to queue, {self.camera_config['name']}")
 
         if self.brand == "azure":
             self.write_queue_depth.put(tuple())
@@ -190,11 +191,11 @@ class AcquisitionLoop(mp.Process):
         if self.display_frames:
             self.display_queue.put(tuple())
 
-        logging.log(logging.INFO, f"Closing camera {self.camera_params['name']}")
+        logging.log(logging.INFO, f"Closing camera {self.camera_config['name']}")
         if cam is not None:
             cam.close()
 
-        logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
+        logging.debug(f"Acquisition run finished, {self.camera_config['name']}")
 
 
 def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
@@ -203,14 +204,14 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
         if acquisition_loop.is_alive():
             logging.log(
                 logging.DEBUG,
-                f"stopping acquisition loop ({acquisition_loop.camera_params['name']})",
+                f"stopping acquisition loop ({acquisition_loop.camera_config['name']})",
             )
             # stop writinacquire_videog
             acquisition_loop.stop()
             # kill thread
             logging.log(
                 logging.DEBUG,
-                f"joining acquisition loop ({acquisition_loop.camera_params['name']})",
+                f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
             acquisition_loop.join(timeout=1)
             # kill if necessary
@@ -349,7 +350,7 @@ def refactor_acquire_video(
             display_frames=display_frames,
             display_frequency=30,
             cam=None,
-            cam_config=camera_dict,
+            camera_config=camera_dict,
         )
 
         # initialize acquisition
@@ -366,8 +367,7 @@ def refactor_acquire_video(
         # Don't initialize until all cameras are ready
         acquisition_loop.ready.wait()
 
-
-    end_processes(acquisition_loops, writers, disp)
+    end_processes(acquisition_loops, [], [])
 
 """
 pesudo code for refactor of acquire_video
