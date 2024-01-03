@@ -30,13 +30,11 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
 )
 
 
-def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames):
+def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, fps):
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
         {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
     ]
-
-    fps = 30
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list, fps)
