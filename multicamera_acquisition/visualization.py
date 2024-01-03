@@ -158,9 +158,6 @@ class refactor_MultiDisplay(mp.Process):
         #     isinstance(self.config['ranges'][0], Iterable) and
         #     len(self.config['ranges'][0]) == 2
         # ), ""
-
-
-
         
 
 def get_latest(queue, timeout=0.1):

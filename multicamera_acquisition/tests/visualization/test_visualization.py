@@ -33,11 +33,11 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
         for queue in queues
     ]
     display = refactor_MultiDisplay(
-    # display = None
         queues,
         config=config,
     )
     return (display, dummy_frames_procs)
+
 
 def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
@@ -45,19 +45,17 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
     display, dummy_frames_procs = multidisplay_processes
     
     # Start the writer and dummy frames proc
-    # display.start()
+    display.start()
     for proc in dummy_frames_procs:
         proc.start()
 
     # Wait for the processes to finish
     for proc in dummy_frames_procs:
         proc.join(timeout=60)
-
     display.join(timeout=60)
 
     # NB: this won't work! Because multiprocessing stuff runs in its own scope.
     # Would need to use a pipe / shared value to communicate between the two.
-    # assert writer.frame_id == 20
 
     # Check that the video exists
     # assert writer.video_file_name.exists()
