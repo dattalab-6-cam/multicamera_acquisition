@@ -20,7 +20,7 @@ from multicamera_acquisition.interfaces.camera_basler import (
     BaslerCamera
 )
 
-from multicamera_acquisition.video_io_ffmpeg import count_frames
+from multicamera_acquisition.video_utils import count_frames
 
 
 @pytest.fixture(scope="session")
