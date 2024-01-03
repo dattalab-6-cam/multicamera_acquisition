@@ -166,7 +166,8 @@ class BaseWriter(mp.Process):
     def close(self):
         pass
 
-
+# TODO: deal with ffmpeg warning:
+    # "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class NVC_Writer(BaseWriter):
 
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
