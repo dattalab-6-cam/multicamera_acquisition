@@ -60,7 +60,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     else:
         raise NotImplementedError
     camera_config = Camera.default_camera_config(fps)
-    camera_config["camera_name"] = "test"
+    camera_config["name"] = "test"
     camera_config["id"] = id
     camera_config["trigger"] = {"short_name": "continuous"}  # overwrite defaults to allow cam to run without triggers
 
