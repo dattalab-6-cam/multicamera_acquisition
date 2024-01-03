@@ -98,10 +98,10 @@ class BaslerCamera(BaseCamera):
         return config
 
     @staticmethod
-    def default_writer_config(fps, writer_type="nvc", gpu=None):
-        if writer_type == "nvc":
+    def default_writer_config(fps, writer_type="ffmpeg", gpu=None):
+        if writer_type == "nvc" and gpu is not None:
             from multicamera_acquisition.writer import NVC_Writer 
-            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)  # TODO: will nvc even work without a gpu?
+            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)
         elif writer_type == "ffmpeg":
             from multicamera_acquisition.writer import FFMPEG_Writer 
             writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir", gpu=gpu)

@@ -185,6 +185,8 @@ class NVC_Writer(BaseWriter):
         assert self.config["pixel_format"] == "gray8", "VPF only supports gray8 pixel format"
 
     def _get_new_pipe(self, data_shape):
+        import PyNvCodec as nvc
+
         encoder_dictionary = {
             "preset": self.config["preset"],  # P1 is fastest, P7 is slowest
             "codec": self.config["codec"],  # "hevc",
@@ -282,11 +284,11 @@ class NVC_Writer(BaseWriter):
         self._mux_video()
 
     @staticmethod
-    def default_writer_config(fps, gpu=None):
+    def default_writer_config(fps, gpu=0):
         """Generate a valid config for an NVC Writer.
         """
         if gpu is None:
-            warnings.warn("NVC Writer may not work without gpu")
+            raise ValueError("GPU must be specified for NVC writer")
         config = {
             'fps': fps,
             "type": "nvc",
