@@ -14,7 +14,7 @@ from pyk4a import (
     ColorResolution,
     DepthMode,
     WiredSyncMode,
-    connected_device_count
+    connected_device_count,
 )
 import numpy as np
 import warnings
@@ -210,9 +210,12 @@ class AzureCamera(BaseCamera):
 
 
 def get_camera_indexes():
-    """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py
-    """
+    """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py"""
     count = connected_device_count()
+    if not count:
+        print("No Azures available")
+        return
+    print(f"Available Azures: {count}")
     idx_to_sn_dict = {}
     for device_id in range(count):
         device = PyK4A(device_id=device_id)
