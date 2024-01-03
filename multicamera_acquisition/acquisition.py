@@ -284,7 +284,7 @@ def refactor_acquire_video(
 
     recording_duration_s : int (default: 60)
         The duration of the recording in seconds.
-    
+
     append_datetime : bool (default: True)
         Whether to append the datetime to the save location.
 

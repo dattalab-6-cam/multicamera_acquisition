@@ -104,7 +104,7 @@ def ffmpeg_writer_processes(tmp_path, fps, n_test_frames):
     """Generate linked FFMPEG_Writer and DummyFrames processes for testing
     """
     config = FFMPEG_Writer.default_writer_config(fps)
-    config["camera_name"] = "test"
+    config["camera_name"] = "test"  
     config["loglevel"] = "debug"
     queue = mp.Queue()
     dummy_frames_proc = get_DummyFrames_process(fps, queue, n_test_frames)
