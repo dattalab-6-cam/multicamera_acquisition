@@ -85,6 +85,7 @@ class BaslerCamera(BaseCamera):
             'roi': None,  # ie use the entire roi
             'gain': 6,
             'exposure': 1000,
+            "brand": "basler",
             'trigger': {
                 'short_name': 'arduino',
                 'acquisition_mode': 'Continuous',
@@ -245,6 +246,8 @@ class BaslerCamera(BaseCamera):
             # TODO - implement software trigger
             # TODO - this error isn't raised in the main thread. how to propagate it?
             raise NotImplementedError("Software trigger not implemented for Basler cameras")
+        elif trigger["short_name"] == "continuous":
+            self.set_trigger_mode("continuous")
         else:
             raise ValueError("Trigger must be 'arduino' or 'software'")
 
@@ -448,3 +451,23 @@ class EmulatedBaslerCamera(BaslerCamera):
     def _create_first(self):
         tlf = pylon.TlFactory.GetInstance()
         return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[0]))
+
+    @staticmethod
+    def default_camera_config(fps):
+        #TODO: is there a way to get this to inherit gracefully?
+        config = {
+            'fps': fps,
+            'roi': None,  # ie use the entire roi
+            'gain': 6,
+            'exposure': 1000,
+            "brand": "basler_emulated",
+            'trigger': {
+                'short_name': 'arduino',
+                'acquisition_mode': 'Continuous',
+                'trigger_source': 'Line2',
+                'trigger_selector': 'FrameStart',
+                'trigger_activation': 'RisingEdge',
+                #TODO: anything dependent on fps?
+            }
+        }
+        return config

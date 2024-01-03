@@ -53,7 +53,7 @@ def dict_update_with_precedence(*args):
     final_config = {}
 
     # Add values from the arguments in reverse order, i.e. starting with the lowest precedence
-    for config_dict in args:
+    for config_dict in reversed(args):
         recursive_update(final_config, config_dict)
 
     return final_config
@@ -92,17 +92,40 @@ def save_config(config_filepath, recording_config):
     return
 
 
-def validate_recording_config(recording_config, fps):
+def validate_recording_config(recording_config):
     """Validate a recording config dict.
 
     This function checks that the recording config dict is valid, 
     and raises an error if it is not.
     """
 
+    # Ensure that the recording config is a dict
+    if not isinstance(recording_config, dict):
+        raise TypeError("Recording config must be a dict")
+
+    # Ensure that the recording config has a "cameras" key
+    if "cameras" not in recording_config.keys():
+        raise ValueError("Recording config must have a 'cameras' key")
+
+    # Ensure that all cameras are recognized brands
+    for camera_name in recording_config["cameras"].keys():
+        if recording_config["cameras"][camera_name]["brand"] not in ["basler", "basler_emulated", "azure"]:
+            raise ValueError(f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}")
+
+    # Ensure that each IR camera has the same FPS
+    all_fps = []
+    for camera_name in recording_config["cameras"].keys():
+        if recording_config["cameras"][camera_name]["brand"] in ["basler", "basler_emulated"]:
+            all_fps.append(recording_config["cameras"][camera_name]["fps"])
+    if len(set(all_fps)) > 1:
+        raise ValueError("All IR cameras must have the same FPS")
+    else: 
+        fps = all_fps[0]
+
     # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
     if fps % 30 != 0:
         raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
 
     # Ensure that the requested frame rate is a multiple of the display frame rate
-    if fps % recording_config["rt_display_params"]["display_fps"] != 0:
-        raise ValueError("Real-time framerate must be a factor of the capture frame rate")
+    # if fps % recording_config["rt_display_params"]["display_fps"] != 0:
+    #     raise ValueError("Real-time framerate must be a factor of the capture frame rate")

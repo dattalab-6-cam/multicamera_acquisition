@@ -16,36 +16,15 @@ from multicamera_acquisition.acquisition import (
     refactor_acquire_video
 )
 from multicamera_acquisition.interfaces.config import (
+    partial_config_from_camera_list,
     create_full_camera_default_config,
 )
-from multicamera_acquisition.interfaces.config import partial_config_from_camera_list
+
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
+    camera_brand
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]  # multicamera_acquisition/
-
-
-@pytest.fixture(scope="session")
-def camera_type(pytestconfig):
-    """A session-wide fixture to return the camera type
-    from the command line option.
-
-    See test_cameras.py::camera for possible camera options.
-
-    Example usage:
-        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
-        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
-    """
-    return pytestconfig.getoption("camera_type")
-
-
-@pytest.fixture(scope="function")
-def camera_brand(camera_type):
-    if camera_type == 'basler_camera':
-        brand = "basler"
-    elif camera_type == 'basler_emulated':
-        brand = "basler_emulated"
-    else:
-        raise ValueError("Invalid camera type")
-    return brand
 
 
 def test_refactor_acquire_video(camera_brand):
@@ -64,7 +43,7 @@ def test_refactor_acquire_video(camera_brand):
             {"name": "bottom", "brand": camera_brand, "id": 1}
         ]
     fps = 30
-    rt_display_params = None 
+    # rt_display_params = None 
 
     # set up the configs
     partial_new_config = partial_config_from_camera_list(camera_list, fps)
@@ -74,7 +53,6 @@ def test_refactor_acquire_video(camera_brand):
         save_location,
         full_config,
         recording_duration_s=5,
-        rt_display_params=rt_display_params,
         append_datetime=True,
         overwrite=False,
     )

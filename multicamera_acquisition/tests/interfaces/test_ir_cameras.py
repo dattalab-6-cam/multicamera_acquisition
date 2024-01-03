@@ -6,6 +6,7 @@ import numpy as np
 # import os
 import pytest
 
+
 @pytest.fixture(scope="session")
 def camera_type(pytestconfig):
     """A session-wide fixture to return the camera type
@@ -17,7 +18,19 @@ def camera_type(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
-    return pytestconfig.getoption("camera_type")
+    return pytestconfig.getoption("camera_type", default="basler_emulated")
+
+
+@pytest.fixture(scope="function")
+def camera_brand(camera_type):
+    if camera_type == 'basler_camera':
+        brand = "basler"
+    elif camera_type == 'basler_emulated':
+        brand = "basler_emulated"
+    else:
+        raise ValueError("Invalid camera type")
+    return brand
+
 
 @pytest.fixture(scope="session")
 def fps(pytestconfig):
@@ -30,6 +43,7 @@ def fps(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
     return pytestconfig.getoption("fps", default=30)
+
 
 @pytest.fixture(scope="function")
 def camera(camera_type, fps):
@@ -57,7 +71,7 @@ class Test_Camera_InitAndStart():
         camera.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
         camera.start()
         img = camera.get_array(timeout=1000)
-        assert type(img) == np.ndarray
+        assert isinstance(img, np.ndarray)
         camera.stop()
 
 
@@ -83,4 +97,4 @@ class Test_CameraIDMethods():
 
     def test_id_errs(self):
         with pytest.raises(CameraError):
-            cam = BaslerCamera(id="abc", fps=fps)  # no cam with this sn should exist
+            _ = BaslerCamera(id="abc", fps=fps)  # no cam with this sn should exist

@@ -248,6 +248,8 @@ class NVC_Writer(BaseWriter):
         """
         In some prelim tests on O2 on other videos, this kind of muxing runs at
         about 100x, so it should be ok to run for one-hour-long videos.
+        TODO:  make it a flag that can be ignored and also make sure it handles multiple videos for each camera elegantly
+        Ie the code right now allows you to create new videos every n frames so there will be 4 5 min vids instead of 1 20min
         """
         # use an ffmpeg subprocess command to mux the video
         # format: ffmpeg -i "output.h264" -c:v copy -f mp4 "output.mp4"
@@ -287,6 +289,7 @@ class NVC_Writer(BaseWriter):
             warnings.warn("NVC Writer may not work without gpu")
         config = {
             'fps': fps,
+            "type": "nvc",
             'max_video_frames': 60 * 60 * fps * 24,  # one day
             'pixel_format': 'gray8',
             "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
@@ -343,7 +346,7 @@ class FFMPEG_Writer(BaseWriter):
         )
 
         # Print it
-        print(' '.join(command))
+        # print(' '.join(command))
 
         # Create a subprocess pipe to write frames
         with (
@@ -373,6 +376,7 @@ class FFMPEG_Writer(BaseWriter):
             'max_video_frames': 60 * 60 * fps * 24,  # one day
             'quality': 15,
             'loglevel': 'error',
+            "type": "ffmpeg"
         }
 
         if vid_type == "ir":
@@ -505,6 +509,24 @@ class FFMPEG_Writer(BaseWriter):
         logging.log(logging.DEBUG, f"filename: {' '.join(command)}")
 
         return command
+
+
+def get_writer(
+    queue,
+    video_file_name,
+    metadata_file_name,
+    writer_type="nvc",
+    config=None
+):
+    """Get a Writer object.
+    """
+    if writer_type == "nvc":
+        writer = NVC_Writer(queue, video_file_name, metadata_file_name, config=config)
+    elif writer_type == "ffmpeg":
+        writer = FFMPEG_Writer(queue, video_file_name, metadata_file_name, config=config)
+    else:
+        raise ValueError(f"Unrecognized writer type: {writer_type}")
+    return writer
 
 
 def grey2nv12(frame):

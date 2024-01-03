@@ -11,6 +11,7 @@ import serial
 
 from tqdm import tqdm
 from multicamera_acquisition.interfaces.camera_base import get_camera
+from multicamera_acquisition.writer import get_writer
 from multicamera_acquisition.config.config import (
     load_config,
     save_config,
@@ -36,101 +37,129 @@ class AcquisitionLoop(mp.Process):
         self,
         write_queue,
         display_queue,
-        brand="flir",
-        frame_timeout=1000,
-        display_frames=False,
-        display_frequency=1,
-        dropped_frame_warnings=False,
         write_queue_depth=None,
-        cam=None,
-        **camera_params,
+        camera_config=None,
+        acq_loop_config=None,
     ):
         """
         Parameters
         ----------
         write_queue : multiprocessing.Queue
             A queue to which frames will be written.
+
         display_queue : multiprocessing.Queue
             A queue from which frames will be read for display.
-        brand : str
-            The brand of camera to use.  Currently 'flir' and 'basler' are supported.
-        frame_timeout : int
-            The number of milliseconds to wait for a frame before timing out.
-        display_frames : bool
-            If True, frames will be displayed.
-        display_frequency : int
-            The number of frames to skip between displaying frames.
-        dropped_frame_warnings: bool
-            Whether to issue a warning when frame grabbing times out
-        **camera_params
-            Keyword arguments to pass to the camera interface.
+
+        write_queue_depth : multiprocessing.Queue (default: None)
+            A queue to which depth frames will be written (azure only).
+
+        camera_config : dict (default: None)
+            A config dict for the Camera.
+            If None, an error will be raised.
+
+        acq_loop_config : dict (default: None)
+            A config dict for the AcquisitionLoop.
+            If None, the default config will be used.
         """
         super().__init__()
 
-        self.ready = mp.Event()
-        self.primed = mp.Event()
-        self.stopped = mp.Event()
+        # Save values
         self.write_queue = write_queue
         self.display_queue = display_queue
-        self.camera_params = camera_params
-        self.brand = brand
-        self.frame_timeout = frame_timeout
-        self.display_frames = display_frames
-        self.display_frequency = display_frequency
-        self.dropped_frame_warnings = dropped_frame_warnings
         self.write_queue_depth = write_queue_depth
-        self.cam = cam
+        self.camera_config = camera_config
+
+        # Get config
+        if acq_loop_config is None:
+            self.acq_config = self.default_acq_loop_config()
+        else:
+            self.acq_config = acq_loop_config
+
+        # Check for Nones in camera / writer configs
+        # The idea here is that by now, we should have already
+        # resolved any need to use default configs.
+        if self.camera_config is None:
+            raise ValueError("Camera config cannot be None")
+
+        # Set up events for mp coordination
+        self._create_mp_events()
+
+    @staticmethod
+    def default_acq_loop_config():
+        """Get the default config for the acquisition loop.
+        """
+        return {
+            "frame_timeout": 1000,
+            "display_frames": False,
+            "display_every_n": 1,
+            "dropped_frame_warnings": False,
+            "max_frames_to_acqure": None,
+        }
+
+    def _create_mp_events(self):
+        """Create multiprocessing events.
+        """
+        self.await_process = mp.Event()  # was previously "ready"
+        self.await_main_thread = mp.Event()  # was previously "primed"
+        self.stopped = mp.Event()
+
+    def _continue_from_main_thread(self):
+        """ Tell the acquisition loop to continue 
+        (Called from the main thread)
+        """
+        self.await_main_thread.set()
+        self.await_process.clear()  # reset this event so we can use it again
 
     def stop(self):
         self.stopped.set()
-
-    def prime(self):
-        self.ready.clear()
-        self.primed.set()
 
     def run(self):
         """Acquire frames. This is run when mp.Process.start() is called.
         """
 
-        # get the camera if it hasn't been passed in (e.g. for azure)
-        if self.cam is None:
-            try:
-                if "serial" in self.camera_params:
-                    self.camera_params["index"] = self.camera_params["serial"]
-                cam = get_camera(brand=self.brand, index=self.camera_params["index"])
-            except Exception as e:
-                logging.log(logging.ERROR, f"{self.brand}:{e}")
-                raise e
-        else:
-            cam = self.cam
-        self.ready.set()  # report to the main loop that the camera is ready
-        self.primed.wait()  # wait until the main loop is ready to start
+        # Get the Camera object instance
+        cam = get_camera(
+            brand=self.camera_config["brand"],
+            id=self.camera_config["id"],
+            config=self.camera_config,
+        )
 
-        # tell the camera to start grabbing
+        # Actually open / initialize the connection to the camera
+        cam.init()
+
+        # Report that the process has initialized the camera
+        self.await_process.set()  # report to the main loop that the camera is ready
+
+        # Here, the main thread will loop through all the acq loop objects
+        # and start each camera. The main thread will wait for 
+        # each acq loop to report that it has started its camera.
+
+        # Wait for the main thread to get to the for-loop
+        # where it will then wait for the camera to start
+        self.await_main_thread.wait()
+
+        # Once we get the go-ahead, tell the camera to start grabbing
         cam.start()
-        # once the camera is started grabbing, allow the main
-        # process to continue
-        self.ready.set()  # report to the main loop that the camera is ready
+
+        # Once the camera is started grabbing, allow the main
+        # thread to continue
+        self.await_process.set()  # report to the main loop that the camera is ready
 
         current_frame = 0
-        initialized = False
+        first_frame = False
         while not self.stopped.is_set():
             try:
-                # debug write getting frame
-                # logging.debug(
-                #    f"Getting frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
-                # )
-                if initialized:
-                    data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
-                else:
-                    # if this is the first frame, give time for serial to connect
+                if first_frame:
+                    # If this is the first frame, give time for serial to connect
                     data = cam.get_array(timeout=10000, get_timestamp=True)
-                # logging.debug(
-                #    f"Got frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
-                # )
+                    first_frame = False
+                else:
+                    data = cam.get_array(timeout=self.acq_config["frame_timeout"], get_timestamp=True)
+
                 if len(data) != 0:
-                    # if this is an azure camera, we write the depth data to a separate queue
-                    if self.brand == "azure":
+
+                    # If this is an azure camera, we write the depth data to a separate queue
+                    if self.camera_config["brand"] == "azure":
                         depth, ir, camera_timestamp = data
 
                         self.write_queue.put(
@@ -139,18 +168,17 @@ class AcquisitionLoop(mp.Process):
                         self.write_queue_depth.put(
                             tuple([depth, camera_timestamp, current_frame])
                         )
-                        if self.display_frames:
-                            if current_frame % self.display_frequency == 0:
+                        if self.acq_config["display_frames"]:
+                            if current_frame % self.display_every_n == 0:
                                 self.display_queue.put(
                                     tuple([depth, camera_timestamp, current_frame])
                                 )
                     else:
                         data = data + tuple([current_frame])
                         self.write_queue.put(data)
-                        if self.display_frames:
-                            if current_frame % self.display_frequency == 0:
+                        if self.acq_config["display_frames"]:
+                            if current_frame % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
-                initialized = True
 
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
@@ -161,7 +189,7 @@ class AcquisitionLoop(mp.Process):
                     pass
                 else:
                     raise e
-                if self.dropped_frame_warnings:
+                if self.config["dropped_frame_warnings"]:
                     warnings.warn(
                         "Dropped {} frame on #{}: \n{}".format(
                             current_frame,
@@ -169,62 +197,64 @@ class AcquisitionLoop(mp.Process):
                             type(e).__name__,  # , str(e)
                         )
                     )
-            # logging.debug(
-            #    f"finished loop, {self.camera_params['name']}, current frame: {current_frame}, stopped: {self.stopped.is_set()}"
-            # )
             current_frame += 1
+            if self.acq_config["max_frames_to_acqure"] is not None:
+                if current_frame >= self.acq_config["max_frames_to_acqure"]:
+                    break
 
-        logging.debug(f"Writing empties to queue, {self.camera_params['name']}")
-
-        if self.brand == "azure":
-            self.write_queue_depth.put(tuple())
-
+        # Once the stop signal is received, stop the writer and dispaly processes
+        logging.debug(f"Writing empties to stop queue, {self.camera_config['name']}")
         self.write_queue.put(tuple())
-        if self.display_frames:
+        if self.write_queue_depth is not None:
+            self.write_queue_depth.put(tuple())
+        if self.display_queue is not None:
             self.display_queue.put(tuple())
 
-        logging.log(logging.INFO, f"Closing camera {self.camera_params['name']}")
-        if cam is not None:
-            cam.close()
+        # Close the camera
+        logging.log(logging.INFO, f"Closing camera {self.camera_config['name']}")
+        cam.close()
 
-        logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
+        logging.debug(f"Acquisition run finished, {self.camera_config['name']}")
 
 
 def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
-    # end acquisition loops
+    """ Use the stop() method to end the acquisition loops, writers, and display
+    processes, escalating to terminate() if necessary.
+    """
+
+    # End acquisition loop processes
     for acquisition_loop in acquisition_loops:
         if acquisition_loop.is_alive():
             logging.log(
                 logging.DEBUG,
-                f"stopping acquisition loop ({acquisition_loop.camera_params['name']})",
+                f"stopping acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            # stop writinacquire_videog
+
+            # Send a stop signal to the process
             acquisition_loop.stop()
-            # kill thread
+
+            # Wait for the process to finish
             logging.log(
                 logging.DEBUG,
-                f"joining acquisition loop ({acquisition_loop.camera_params['name']})",
+                f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
             acquisition_loop.join(timeout=1)
-            # kill if necessary
+
+            # If still alive, terminate it
             if acquisition_loop.is_alive():
                 # debug: notify user we had to terminate the acq loop
                 logging.debug("Terminating acquisition loop (join timed out)")
                 acquisition_loop.terminate()
 
-    # end writers
+    # End writer processes
     for writer in writers:
         if writer.is_alive():
-            #     # wait to finish writing
-            #     while writer.queue.qsize() > 0:
-            #         print(writer.queue.qsize())
-            #         time.sleep(0.1)
             writer.join(timeout=writer_timeout)
 
     # Debug: printer the writer's exitcode
     logging.debug(f"Writer exitcode: {writer.exitcode}")
 
-    # end display
+    # End display processes
     if disp is not None:
         # TODO figure out why display.join hangs when there is >1 azure
         if disp.is_alive():
@@ -237,20 +267,95 @@ def refactor_acquire_video(
         save_location, 
         config,
         recording_duration_s=60, 
-        rt_display_params=None,
         append_datetime=True, 
         overwrite=False
 ):
-    """
+    """Acquire video from multiple, synchronized cameras.
+
+    Parameters
+    ----------
+    save_location : str or Path
+        The directory in which to save the recording.
+
+    config : dict or str or Path
+        A dict containing the recording config, or a filepath to a yaml file
+        containing the recording config.
+        # TODO: incl rt_display_params
+
+    recording_duration_s : int (default: 60)
+        The duration of the recording in seconds.
+    
+    append_datetime : bool (default: True)
+        Whether to append the datetime to the save location.
+
+    overwrite : bool (default: False)
+        Whether to overwrite the save location if it already exists.
+
+    Returns
+    -------
+    save_location : Path
+        The directory in which the recording was saved.
+
+    config: dict
+        The final recording config used.
+
+    Examples
+    --------
+    A full config file follows the following rough layout:
+
+        cameras:
+            camera_1:
+                [list of attributes per camera]
+                [list of trigger-specific attributes]
+                [list of writer-specific attributes]
+            camera_2:
+                ...
+        acq_loop:
+            [list of acquisition loop params]
+        rt_display:
+            [list of rt display params]
+        arduino:
+            [list of arduino params]
+
+    For example, here is a minimal config file for a single camera without an arduino:
+
+        cameras:
+            top:
+                name: top
+                brand: basler
+                id: "12345678"  # ie the serial number, as a string
+                fps: 30
+                gain: 6
+                exposure_time: 1000
+                display: True
+                roi: null  # or an roi to crop the image
+                trigger:
+                    short_name: continuous  # convenience attr for no-trigger acquisition
+                writer:
+                    codec: h264
+                    fmt: YUV420
+                    fps: 30
+                    gpu: null
+                    max_video_frames: 2592000
+                    multipass: '0'
+                    pixel_format: gray8
+                    preset: P1
+                    profile: high
+                    tuning_info: ultra_low_latency
+        acq_loop:
+            frame_timeout: 1000
+            display_frames: False
+            display_every_n: 4
+            dropped_frame_warnings: False
+            max_frames_to_acqure: null
+        rt_display:
+            display_downsample: 4
+            display_framerate: 30
+            display_range: [0, 1000]
     """
 
     # Create the recording directory
     save_location = prepare_rec_dir(save_location, append_datetime=append_datetime)
-
-    # Create a config file for the recording, following the order of precedence (decreasing):
-    #   1. user's runtime specs
-    #   2. any config file the user specifies
-    #   3. any other required defaults for the camera / writer / display classes
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -259,39 +364,111 @@ def refactor_acquire_video(
         assert isinstance(config, dict)
 
     # Add the display params to the config
-    final_config = add_rt_display_params_to_config(config, rt_display_params)
+    # final_config = add_rt_display_params_to_config(config, rt_display_params)
+    final_config = config
 
     # TODO: add arduino configs
 
     # Check that the config is valid
-    first_camera = list(final_config["cameras"].keys())[0]
-    fps = final_config["cameras"][first_camera]["fps"]
-    validate_recording_config(final_config, fps)  #TODO: don't need to pass fps separately
+    validate_recording_config(final_config)
 
     # Save the config file before starting the recording
     config_filepath = save_location / "recording_config.yaml"
     save_config(config_filepath, final_config)
 
-    # (...other stuff happens...)
+    # (...other stuff happens, eg arduino...)
+    # TODO: implement arduino stuff here
 
-    # # Example of how to get a camera based on the config
+    # Create the various processes
+    writers = []
+    acquisition_loops = []
+    # display_queues = [] # TODO: implement display queues
+
     for camera_name, camera_dict in final_config["cameras"].items():
-        cam = get_camera(
-            brand=camera_dict["brand"],
-            id=camera_dict["id"],
-            config=camera_dict,
+
+        # Create a writer queue
+        write_queue = mp.Queue()
+
+        # Get a writer process
+        video_file_name = save_location / f"{camera_name}.mp4"
+        metadata_file_name = save_location / f"{camera_name}.metadata.csv"
+        writer = get_writer(
+            write_queue,
+            video_file_name,
+            metadata_file_name,
+            writer_type=camera_dict["writer"]["type"],
+            config=camera_dict["writer"],
         )
-        cam.name = camera_name
 
-    # All attrs easily accessible
-    cam.init()
-    # print(cam.config)
-    # print(cam.cam.AcquisitionMode.Value)
+        # Get a second writer process for depth if needed
+        if camera_dict["brand"] == "azure":
+            write_queue_depth = mp.Queue()
+            video_file_name_depth = save_location / f"{camera_name}.depth.avi"
+            metadata_file_name_depth = save_location / f"{camera_name}.metadata.depth.csv"
+            writer_depth = get_writer(
+                write_queue_depth,
+                video_file_name_depth,
+                metadata_file_name_depth,
+                writer_type=camera_dict["writer"]["type"],
+                config=camera_dict["writer_depth"], # TODO: make a separate writer_depth config for depth
+            )
+        else:
+            write_queue_depth = None
 
-    # and then to start recording...
-    cam.start()
-    cam.stop()
-    cam.close()
+        # Create an acquisition loop process
+        acquisition_loop = AcquisitionLoop(
+            write_queue=write_queue,
+            display_queue=None,
+            write_queue_depth=write_queue_depth,
+            camera_config=camera_dict,
+            acq_loop_config=final_config["acq_loop"],
+        )
+
+        # Start the writer and acquisition loop processes
+        writer.start()
+        writers.append(writer)
+        if camera_dict["brand"] == "azure":
+            writer_depth.start()
+            writers.append(writer_depth)
+        acquisition_loop.start()
+        acquisition_loops.append(acquisition_loop)
+
+        # Block until the acq loop process reports that it's initialized
+        acquisition_loop.await_process.wait()
+
+    # TODO: display queues here
+
+    # Wait for the acq loop processes to start their cameras
+    for acquisition_loop in acquisition_loops:
+        acquisition_loop._continue_from_main_thread()
+        acquisition_loop.await_process.wait()
+
+    # TODO: arduino startup stuff here
+
+    # Wait for the specified duration
+    # (while current time is less than initial time + recording_duration_s)
+    try:
+        pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
+        # how long to record
+        datetime_prev = datetime.now()
+        endtime = datetime_prev + timedelta(seconds=recording_duration_s)
+        while datetime.now() < endtime:
+
+            # Update pbar
+            if (datetime.now() - datetime_prev).seconds > 0:
+                pbar.update((datetime.now() - datetime_prev).seconds)
+                datetime_prev = datetime.now()
+
+    except (KeyboardInterrupt) as e:
+        pass
+
+    # End the processes
+    pbar.close()
+    print("Ending processes, this may take a moment...")
+    end_processes(acquisition_loops, writers, None, writer_timeout=300)
+    print("Done.")
+
+    return save_location, final_config
 
 
 """
@@ -572,7 +749,7 @@ def acquire_video(
             writers.append(writer_depth)
 
         acquisition_loop.start()
-        acquisition_loop.ready.wait()  # blocks until the acq loop reports that it is ready
+        acquisition_loop.await_process.wait()  # blocks until the acq loop reports that it is ready
         acquisition_loops.append(acquisition_loop)
         if verbose:
             logging.info(f"Initialized {name} ({serial_number})")

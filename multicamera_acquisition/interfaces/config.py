@@ -1,3 +1,5 @@
+import itertools
+
 from multicamera_acquisition.interfaces.camera_basler import BaslerCamera, EmulatedBaslerCamera
 from multicamera_acquisition.config.config import dict_update_with_precedence
 
@@ -8,6 +10,7 @@ ALL_CAM_PARAMS = [
     "id",
     "exposure_time",
     "display",
+    "gain",
 ]
 
 ALL_WRITER_PARAMS = [
@@ -17,18 +20,33 @@ ALL_WRITER_PARAMS = [
 
 ALL_DISPLAY_PARAMS = [
     "display_range",  # (min, max) for display colormap
+    # TODO: in some places display is expected to be a bool, others it's a dict
 
     # "display_fps",  #TODO: these are global display params, not per camera
     # "display_window_name",
 ]
 
+ALL_TRIGGER_PARAMS = [
+    "short_name",
+    'acquisition_mode',
+    'trigger_source',
+    'trigger_selector',
+    'trigger_activation',
+]
 
 # Since we will match params 1:1 with the user-provided camera list, we need to
 # ensure that the param names are never redundant.
 # TODO: could decide to un-flatten the camera list, which would also solve this.
-assert all([param not in ALL_CAM_PARAMS for param in ALL_WRITER_PARAMS])
-assert all([param not in ALL_CAM_PARAMS for param in ALL_DISPLAY_PARAMS])
-assert all([param not in ALL_WRITER_PARAMS for param in ALL_DISPLAY_PARAMS])
+for pair in itertools.combinations(
+    [
+        ALL_CAM_PARAMS,
+        ALL_WRITER_PARAMS,
+        ALL_DISPLAY_PARAMS,
+        ALL_TRIGGER_PARAMS,
+    ],
+    2
+):
+    assert all([param not in pair[1] for param in pair[0]]), f"Redundant param names: {pair}"
 
 
 def partial_config_from_camera_list(camera_list, fps):
@@ -74,6 +92,7 @@ def partial_config_from_camera_list(camera_list, fps):
         partial_config["cameras"][camera_name] = {}
         partial_config["cameras"][camera_name]["writer"] = {}
         partial_config["cameras"][camera_name]["display"] = {}
+        partial_config["cameras"][camera_name]["trigger"] = {}
 
         # Add the params to the partial config
         for key in list(camera_dict.keys()):
@@ -83,6 +102,8 @@ def partial_config_from_camera_list(camera_list, fps):
                 partial_config["cameras"][camera_name]["writer"][key] = camera_dict[key]
             elif key in ALL_DISPLAY_PARAMS:
                 partial_config["cameras"][camera_name]["display"][key] = camera_dict[key]
+            elif key in ALL_TRIGGER_PARAMS:
+                partial_config["cameras"][camera_name]["trigger"][key] = camera_dict[key]
 
         # Add fps to this camera
         # NB: we don't allow the user to specify fps per camera, since it's a global param
