@@ -6,6 +6,9 @@ import datetime
 import cv2
 import logging
 
+# TODO: put these util functions into a more reasonable place, since 
+# write frames / create pipe command are now deprecated in favor of the
+# FFMPEG_Writer class
 
 def count_frames(file_name):
     if os.path.exists(file_name):
