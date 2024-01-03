@@ -484,26 +484,6 @@ def refactor_acquire_video(
     return save_location, final_config
 
 
-"""
-pesudo code for refactor of acquire_video
-
--- first, get the desired recording dir from the user and make it safely.
--- in separate funcs, generate a config file for the recording from the user-provided camera list. 
-    This should grab the default configs for each camera, and then overwrite them with any user-provided configs.
-    This should also check that the user-provided configs are valid (e.g. framerate is a multiple of display_framerate).
-    This will get saved in the recording directory.
-    -- There should also be an option for the user to point to a "master config" for a certain experiment, which 
-    will allow easy reproducibility of experiments (ie reuse identical configs each day). A copy of the config
-    should be saved in the recording directory anyways.
--- once we have good configs, we will start the actual recording funcs.
--- first, check if we need an arduino; if we do, find one and connect to it, raising err if we can't find it.
--- then create the writer / acquisition / display loops, hopefully in a more succinct way than it's being done now
--- then, as it is now, start the acquisition loops (which will wait for the arduino to start recording)
-    , then start the writer and display loops, send a msg to the arduino, and then wait for the arduino to finish recording 
-    while handling errors appropriately.
-"""
-
-
 def acquire_video(
     save_location,
     camera_list,
