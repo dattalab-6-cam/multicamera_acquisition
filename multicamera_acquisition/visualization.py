@@ -31,6 +31,27 @@ def get_latest(queue, timeout=0.1):
 
     return item
 
+class refactor_MultiDisplay(mp.Process):
+
+    def __init__(self, queue, config = None):
+        super().__init__()
+
+        # Store params
+        self.queue = queue
+        self.config = config
+
+        # Set up the config
+        if config is None:
+            self.config = self.default_writer_config()
+        else:
+            self.validate_config()
+
+
+    def run(self):
+
+        
+
+
 
 class MultiDisplay(mp.Process):
     def __init__(
