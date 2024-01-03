@@ -5,6 +5,7 @@ import multiprocessing as mp
 import subprocess
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
 
@@ -88,79 +89,93 @@ class BaseWriter(mp.Process):
             metadata_writer.writerow(
                 ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
             )
+        self.metadata_file = open(self.metadata_file_name, "a")
 
     def _get_new_pipe(self, data_shape):
         pass
 
     def run(self):
 
-        # Open metadata file for writing
-        with open(self.metadata_file_name, "a") as metadata_f:
-            metadata_writer = csv.writer(metadata_f)
+        # Get CSV writer for metadata file
+        metadata_writer = csv.writer(self.metadata_file)
 
-            # Loop until we get a stop signal
-            while True:
+        # Loop until we get a stop signal
+        while True:
 
-                # Get data from the queue
-                data = self.queue.get()
+            # Get data from the queue
+            data = self.queue.get()
 
-                # If we get an empty tuple, stop
-                if len(data) == 0:
-                    break
+            # If we get an empty tuple, stop
+            if len(data) == 0:
+                break
 
-                # Unpack the data
-                img, camera_timestamp, current_frame = data
+            # Unpack the data
+            # TODO: if we drop a frame, is current_frame still valid?
+            img, camera_timestamp, current_frame = data
 
-                # Get the metadata about the frame
-                frame_image_uid = str(round(time.time(), 5)).zfill(5)
-                try:
-                    qsize = self.queue.qsize()
-                except NotImplementedError:
-                    qsize = np.nan
+            # Get the metadata about the frame
+            frame_image_uid = str(round(time.time(), 5)).zfill(5)
+            try:
+                qsize = self.queue.qsize()
+            except NotImplementedError:
+                qsize = np.nan
 
-                # If the frame is corrupted (TODO: how does this check for corruption?)
-                if img is None:
-                    continue
+            # If the frame is corrupted (TODO: how does this check for corruption?)
+            if img is None:
+                continue
 
-                # Write the metadata
-                metadata_writer.writerow(
-                    [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
-                )
+            # Write the metadata
+            metadata_writer.writerow(
+                [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
+            )
 
-                # Reset the pipe if needed
-                if self.pipe is None:
-                    data_shape = img.shape
-                    self._get_new_pipe(data_shape)
+            # Reset the pipe if needed (after self._reset_writer())
+            if self.pipe is None:
+                data_shape = img.shape
+                self._get_new_pipe(data_shape)
 
-                # Write the frame
-                self.append(img)
+            # Write the frame
+            self.append(img)
 
-                # Increment the frame counter
-                self.frame_id = self.frame_id + 1
-                self.new_debug_attr = "HELLO"
+            # Increment the frame counter
+            self.frame_id = self.frame_id + 1
+            self.new_debug_attr = "HELLO"
 
-                # If the current frame is greater than the max, create a new video and metadata file
-                if self.frame_id > self.config["max_video_frames"]:
-                    self._reset_writer(current_frame)
+            # If the current frame is greater than the max, create a new video and metadata file
+            if self.frame_id > self.config["max_video_frames"]:
+                self._reset_writers(current_frame)
 
-            logging.log(logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})")
-            self.close()
-
+        logging.log(logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})")
+        self.close_video()
 
         logging.log(logging.DEBUG, f"Writer run finished ({self.config['camera_name']})")
+        self.finish()
 
-    def _reset_writer(self, current_frame):
-        self.close()
+    def _reset_writers(self, current_frame):
+
+        # Reset the video writer
+        self.close_video()
         self.frame_id = 0
         self.video_file_name = (
             self.video_file_name.parent
             / f"{self.orig_stem}.{current_frame}.{self.video_file_name.suffix}"
         )
 
+        # Reset the metadata writer
+        self.metadata_file.close()
+        self.metadata_file_name = (
+            self.metadata_file_name.parent
+            / f"{self.orig_stem}.{current_frame}.metadata.csv"
+        )
+        self.initialize_metadata()
+
     def append(self, data):
         pass
 
-    def close(self):
+    def close_video(self):
+        pass
+
+    def finish(self):
         pass
 
 
@@ -171,7 +186,7 @@ class NVC_Writer(BaseWriter):
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
 
         # protect import statement
-        import PyNvCodec as nvc
+        # import PyNvCodec as nvc
 
         super().__init__(queue=queue, video_file_name=video_file_name, metadata_file_name=metadata_file_name, config=config)
 
@@ -181,6 +196,37 @@ class NVC_Writer(BaseWriter):
         self.img_dims = None  
         self.nv12_placeholder = None  # placeholder for nv12 image 
         self.frames_flushed = 0
+
+    @staticmethod
+    def default_writer_config(fps, gpu=0):
+        """Generate a valid config for an NVC Writer.
+        """
+        if gpu is None:
+            raise ValueError("GPU must be specified for NVC writer")
+        config = {
+
+            # pipeline params
+            'fps': fps,
+            "type": "nvc",
+            'max_video_frames': 60 * 60 * fps * 24,  # one day
+            "auto_remux_videos": True,
+
+            # encoder params
+            'pixel_format': 'gray8',
+            "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
+            "codec": "h264",  # h264, hevc
+            "profile": "high",  # high or baseline (?)
+            "multipass": "0",  # "0", "fullres"
+            "tuning_info": "ultra_low_latency",
+            "fmt": "YUV420",
+            "gpu": gpu,
+
+            # additional params from CW
+            "idrperiod": "256",
+            "gop": "30",
+        }
+
+        return config
 
     def validate_config(self):
 
@@ -239,7 +285,7 @@ class NVC_Writer(BaseWriter):
             self.encFile.write(encByteArray)
 
     def _wait_to_finish(self):
-        
+
         # Encoder is asynchronous, so we need to flush it
         while True:
             success = self.pipe.FlushSinglePacket(self.encFrame)
@@ -250,15 +296,80 @@ class NVC_Writer(BaseWriter):
             else:
                 break
 
-    def _mux_video(self):
+    def close_video(self):
+
+        # Flush the PyNvCodec encoder
+        if self.pipe is not None:
+            self._wait_to_finish()
+
+        # Close the video file
+        if self.encFile is not None:
+            if not self.encFile.closed:
+                self.encFile.close()
+
+        # Reset the pipe to None so that it can be reinitialized
+        self.pipe = None
+
+        # Set the video to be muxed if requested
+        if self.config["auto_remux_videos"]:
+            self._mux_video(self.video_file_name)
+
+    def _mux_video(self, video_file_name):
+
+        # Create a muxer process
+        muxer = VideoMuxer(video_file_name)
+
+        # Start the muxer process
+        muxer.start()
+
+        # Save the muxer process to be joined when the parent ends
+        if not hasattr(self, "muxer_processes"):
+            self.muxer_processes = []
+        self.muxer_processes.append(muxer)
+
+    def finish(self):
+
+        # Join the muxer processes
+        if hasattr(self, "muxer_processes"):
+            for muxer in self.muxer_processes:
+                muxer.join()
+
+
+class VideoMuxer(mp.Process):
+    def __init__(self, target_file):
+        super().__init__()
+        if not isinstance(target_file, Path):
+            target_file = Path(target_file)
+        self.skip = False
+        self.video_file_name = target_file
+        self._validate_target_file()
+
+    def _validate_target_file(self):
+        if self.video_file_name.suffix != ".mp4":
+            warnings.warn("VideoMuxer only works on .mp4 files — skipping")
+            self.skip = True
+
+        if not self.video_file_name.exists():
+            warnings.warn(f"VideoMuxer target file {self.video_file_name} does not exist")
+            self.skip = True
+
+    def run(self):
         """
         In some prelim tests on O2 on other videos, this kind of muxing runs at
         about 100x, so it should be ok to run for one-hour-long videos.
         TODO:  make it a flag that can be ignored and also make sure it handles multiple videos for each camera elegantly
         Ie the code right now allows you to create new videos every n frames so there will be 4 5 min vids instead of 1 20min
         """
-        # use an ffmpeg subprocess command to mux the video
-        # format: ffmpeg -i "output.h264" -c:v copy -f mp4 "output.mp4"
+
+        # Exit early if there's an issue detected
+        if self.skip:
+            return
+
+        # ffmpeg can't operate in place, so we need to make a tmp file name for the muxed video
+        # and then delete the origin + rename the muxed one 
+        tmp_file_name = self.video_file_name.parent / f"{self.video_file_name.stem}.muxed.mp4"
+
+        # Generate an ffmpeg subprocess command to mux the video
         command = [
             "ffmpeg",
             '-y',
@@ -268,48 +379,14 @@ class NVC_Writer(BaseWriter):
             "copy",
             "-f",
             "mp4",
-            str(self.video_file_name).replace(".mp4", ".muxed.mp4"),  # TODO: clean this up
+            str(tmp_file_name)
         ]
+
+        # Run the muxing
         self._mux_pipe = subprocess.Popen(command)
 
-        # wait for the muxing to finish
+        # Wait for the muxing to finish
         self._mux_pipe.wait()
-
-    def close(self):
-        if self.pipe is not None:
-            self._wait_to_finish()
-
-        if self.encFile is not None:
-            if not self.encFile.closed:
-                self.encFile.close()
-        self.pipe = None
-
-        # mux the video
-        self._mux_video()
-
-    @staticmethod
-    def default_writer_config(fps, gpu=0):
-        """Generate a valid config for an NVC Writer.
-        """
-        if gpu is None:
-            raise ValueError("GPU must be specified for NVC writer")
-        config = {
-            'fps': fps,
-            "type": "nvc",
-            'max_video_frames': 60 * 60 * fps * 24,  # one day
-            'pixel_format': 'gray8',
-            "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
-            "codec": "h264",  # h264, hevc
-            "profile": "high",  # high or baseline (?)
-            "multipass": "0",  # "0", "fullres"
-            "tuning_info": "ultra_low_latency",
-            "fmt": "YUV420",
-            "gpu": gpu,
-            # "lookahead": "1", # how far to look ahead (more is slower but better quality)
-            # "gop": "15", # larger = faster
-        }
-
-        return config
 
 
 class FFMPEG_Writer(BaseWriter):
@@ -366,7 +443,7 @@ class FFMPEG_Writer(BaseWriter):
                 stderr=f_err,  # standard error is redirected to 'stderr.txt'
             )
 
-    def close(self):
+    def close_video(self):
         if self.pipe is not None:
             self.pipe.stdin.close()
         self.pipe = None
