@@ -6,7 +6,7 @@ import subprocess
 import time
 
 import numpy as np
-# import PyNvCodec as nvc
+import PyNvCodec as nvc
 
 from multicamera_acquisition.config.default_nvc_writer_config import (
     default_nvc_writer_config
@@ -176,7 +176,8 @@ class NVC_Writer(BaseWriter):
         self.encFrame = np.ndarray(shape=(0), dtype=np.uint8)
         self.encFile = None
         self.img_dims = None  
-        self.nv12_placeholder = None  # placeholder for nv12 image        
+        self.nv12_placeholder = None  # placeholder for nv12 image 
+        self.frames_flushed = 0
 
     @staticmethod
     def default_writer_config():
@@ -204,7 +205,7 @@ class NVC_Writer(BaseWriter):
         logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,
-            gpu_id=self.ffmpeg_options["gpu"],
+            gpu_id=self.config["gpu"],
             format=nvc.PixelFormat.NV12,
         )
         self.encFile = open(self.video_file_name, "xb")
@@ -236,11 +237,52 @@ class NVC_Writer(BaseWriter):
             encByteArray = bytearray(self.encFrame)
             self.encFile.write(encByteArray)
 
+    def _wait_to_finish(self):
+        
+        # Encoder is asynchronous, so we need to flush it
+        while True:
+            success = self.pipe.FlushSinglePacket(self.encFrame)
+            if success:
+                encByteArray = bytearray(self.encFrame)
+                self.encFile.write(encByteArray)
+                self.frames_flushed += 1
+            else:
+                break
+
+    def _mux_video(self):
+        """
+        In some prelim tests on O2 on other videos, this kind of muxing runs at
+        about 100x, so it should be ok to run for one-hour-long videos.
+        """
+        # use an ffmpeg subprocess command to mux the video
+        # format: ffmpeg -i "output.h264" -c:v copy -f mp4 "output.mp4"
+        command = [
+            "ffmpeg",
+            '-y',
+            "-i",
+            str(self.video_file_name),
+            "-c:v",
+            "copy",
+            "-f",
+            "mp4",
+            str(self.video_file_name).replace(".mp4", ".muxed.mp4"),  # TODO: clean this up
+        ]
+        self._mux_pipe = subprocess.Popen(command)
+
+        # wait for the muxing to finish
+        self._mux_pipe.wait()
+
     def close(self):
+        if self.pipe is not None:
+            self._wait_to_finish()
+
         if self.encFile is not None:
             if not self.encFile.closed:
                 self.encFile.close()
         self.pipe = None
+
+        # mux the video
+        self._mux_video()
 
 
 class FFMPEG_Writer(BaseWriter):
@@ -283,10 +325,11 @@ class FFMPEG_Writer(BaseWriter):
             pixel_format=self.config["pixel_format"],
             gpu=self.config["gpu"],
             depth=self.config["depth"],
+            loglevel=self.config["loglevel"],
         )
 
         # Print it
-        # print(' '.join(command))
+        print(' '.join(command))
 
         # Create a subprocess pipe to write frames
         with (
@@ -314,6 +357,7 @@ class FFMPEG_Writer(BaseWriter):
         pixel_format="gray8",
         gpu=None,
         depth=False,
+        loglevel="error",
     ):
         """Create a pipe for ffmpeg"""
         # Get the size of the frame
@@ -324,7 +368,7 @@ class FFMPEG_Writer(BaseWriter):
             command = [
                 "ffmpeg",
                 "-loglevel",
-                "fatal",
+                loglevel,
                 "-y",  # Overwrite existing file without asking
                 "-f",
                 "rawvideo",
@@ -404,173 +448,6 @@ class FFMPEG_Writer(BaseWriter):
         logging.log(logging.DEBUG, f"filename: {' '.join(command)}")
 
         return command
-
-
-# class Writer(mp.Process):
-#     def __init__(
-#         self,
-#         queue,
-#         video_file_name,
-#         metadata_file_name,
-#         camera_serial,
-#         camera_name,
-#         camera_brand,
-#         fps,
-#         ffmpeg_options,
-#         max_video_frames=60 * 60,
-#         depth=False,
-#     ):
-#         super().__init__()
-#         self.pipe = None
-#         self.queue = queue
-#         self.video_file_name = video_file_name
-#         self.ffmpeg_options = ffmpeg_options
-#         self.metadata_file_name = metadata_file_name
-#         self.camera_name = camera_name
-#         self.camera_serial = camera_serial
-#         self.orig_stem = self.video_file_name.stem
-#         self.orig_stem_metadata = self.metadata_file_name.stem
-#         self.max_video_frames = max_video_frames
-#         self.camera_brand = camera_brand
-#         self.fps = fps
-#         self.depth = depth
-#         self.encFrame = np.ndarray(shape=(0), dtype=np.uint8)
-#         self.encFile = None
-#         if (camera_brand == "azure") & (depth == True):
-#             self.pixel_format = "gray16"
-#         elif (camera_brand == "lucid"):
-#             self.pixel_format = "gray16"
-#         else:
-#             self.pixel_format = "gray8"
-
-#         # placeholder for nv12 image
-#         self.img_dims = None
-#         self.nv12_placeholder = None
-
-#         self.initialize_metadata()
-
-#     def initialize_metadata(self):
-#         with open(self.metadata_file_name, "w") as metadata_f:
-#             metadata_writer = csv.writer(metadata_f)
-#             metadata_writer.writerow(
-#                 ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
-#             )
-
-#     def run(self):
-#         frame_id = 0
-#         with open(self.metadata_file_name, "a") as metadata_f:
-#             metadata_writer = csv.writer(metadata_f)
-#             while True:
-#                 data = self.queue.get()
-#                 if len(data) == 0:
-#                     break
-#                 else:
-#                     # get the computer datetime of the frame
-#                     frame_image_uid = str(round(time.time(), 5)).zfill(5)
-#                     img, camera_timestamp, current_frame = data
-
-#                     qsize = self.queue.qsize()
-
-#                     # if the frame is corrupted
-#                     if img is None:
-#                         continue
-#                     metadata_writer.writerow(
-#                         [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
-#                     )
-#                     self.append(img, frame_id)
-
-#                     frame_id += 1
-
-#                     # if the current frame is greater than the max, create a new video and metadata file
-#                     if frame_id > self.max_video_frames:
-#                         self.close()
-#                         self.video_file_name = (
-#                             self.video_file_name.parent
-#                             / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
-#                         )
-#                         logging.log(
-#                             logging.DEBUG, f"Creating new file self.video_file_name"
-#                         )
-#                         self.pipe = None
-#                         frame_id = 0
-
-#             logging.log(logging.DEBUG, f"Closing writer pipe ({self.camera_name})")
-#             self.close()
-
-#         logging.log(logging.DEBUG, f"Writer run finished ({self.camera_name})")
-
-#     def append(self, data, frame_id):
-#         # logging.log(logging.DEBUG, f"frame ({data.shape, data.dtype})")
-#         if self.pixel_format == "gray8":
-#             data = data.astype(np.uint8)
-#             if not self.pipe:
-#                 encoder_dictionary = {
-#                     "preset": "P1",  # P1 is fastest, P7 is slowest
-#                     "codec": "h264",  # "hevc",
-#                     "s": f"{data.shape[1]}x{data.shape[0]}",
-#                     "profile": "high",  # "baseline",
-#                     "fps": str(int(self.fps)),
-#                     "multipass": "0",  # "fullres",  # "0",
-#                     "tuning_info": "ultra_low_latency",
-#                     "fmt": "YUV420",
-#                     # "lookahead": "1", # how far to look ahead (more is slower but better quality)
-#                     # "gop": "15", # larger = faster
-#                 }
-#                 logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
-
-#                 self.pipe = nvc.PyNvEncoder(
-#                     encoder_dictionary,
-#                     gpu_id=self.ffmpeg_options["gpu"],
-#                     format=nvc.PixelFormat.NV12,
-#                 )
-#                 self.encFile = open(self.video_file_name, "wb")
-#                 logging.log(logging.DEBUG, f"Pipe created")
-
-#             # convert to nv12, which is dims X by Y*1.5
-#             if self.nv12_placeholder is None:
-#                 nv12_array = grey2nv12(data)
-#                 self.img_dims = data.shape
-#                 self.nv12_placeholder = nv12_array
-#             else:
-#                 nv12_array = self.nv12_placeholder
-#                 nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
-
-#             try:
-#                 success = self.pipe.EncodeSingleFrame(
-#                     nv12_array, self.encFrame, sync=False
-#                 )
-#             except Exception as e:
-#                 success = False
-#                 logging.log(logging.DEBUG, f"failed to create frame: {e}")
-
-#             if success:
-#                 encByteArray = bytearray(self.encFrame)
-#                 self.encFile.write(encByteArray)
-
-#         else:
-#             # write 16 bit images using ffmpeg
-#             self.pipe = write_frame(
-#                 self.video_file_name,
-#                 data,
-#                 fps=self.fps,
-#                 pipe=self.pipe,
-#                 depth=self.depth,
-#                 pixel_format=self.pixel_format,
-#                 **self.ffmpeg_options,
-#             )
-
-#     def close(self):
-#         # indicate that no more data will be written
-#         # if self.pipe is not None:
-#         #    self.pipe.stdin.close()
-#         if self.pixel_format == "gray8":
-#             if self.encFile is not None:
-#                 if not self.encFile.closed:
-#                     self.encFile.close()
-#         else:
-#             if self.pipe is not None:
-#                 self.pipe.stdin.close()
-#         logging.log(logging.DEBUG, f"Writer pipe closed ({self.camera_name})")
 
 
 def grey2nv12(frame):

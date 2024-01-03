@@ -12,6 +12,7 @@ def default_nvc_writer_config(fps):
         "multipass": "0",  # "0", "fullres"
         "tuning_info": "ultra_low_latency",
         "fmt": "YUV420",
+        "gpu": 0,
         # "lookahead": "1", # how far to look ahead (more is slower but better quality)
         # "gop": "15", # larger = faster
     }
