@@ -268,6 +268,7 @@ def refactor_acquire_video(
         config,
         recording_duration_s=60, 
         append_datetime=True, 
+        append_camera_serial=False,
         overwrite=False
 ):
     """Acquire video from multiple, synchronized cameras.
@@ -286,13 +287,15 @@ def refactor_acquire_video(
         The duration of the recording in seconds.
 
     append_datetime : bool (default: True)
-        Whether to append the datetime to the save location.
+        Whether to further nest the recording in a subfolder named with the
+        date and time.
+
+    append_camera_serial : bool (default: True)
+        Whether to append the camera serial number to the file name.
 
     overwrite : bool (default: False)
         Whether to overwrite the save location if it already exists.
 
-    # TODO: parameter to append cam serial number to file name or not    
-    
     Returns
     -------
     save_location : Path
@@ -357,7 +360,7 @@ def refactor_acquire_video(
     """
 
     # Create the recording directory
-    save_location = prepare_rec_dir(save_location, append_datetime=append_datetime)
+    save_location = prepare_rec_dir(save_location, append_datetime=append_datetime, overwrite=overwrite)
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -391,9 +394,15 @@ def refactor_acquire_video(
         # Create a writer queue
         write_queue = mp.Queue()
 
+        # Generate file names
+        if append_camera_serial:
+            video_file_name = save_location / f"{camera_name}.{camera_dict['id']}.mp4"
+            metadata_file_name = save_location / f"{camera_name}.{camera_dict['id']}.metadata.csv"
+        else:
+            video_file_name = save_location / f"{camera_name}.mp4"
+            metadata_file_name = save_location / f"{camera_name}.metadata.csv"
+
         # Get a writer process
-        video_file_name = save_location / f"{camera_name}.mp4"
-        metadata_file_name = save_location / f"{camera_name}.metadata.csv"
         writer = get_writer(
             write_queue,
             video_file_name,

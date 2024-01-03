@@ -3,6 +3,7 @@ import pathlib2
 import os
 from datetime import datetime
 import numpy as np
+import shutil
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -34,6 +35,8 @@ def most_recent_subdirectory(dataset_loc):
     """return the subdirectory that has been generated most
     recently with the "%Y-%m-%d_%H-%M-%S" time scheme used in AVGN
     """
+    if not isinstance(dataset_loc, Path):
+        dataset_loc = Path(dataset_loc)
     subdir_list = list((dataset_loc).iterdir())
     directory_dates = [
         datetime.strptime(i.name, "%Y-%m-%d_%H-%M-%S") for i in subdir_list
@@ -41,7 +44,7 @@ def most_recent_subdirectory(dataset_loc):
     return subdir_list[np.argsort(directory_dates)[-1]]
 
 
-def prepare_rec_dir(save_location, append_datetime=True):
+def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
     """Create a directory for saving the recording, optionally further 
     nested in a subdir named with the date and time.
 
@@ -59,6 +62,14 @@ def prepare_rec_dir(save_location, append_datetime=True):
     if append_datetime:
         date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
         save_location = save_location.joinpath(date_str)
+
+    # Check if the directory already exists
+    if save_location.exists() and not overwrite:
+        raise ValueError(f"Save location {save_location} already exists, if you want to overwrite set overwrite to True!")
+    elif save_location.exists() and overwrite and not append_datetime:
+        print(f"Files in save location {save_location} will be overwritten, are you sure?")
+        input("Press Enter to continue...")
+        shutil.rmtree(save_location)
 
     # Create the directory
     save_location.mkdir(parents=True, exist_ok=True)
