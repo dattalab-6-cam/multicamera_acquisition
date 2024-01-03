@@ -60,8 +60,12 @@ class BaseWriter(mp.Process):
         self.config = config
 
         # File naming stuff
-        self.orig_stem = self.video_file_name.stem
-        self.orig_stem_metadata = self.metadata_file_name.stem
+        # File name format is {prefix}.{start_timestamp}.{camera_name}.{serial_num}.{first_frame_number}.{extension}
+        # and metadata is {full_filename.stem}.metadata.csv.
+        
+        # We want the stem to be everything up to the first frame number,
+        # so that we can start new videos with the same stem + new frame number.
+        self.orig_stem = self.video_file_name.stem.split(".")[0]
 
         # Create the metadata file
         self.initialize_metadata()
@@ -150,7 +154,7 @@ class BaseWriter(mp.Process):
         self.frame_id = 0
         self.video_file_name = (
             self.video_file_name.parent
-            / f"{self.orig_stem}.{current_frame}{self.video_file_name.suffix}"
+            / f"{self.orig_stem}.{current_frame}.{self.video_file_name.suffix}"
         )
 
     def append(self, data):

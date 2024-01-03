@@ -19,7 +19,7 @@ from multicamera_acquisition.config.config import (
     add_rt_display_params_to_config,
 )
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
-from multicamera_acquisition.paths import prepare_rec_dir
+from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 # from multicamera_acquisition.interfaces.arduino import (
@@ -269,6 +269,7 @@ def refactor_acquire_video(
         recording_duration_s=60, 
         append_datetime=True, 
         append_camera_serial=False,
+        file_prefix=None,
         overwrite=False
 ):
     """Acquire video from multiple, synchronized cameras.
@@ -361,6 +362,7 @@ def refactor_acquire_video(
 
     # Create the recording directory
     save_location = prepare_rec_dir(save_location, append_datetime=append_datetime, overwrite=overwrite)
+    base_filename = prepare_base_filename(save_location, file_prefix=file_prefix, append_datetime=append_datetime, append_camera_serial=append_camera_serial)
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -396,11 +398,11 @@ def refactor_acquire_video(
 
         # Generate file names
         if append_camera_serial:
-            video_file_name = save_location / f"{camera_name}.{camera_dict['id']}.mp4"
-            metadata_file_name = save_location / f"{camera_name}.{camera_dict['id']}.metadata.csv"
+            format_kwargs = dict(camera_name=camera_dict["name"], camera_id=camera_dict["id"])
         else:
-            video_file_name = save_location / f"{camera_name}.mp4"
-            metadata_file_name = save_location / f"{camera_name}.metadata.csv"
+            format_kwargs = dict(camera_name=camera_dict["name"])
+        video_file_name = save_location / base_filename.format(**format_kwargs)
+        metadata_file_name = save_location / base_filename.format(**format_kwargs)
 
         # Get a writer process
         writer = get_writer(
