@@ -15,10 +15,9 @@ from multicamera_acquisition.config.config import (
     load_config,
     save_config,
     validate_recording_config,
-    partial_config_from_camera_list,
-    create_full_camera_default_config,
     add_rt_display_params_to_config,
 )
+from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
 from multicamera_acquisition.paths import prepare_rec_dir
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera

@@ -4,16 +4,9 @@ import logging
 import multiprocessing as mp
 import subprocess
 import time
+import warnings
 
 import numpy as np
-import PyNvCodec as nvc
-
-from multicamera_acquisition.config.default_nvc_writer_config import (
-    default_nvc_writer_config
-)
-from multicamera_acquisition.config.default_ffmpeg_writer_config import (
-    default_ffmpeg_writer_config,
-)
 
 # for reference only
 NVIDIA_SETTINGS = """
@@ -166,11 +159,16 @@ class BaseWriter(mp.Process):
     def close(self):
         pass
 
+
 # TODO: deal with ffmpeg warning:
     # "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class NVC_Writer(BaseWriter):
 
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
+
+        # protect import statement
+        import PyNvCodec as nvc
+
         super().__init__(queue=queue, video_file_name=video_file_name, metadata_file_name=metadata_file_name, config=config)
 
         # VPF-specific stuff
@@ -179,10 +177,6 @@ class NVC_Writer(BaseWriter):
         self.img_dims = None  
         self.nv12_placeholder = None  # placeholder for nv12 image 
         self.frames_flushed = 0
-
-    @staticmethod
-    def default_writer_config():
-        return default_nvc_writer_config()
 
     def validate_config(self):
 
@@ -285,6 +279,29 @@ class NVC_Writer(BaseWriter):
         # mux the video
         self._mux_video()
 
+    @staticmethod
+    def default_writer_config(fps, gpu=None):
+        """Generate a valid config for an NVC Writer.
+        """
+        if gpu is None:
+            warnings.warn("NVC Writer may not work without gpu")
+        config = {
+            'fps': fps,
+            'max_video_frames': 60 * 60 * fps * 24,  # one day
+            'pixel_format': 'gray8',
+            "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
+            "codec": "h264",  # h264, hevc
+            "profile": "high",  # high or baseline (?)
+            "multipass": "0",  # "0", "fullres"
+            "tuning_info": "ultra_low_latency",
+            "fmt": "YUV420",
+            "gpu": gpu,
+            # "lookahead": "1", # how far to look ahead (more is slower but better quality)
+            # "gop": "15", # larger = faster
+        }
+
+        return config
+
 
 class FFMPEG_Writer(BaseWriter):
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
@@ -295,10 +312,6 @@ class FFMPEG_Writer(BaseWriter):
 
         # Read in the config
         self.validate_config()
-
-    @staticmethod
-    def default_writer_config():
-        return default_ffmpeg_writer_config()
 
     def validate_config(self):
         # Check pixel format
@@ -348,6 +361,49 @@ class FFMPEG_Writer(BaseWriter):
         if self.pipe is not None:
             self.pipe.stdin.close()
         self.pipe = None
+
+    @staticmethod
+    def default_writer_config(fps, vid_type="ir", gpu=None):
+        """A default config dict for an ffmpeg writer.
+
+        Frame size tbd on the fly.
+        """
+        config = {
+            'fps': fps,
+            'max_video_frames': 60 * 60 * fps * 24,  # one day
+            'quality': 15,
+            'loglevel': 'error',
+        }
+
+        if vid_type == "ir":
+
+            # Use uint8 for ir vids
+            config['pixel_format'] = 'gray8'
+
+            # Use a pixel format that is readable by most players
+            config['output_px_format'] = 'yuv420p'  # Output pixel format
+
+            # Set codec and preset depending on whether we have a gpu
+            if gpu is not None:
+                config['video_codec'] = 'h264_nvenc'
+                config['gpu'] = gpu
+                config['preset'] = 'p1'  # p1 - p7, p1 is fastest, p7 is slowest
+            else:
+                config['video_codec'] = 'libx264'
+                config['preset'] = 'ultrafast'
+                config["gpu"] = None
+
+            config["depth"] = False
+
+        elif vid_type == "depth":
+
+            # Use uint16 for depth vids
+            config['pixel_format'] = 'grey16'
+            config['video_codec'] = 'ffv1'  # lossless depth    
+            config['depth'] = True
+            config['gpu'] = None
+
+        return config
 
     @staticmethod
     def create_ffmpeg_pipe_command(

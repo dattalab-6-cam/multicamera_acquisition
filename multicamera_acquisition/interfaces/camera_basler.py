@@ -1,10 +1,9 @@
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from multicamera_acquisition.config.default_basler_config import default_basler_config
-from multicamera_acquisition.config.default_nvc_writer_config import default_nvc_writer_config
 from pypylon import pylon
 import numpy as np
 import os
 import time
+
 
 class BaslerCamera(BaseCamera):
 
@@ -81,11 +80,30 @@ class BaslerCamera(BaseCamera):
 
     @staticmethod
     def default_camera_config(fps):
-        return default_basler_config(fps)
+        config = {
+            'fps': fps,
+            'roi': None,  # ie use the entire roi
+            'gain': 6,
+            'exposure': 1000,
+            'trigger': {
+                'short_name': 'arduino',
+                'acquisition_mode': 'Continuous',
+                'trigger_source': 'Line2',
+                'trigger_selector': 'FrameStart',
+                'trigger_activation': 'RisingEdge',
+                #TODO: anything dependent on fps?
+            }
+        }
+        return config
 
     @staticmethod
-    def default_writer_config(fps):
-        writer_config = default_nvc_writer_config(fps, vid_type="ir")
+    def default_writer_config(fps, writer_type="nvc", gpu=None):
+        if writer_type == "nvc":
+            from multicamera_acquisition.writer import NVC_Writer 
+            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)  # TODO: will nvc even work without a gpu?
+        elif writer_type == "ffmpeg":
+            from multicamera_acquisition.writer import FFMPEG_Writer 
+            writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir", gpu=gpu)
         return writer_config
 
     def _create_pylon_sys(self):

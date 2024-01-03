@@ -15,10 +15,10 @@ from tqdm import tqdm
 from multicamera_acquisition.acquisition import (
     refactor_acquire_video
 )
-from multicamera_acquisition.config.config import (
+from multicamera_acquisition.interfaces.config import (
     create_full_camera_default_config,
-    partial_config_from_camera_list,
 )
+from multicamera_acquisition.interfaces.config import partial_config_from_camera_list
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]  # multicamera_acquisition/
 
