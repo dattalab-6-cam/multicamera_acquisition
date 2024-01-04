@@ -246,6 +246,8 @@ class NVC_Writer(BaseWriter):
     def _get_new_pipe(self, data_shape):
         import PyNvCodec as nvc
 
+        # TODO: make part of the config be exactly the dictionary that is passed to the encoder,
+        # so that we can pass in arbitrary params.
         encoder_dictionary = {
             "preset": self.config["preset"],  # P1 is fastest, P7 is slowest
             "codec": self.config["codec"],  # "hevc",
@@ -256,7 +258,8 @@ class NVC_Writer(BaseWriter):
             "tuning_info": self.config["tuning_info"],
             "fmt": self.config["fmt"],
             # "lookahead": "1", # how far to look ahead (more is slower but better quality)
-            # "gop": "15", # larger = faster
+            "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
+            "gop": self.config["gop"], # larger = faster
         }
         logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
         self.pipe = nvc.PyNvEncoder(
@@ -265,6 +268,7 @@ class NVC_Writer(BaseWriter):
             format=nvc.PixelFormat.NV12,
         )
         self.encFile = open(self.video_file_name, "wb")
+        self._current_vid_muxing = False
         logging.log(logging.DEBUG, "Pipe created")
 
     def append(self, data):
@@ -297,7 +301,7 @@ class NVC_Writer(BaseWriter):
 
         # Flush the PyNvCodec encoder
         if self.pipe is not None:
-            self._wait_to_finish()
+            self.flush_enc_stream()
 
         # Close the video file
         if self.encFile is not None:
@@ -308,11 +312,10 @@ class NVC_Writer(BaseWriter):
         self.pipe = None
 
         # Set the video to be muxed if requested
-        if self.config["auto_remux_videos"]:
-            print(f"muxing video {self.video_file_name.name}")  #TODO: figure out why the second videos are getting muxed twice!
+        if self.config["auto_remux_videos"] and not self._current_vid_muxing:
             self._mux_video(self.video_file_name)
 
-    def _wait_to_finish(self):
+    def flush_enc_stream(self):
 
         # Encoder is asynchronous, so we need to flush it
         while True:
@@ -336,27 +339,24 @@ class NVC_Writer(BaseWriter):
         # Save the muxer process to be joined when the parent ends
         if not hasattr(self, "muxer_processes"):
             self.muxer_processes = []
+        if not hasattr(self, "vids_muxed"):
+            self.vids_muxed = []
         self.muxer_processes.append(muxer)
+        self.vids_muxed.append(video_file_name)
+        self._current_vid_muxing = True
 
     def finish(self):
-
-        # Join the muxer processes
-        if hasattr(self, "muxer_processes"):
-            for muxer in self.muxer_processes:
-                print("joining muxer")
+        # Join the muxer processes and rename the videos
+        if self.config["auto_remux_videos"] and hasattr(self, "muxer_processes"):
+            for vid, muxer in zip(self.vids_muxed, self.muxer_processes):
                 muxer.join()
                 if not muxer.success.is_set():
                     warnings.warn(f"Failed to mux {muxer.video_file_name}")
-        
-        if self.config["auto_remux_videos"]:
-            print("renaming vids")
-
-            # Delete the original video
-            os.remove(self.video_file_name)
-
-            # Rename the muxed video
-            muxed_video_file_name = self.video_file_name.parent / f"{self.video_file_name.stem}.muxed.mp4"
-            os.rename(muxed_video_file_name, self.video_file_name)
+                else:
+                    # Rename the muxed video
+                    os.remove(vid)
+                    muxed_video_file_name = vid.parent / f"{vid.stem}.muxed.mp4"
+                    os.rename(muxed_video_file_name, vid)
 
 
 class VideoMuxer(mp.Process):
