@@ -105,14 +105,14 @@ export QT_DEBUG_PLUGINS=1
 <!-- do we still want to support Flir? I am removing the spinnaker stuff for now. -->
 <!-- TODO: Decide if we need Flir, if yes, add spinnaker installation instructions -->
 
-##### Setting USB camera settings
+##### Setting USB camera settings [optional]
 For pylon, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
 In pylon, this can be done with 
 ```
 sudo sh /opt/pylon/share/pylon/setup-usb.sh
 ``` 
 
-#### Enabling USB reset
+#### Enabling USB reset [optional]
 
 In addition, it is useful to give the library the ability to reset the cameras programatically. 
 You can do this by making a .rules file (e.g.`sudo nano /etc/udev/rules.d/99-basler.rules`)
@@ -154,9 +154,6 @@ If you want to have the IDE available in your Desktop menu then fllow the instru
 
 
 #### Package installation
-
-You are most likely going to want to customize this code, so just install it with `python setup.py develop` in the main directory. 
-
 ```
 conda create -n multicam python=3.10
 conda activate multicam
@@ -166,6 +163,10 @@ python setup.py develop
 conda install -c anaconda ipykernel
 python3 -m ipykernel install --user --name=multicam
 pip3 install pypylon Pillow matplotlib numpy pyusb pyyaml notebook
+```
+
+#### Add user to dialout group to access serial ports [optional]
+```
 sudo usermod -a -G dialout <your-username>
 ```
 
