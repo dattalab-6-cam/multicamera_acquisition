@@ -459,6 +459,11 @@ class EmulatedBaslerCamera(BaslerCamera):
             raise RuntimeError(f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}")
         self.model_name = "Emulated"
 
+    def set_trigger_mode(self, mode):
+        """Override the set trigger mode for emulated cameras, since they don't receive triggers.
+        """
+        pass
+
     @staticmethod
     def default_camera_config():
         # TODO: is there a way to get this to inherit gracefully?

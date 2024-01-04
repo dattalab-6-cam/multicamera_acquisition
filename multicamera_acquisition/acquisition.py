@@ -214,6 +214,9 @@ class AcquisitionLoop(mp.Process):
             current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
+                    if not self.stopped.is_set():
+                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']})")
+                        self.stopped.set()
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
@@ -576,7 +579,7 @@ def refactor_acquire_video(
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         # how long to record
         datetime_prev = datetime.now()
-        time_to_wait = recording_duration_s + 10 if final_config["globals"]["arduino_required"] else recording_duration_s
+        time_to_wait = recording_duration_s + 10
         endtime = datetime_prev + timedelta(seconds=time_to_wait)
         while datetime.now() < endtime:
 
@@ -589,6 +592,9 @@ def refactor_acquire_video(
                 if msg == "Finished":
                     print("Finished recieved from arduino")
                     break
+            elif not any([acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]):
+                print("All acquisition loops have stopped")
+                break
 
             # Update pbar
             if (datetime.now() - datetime_prev).seconds > 0:
