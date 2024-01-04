@@ -23,7 +23,7 @@ from multicamera_acquisition.tests.writer.test_writers import (
 
 @pytest.fixture(scope="function")
 def multidisplay_processes(tmp_path, fps, n_test_frames):
-    """Generate linked NVC_Writer and DummyFrames processes for testing
+    """Generate linked MultiDisplay and DummyFrames processes for testing
     """
     cameras = ['top', 'bottom']
     config = refactor_MultiDisplay.default_display_config(cameras)

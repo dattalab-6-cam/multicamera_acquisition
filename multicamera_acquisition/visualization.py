@@ -265,6 +265,57 @@ def plot_video_stats(csv_path, name):
     return
 
 
+def plot_image_grid(images, display_config):
+    """
+    Parameters
+    ----------
+    images : dict
+        Mapping from camera names to images from that camera
+    display_config : dict
+        Config dictionary for a MultiDisplay
+    """
+
+    cfg = display_config
+    nrow = int(np.ceil(len(cfg['camera_names']) // cfg['cameras_per_row']))
+    fig, ax = plt.subplots(nrow, cfg['cameras_per_row'])
+    ax = ax.ravel()
+    
+    # plot image for each camera in display config, formatted as in Multidisplay
+    for a, camera_name, rng in zip(ax, cfg['camera_names'], cfg['ranges']):
+        frame = images[camera_name]
+        frame = format_frame(
+            frame,
+            cfg['downsample'],
+            cfg['size'],
+            rng,
+            frame.dtype == np.uint16 or ("lucid" in camera_name))
+        a.imshow(frame)
+        a.set_title(camera_name)
+    
+    # hide unused axes
+    for a in ax[len(cfg['camera_names']):]:
+        ax.set_axis_off()
+
+    return fig, ax
+
+
+def load_first_frames(location):
+    """
+    Load first frame of an acquisition for visualization
+    Parameters
+    ----------
+    location : str
+        Directory passed to `acquire_video`
+    Returns
+    -------
+    images : dict[str, array]
+        Mapping of camera name to first frame of acquired video
+    """
+    # TODO: implement first_frames once metadata is saved
+    raise NotImplementedError
+
+
+
 
 class MultiDisplay(mp.Process):
     def __init__(
