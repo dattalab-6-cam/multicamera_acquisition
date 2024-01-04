@@ -21,7 +21,7 @@ Sources:
 ### Installation
 
 ### NVIDIA Driver
-1. Run software updater on a fresh installation of Ubuntu
+1. Run software updater on a fresh installation of Ubuntu 22.04.
 2. Check additional drivers to see if NVIDIA drivers are available and reboot your computer
 3. Click `Using X.OrgX ...` and run `Apply Changes` and reboot again
 
@@ -88,9 +88,9 @@ export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
 
 ```
 cd /to/your/donwload/dir/
-mv pylon_7.3* /tmp && cd /tmp
 tar -xf pylon_7.3.0.27189_linux-x86_64_debs.tar.gz
-sudo apt-get install ./pylon_*.deb ./codemeter*.deb
+sudo apt-get install ./pylon_*.deb
+sudo apt-get install ./codemeter*.deb
 ```
 Pylon should now be on your applications grid. If it does not launch upon clicking it, then try the following:
 ```
@@ -171,6 +171,7 @@ pip install -e .
 sudo usermod -a -G dialout <your-username>
 ```
 
+<!-- TODO: Test this part, NVIDIA patch not tested on laptop-->
 #### NVIDIA GPU encoding patch (Linux)
 
 We use GPU encoding to reduce the CPU load when writing from many cameras simultaneously. For some NVIDIA GPUs encoding more than 3 video streams requires a patch, [located here](https://github.com/keylase/nvidia-patch). Generally this just means running:
@@ -182,6 +183,37 @@ bash ./patch.sh
 ```
 
 <!-- TODO: Test this part, NVIDIA VPF not tested on laptop-->
+#### NVIDIA VideoProcessingFramework
+We use the NVIDIA VideoProcessingFramework to encode videos using the GPU. You can find more information in the official documentation [here](https://github.com/NVIDIA/VideoProcessingFramework).
+
+Follow [this guide](https://docs.nvidia.com/video-technologies/video-codec-sdk/12.0/ffmpeg-with-nvidia-gpu/index.html#compiling-for-linux) to build FFmpeg with Nvidia GPU from source.
+
+```
+# Install dependencies
+apt install -y \
+          libavfilter-dev \
+          libavformat-dev \
+          libavcodec-dev \
+          libswresample-dev \
+          libavutil-dev\
+          wget \
+          build-essential \
+          git
+
+# Install CUDA Toolkit (if not already present)
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+sudo dpkg -i cuda-keyring_1.0-1_all.deb
+sudo apt-get update
+sudo apt-get install -y cuda
+# Ensure nvcc to your $PATH (most commonly already done by the CUDA installation)
+export PATH=/usr/local/cuda/bin:$PATH
+
+# Install VPF
+pip3 install git+https://github.com/NVIDIA/VideoProcessingFramework
+# or if you cloned this repository
+pip3 install .
+```
+
 
 
 ### Basic usage 
