@@ -9,51 +9,37 @@ import logging
 import time
 import matplotlib.pyplot as plt
 import pandas as pd
-
-def get_latest(queue, timeout=0.1):
-    start_time = time.time()
-    try:
-        item = queue.get(timeout=timeout)
-        while True:
-            try:
-                elapsed_time = time.time() - start_time
-                remaining_time = timeout - elapsed_time
-
-                if remaining_time > 0:
-                    next_item = queue.get(timeout=remaining_time)
-                    item = next_item
-                else:
-                    break
-            except queue.Empty:
-                break
-    except queue.Empty:
-        item = None
-
-    return item
+import queue as sync_queue
+from collections.abc import Iterable
+from numbers import Number
+import glob, os.path
 
 
 class MultiDisplay(mp.Process):
-    def __init__(
-        self,
-        queues,
-        camera_names,
-        display_ranges,
-        display_downsample=4,
-        cameras_per_row=3,
-        display_size=(300, 300),
-    ):
-        super().__init__()
-        self.pipe = None
-        self.queues = queues
-        self.camera_names = camera_names
-        self.num_cameras = len(camera_names)
-        self.downsample = display_downsample
-        self.cameras_per_row = cameras_per_row
-        self.display_size = display_size
-        self.display_ranges = display_ranges
 
-    def run(self):
-        """Displays an image to a window."""
+    def __init__(self, queues, config = None):
+        super().__init__()
+
+        # Store params
+        self.config = config
+        self.queues = queues
+
+        # Set up the config
+        if config is None:
+            self.config = self.default_display_config()
+        else:
+            self.validate_config()
+
+        # break out config into object attrs
+        self.camera_names = config['camera_names']
+        self.display_ranges = config['ranges']
+        self.num_cameras = len(self.camera_names)
+        self.downsample = config['downsample']
+        self.cameras_per_row = config['cameras_per_row']
+        self.display_size = config['size']
+
+
+    def _init_layout(self):
 
         root = tk.Tk()
         xdim = self.display_size[0] * self.cameras_per_row
@@ -85,71 +71,134 @@ class MultiDisplay(mp.Process):
         for i in range(rowi):
             root.grid_rowconfigure(i, weight=1)
 
-        # quit the loop if an empty array is passed
+        return root, labels
+
+    
+    def _fetch_images(self, queue, camera_name, log_if_error):
+        try:
+            # Note: earlier code used queue.qsize() > 1; have not yet verified
+            # that queue.empty performs the same
+            if not queue.empty():
+                while not queue.empty():
+                    data = get_latest(queue, timeout=0.01)
+            else:
+                data = queue.get(timeout=0.01)
+        except Exception as error:
+            if log_if_error:
+                logging.info(
+                    "{}: Timeout occurred {}".format(
+                        camera_name, str(error)
+                    )
+                )
+            return [None]
+        return data
+    
+
+    def run(self):
+        
+        root, labels = self._init_layout()
+
         quit = False
         while True:
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
             for qi, (queue, camera_name) in enumerate(zip(self.queues, self.camera_names)):
-                try:
-                    if queue.qsize() > 1:
-                        while queue.qsize() > 1:
-                            data = get_latest(queue, timeout=0.01)
-                    else:
-                        data = queue.get(timeout=0.01)
-                except Exception as error:
-                    if initialized[qi]:
-                        logging.info(
-                            "{}: Timeout occurred {}".format(
-                                camera_name, str(error)
-                            )
-                        )
-                    continue
+                
+                data = self._fetch_images(
+                    queue,
+                    camera_name,
+                    log_if_error = initialized[qi])
+
                 if len(data) == 0:
                     quit = True
                     break
 
                 # retrieve frame
                 if data[0] is not None:
+
                     initialized[qi] = True
-                    frame = data[0][:: self.downsample, :: self.downsample]
-
-                    frame = cv2.resize(frame, self.display_size)
-
-                    # int16 should be azure data
-                    if frame.dtype == np.uint16 or ("lucid" in camera_name):
-                        # normalize in range
-                        if self.display_ranges[qi] is not None:
-                            frame = normalize_array(
-                                frame,
-                                min_value=self.display_ranges[qi][0],
-                                max_value=self.display_ranges[qi][1],
-                            ).astype(np.uint8)
-                        else:
-                            frame = normalize_array(frame).astype(np.uint8)
-
-                        # Convert frame to turbo/jet colormap
-                        colormap_frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
-
-                        # convert frame to PhotoImage
-                        img = ImageTk.PhotoImage(
-                            image=PIL.Image.fromarray(colormap_frame)
-                        )
-                    else:
-                        # convert frame to PhotoImage
-                        img = ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
+                    frame = format_frame(
+                        data[0],
+                        downsample = self.downsample,
+                        display_size = self.display_size,
+                        display_range = self.display_ranges[qi],
+                        is_depth = data[0].dtype == np.uint16 or ("lucid" in camera_name))
+                    
                     # update label with new image
+                    img = ImageTk.PhotoImage(frame)
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
-                    continue
                     # print(f"No data: {self.camera_names[qi]}")
+                    continue
 
             if quit:
                 break
             # update tkinter window
             root.update()
         root.destroy()
+
+
+    @staticmethod
+    def default_display_config():
+        return {
+            'camera_names': ['top', 'bottom'],
+            'ranges': [None, None],
+            'downsample': 4,
+            'cameras_per_row': 3,
+            'size': (300, 300),
+        }
+    
+    def validate_config(self):
+        
+        return True
+        # return config.validate_against_schema(self.config, self.get_config_schema())
+        
+
+def get_latest(queue, timeout=0.1):
+    start_time = time.time()
+    try:
+        item = queue.get(timeout=timeout)
+        while True:
+            try:
+                elapsed_time = time.time() - start_time
+                remaining_time = timeout - elapsed_time
+
+                if remaining_time > 0:
+                    next_item = queue.get(timeout=remaining_time)
+                    item = next_item
+                else:
+                    break
+            except sync_queue.Empty:
+                break
+    except sync_queue.Empty:
+        item = None
+
+    return item
+
+
+def format_frame(frame, downsample, display_size, display_range, is_depth):
+
+    frame = frame[:: downsample, :: downsample]
+    frame = cv2.resize(frame, display_size)
+
+    # int16 should be azure data
+    if is_depth:
+        # normalize in range
+        if display_range is not None:
+            frame = normalize_array(
+                frame,
+                min_value=display_range[0],
+                max_value=display_range[1],
+            ).astype(np.uint8)
+        else:
+            frame = normalize_array(frame).astype(np.uint8)
+
+        # Convert frame to turbo/jet colormap
+        frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
+
+    return PIL.Image.fromarray(frame)
+
 
 
 def normalize_array(frame, min_value=None, max_value=None):
@@ -215,3 +264,71 @@ def plot_video_stats(csv_path, name):
     print(f"Average framerate: {1 / (avg_diffs* 1e-9)} Hz")
 
     return
+
+
+def plot_image_grid(images, display_config):
+    """
+    Parameters
+    ----------
+    images : dict
+        Mapping from camera names to images from that camera
+    display_config : dict
+        Config dictionary for a MultiDisplay
+    """
+
+    cfg = display_config
+    nrow = int(np.ceil(len(cfg['camera_names']) / cfg['cameras_per_row']))
+    fig, ax = plt.subplots(nrow, cfg['cameras_per_row'],
+        figsize = (2 * cfg['cameras_per_row'], 2 * nrow))
+    ax = ax.ravel()
+
+    # plot image for each camera in display config, formatted as in Multidisplay
+    for a, camera_name, rng in zip(ax, cfg['camera_names'], cfg['ranges']):
+        frame = images[camera_name]
+        frame = format_frame(
+            frame,
+            cfg['downsample'],
+            cfg['size'],
+            rng,
+            frame.dtype == np.uint16 or ("lucid" in camera_name))
+        a.imshow(frame)
+        a.set_title(camera_name)
+        a.set_xticks([])
+        a.set_yticks([])
+    
+    # hide unused axes
+    for a in ax[len(cfg['camera_names']):]:
+        a.set_axis_off()
+
+    fig.tight_layout()
+    return fig, ax
+
+
+def load_first_frames(location):
+    """
+    Load first frame of an acquisition for visualization
+
+    Parameters
+    ----------
+    location : Path
+        Directory passed to `acquire_video`
+    Returns
+    -------
+    images : dict[str, array]
+        Mapping of camera name to first frame of acquired video
+    """
+    
+    images = {}
+    files = list(glob.glob(str(location / "*.mp4")))
+    if len(files) == 0:
+        logging.log(logging.WARN, f"No recordings found at {location}")
+    for f in files:
+        basename = os.path.basename(f)
+        cam_name = basename.split('.')[-2]
+        cap = cv2.VideoCapture(f)
+        if cap.isOpened():
+            _, frame = cap.read()
+            images[cam_name] = frame
+        else:
+            logging.log(logging.WARN, f"Could not read video {f}.")
+    return images

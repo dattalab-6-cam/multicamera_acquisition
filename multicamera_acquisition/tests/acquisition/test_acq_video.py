@@ -30,6 +30,8 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
+from multicamera_acquisition.visualization import MultiDisplay
+
 
 @pytest.fixture(scope="session")
 def trigger_type(pytestconfig):
@@ -69,6 +71,9 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
     acq_config = AcquisitionLoop.default_acq_loop_config()
     acq_config["max_frames_to_acqure"] = int(n_test_frames)
     full_config["acq_loop"] = acq_config
+
+    display_config = MultiDisplay.default_display_config()
+    full_config["rt_display"] = display_config
 
     # Run the func!
     save_loc, first_video_file_name, full_config = refactor_acquire_video(
