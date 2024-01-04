@@ -97,6 +97,7 @@ class Arduino(object):
     def __init__(self, config):
         
         self.config = config
+        
         self.fps = self.config['fps']
         self.azure_pulse_dur = self.config['azure_pulse_dur']
         self.acq_cycle_dur = self.config['acq_cycle_dur']
@@ -105,13 +106,20 @@ class Arduino(object):
         self.azure_offset = self.config['azure_offset']
         self.n_azures = self.config['n_azures']
 
+        self.n_pulses = self.config['n_pulses']
+        self.azure_idle_time = self.config['azure_idle_time']
+        self.trigger_offset = self.config['trigger_offset']
+
         return None
     def generate_basler_frametimes(self):
         """
         Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
 
-        Args:
-        - self: The instance of the class.
+        Used attributes:
+        - self.fps: Used to calculate interframe_interval.
+        - self.acq_cycle_dur: Used to determine the number of frames per cycle.
+        - self.camera_type: Determines the bottom offset for camera synchronization.
+        - self.basler_offset: Used in time calculation for Basler frames.
 
         Returns:
         - list: A list of timestamps representing Basler camera frame times adjusted for Azure synchronization.
@@ -150,3 +158,53 @@ class Arduino(object):
             times[-1] -= 330
 
         return times
+    
+    def generate_azure_pulse_inds(self):
+
+        """
+        Generate Azure pulse times and handle offsets for triggering.
+
+        Used attributes:
+        - self.n_azures: Used to calculate the number of pulses.
+        - self.azure_pulse_dur: Duration of each pulse.
+        - self.acq_cycle_dur: Used in determining pulse times.
+        - self.trigger_offset: Determines if an offset for triggering is applied.
+        - self.azure_idle_time: Idle time between pulses.
+
+        Returns:
+        - list: A list of tuples representing start and end times of Azure camera pulses.
+
+        Notes:
+        - This method modifies the 'azure_pulse_times' attribute.
+
+        """
+
+        # generate azure pulse times
+        azure_pulse_times = []
+        x0 = 0
+        for n in range(self.n_pulses):
+            x1 = x0 + (self.nazures * self.pulse_dur)
+            azure_pulse_times.append((x0, x1))
+            x0=(self.pulse_dur * self.nazures + self.idle_time)*(n+1)
+
+        if self.trigger_offset:
+            # get offsets to deal with cases 
+            post_offset = azure_pulse_times[3][0]
+            pre_offset = self.acq_cycle_dur - post_offset
+            # number of pulses precreding arduino trigger
+            pre_trigger = 3
+            # add offset to move first three pulses to end
+            for n in range(pre_trigger):
+                x0, x1 = azure_pulse_times[n]
+                x0 += pre_offset
+                x1 += pre_offset
+                azure_pulse_times[n] = (x0, x1)
+            # offset pulses post trigger
+            # now subtract to move last 6 pulses start at t = 0
+            for n in range(pre_trigger, self.n_pulses):
+                x0, x1 = azure_pulse_times[n]
+                x0 -= post_offset
+                x1 -= post_offset
+                azure_pulse_times[n] = (x0, x1)
+
+        return azure_pulse_times
