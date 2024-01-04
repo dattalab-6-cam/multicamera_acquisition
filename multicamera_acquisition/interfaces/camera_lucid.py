@@ -9,6 +9,7 @@ import logging
 import time 
 import ctypes
 
+
 class LucidCamera(BaseCamera):
     def __init__(self, index=0, lock=True, **kwargs):
         """
@@ -115,9 +116,8 @@ class LucidCamera(BaseCamera):
         #trigger_armed = False
         #while trigger_armed is False:
         #    trigger_armed = bool(self.nodemap['TriggerArmed'].value)
-        
-        logging.log(logging.DEBUG, f"done running init for camera {self.serial_number}")
 
+        logging.log(logging.DEBUG, f"done running init for camera {self.serial_number}")
 
     def start(self):
         "Start recording images."
