@@ -36,6 +36,7 @@ class AcquisitionLoop(mp.Process):
         self,
         write_queue,
         display_queue,
+        fps,
         write_queue_depth=None,
         camera_config=None,
         acq_loop_config=None,
@@ -67,6 +68,7 @@ class AcquisitionLoop(mp.Process):
         self.display_queue = display_queue
         self.write_queue_depth = write_queue_depth
         self.camera_config = camera_config
+        self.fps = fps
 
         # Get config
         if acq_loop_config is None:
@@ -337,6 +339,7 @@ def refactor_acquire_video(
 
         globals:
             fps: 30
+            arduino_required: False  # since trigger short name is set to continuous
         cameras:
             top:
                 name: top
@@ -394,24 +397,24 @@ def refactor_acquire_video(
     save_config(config_filepath, final_config)
 
     # Find the arduino to be used for triggering
-    # TODO: allow user to specify a port
-    ports = find_serial_ports()
-    found_arduino = False
-    for port in ports:
-        with serial.Serial(port=port, timeout=0.1) as arduino:
-            try:
-                wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Waiting...", seconds_to_wait=2
-                )
-                found_arduino = True
-                break
-            except ValueError:
-                continue
-    if found_arduino is False:
-        raise RuntimeError("Could not find waiting arduino to do triggers!")
-    else:
-        print(f"Using port {port} for arduino.")
-    arduino = serial.Serial(port=port, timeout=1)  #TODO: un-hardcode the timeout
+    if final_config["globals"]["arduino_required"]:
+        ports = find_serial_ports()
+        found_arduino = False
+        for port in ports:
+            with serial.Serial(port=port, timeout=0.1) as arduino:
+                try:
+                    wait_for_serial_confirmation(
+                        arduino, expected_confirmation="Waiting...", seconds_to_wait=2
+                    )
+                    found_arduino = True
+                    break
+                except ValueError:
+                    continue
+        if found_arduino is False:
+            raise RuntimeError("Could not find waiting arduino to do triggers!")
+        else:
+            print(f"Using port {port} for arduino.")
+        arduino = serial.Serial(port=port, timeout=1)  # TODO: un-hardcode the timeout
 
     # Delay recording to allow serial connection to connect
     sleep_duration = 2
@@ -465,6 +468,7 @@ def refactor_acquire_video(
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
             display_queue=None,
+            fps=final_config["globals"]["fps"],
             write_queue_depth=write_queue_depth,
             camera_config=camera_dict,
             acq_loop_config=final_config["acq_loop"],
@@ -489,66 +493,57 @@ def refactor_acquire_video(
         acquisition_loop._continue_from_main_thread()
         acquisition_loop.await_process.wait()
 
-    # Tell the arduino to start recording by sending along the recording parameters
-    fps = final_config["cameras"][camera_name]["fps"]
-    inv_framerate = int(np.round(1e6 / fps, 0))
-    num_cycles = int(recording_duration_s * 30)
-    msg = b"".join(
-        map(
-            packIntAsLong,
-            (
-                num_cycles,
-                inv_framerate,
-            ),
-        )
-    )
-    arduino.write(msg)
+    # If using arduino, start it. Otherwise, just wait for the specified duration.
+    if final_config["globals"]["arduino_required"]:
 
-    # Run acquision
-    try:
-        confirmation = wait_for_serial_confirmation(
-            arduino, expected_confirmation="Start", seconds_to_wait=10
+        # Tell the arduino to start recording by sending along the recording parameters
+        fps = final_config["globals"]["fps"]
+        inv_framerate = int(np.round(1e6 / fps, 0))
+        num_cycles = int(recording_duration_s * 30)
+        msg = b"".join(
+            map(
+                packIntAsLong,
+                (
+                    num_cycles,
+                    inv_framerate,
+                ),
+            )
         )
-    except:
-        # kill everything if we can't get confirmation
-        end_processes(acquisition_loops, writers, [])
-        return save_location, video_file_name, final_config
+        arduino.write(msg)
+
+        # Listen for confirmation from arduino that we're going, abort if not 
+        try:
+            confirmation = wait_for_serial_confirmation(
+                arduino, expected_confirmation="Start", seconds_to_wait=10
+            )
+        except:
+            # kill everything if we can't get confirmation
+            end_processes(acquisition_loops, writers, [])
+            return save_location, video_file_name, final_config
 
     # Wait for the specified duration
-    finished = False
     try:
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         # how long to record
         datetime_prev = datetime.now()
-        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        time_to_wait = recording_duration_s + 10 if final_config["globals"]["arduino_required"] else recording_duration_s
+        endtime = datetime_prev + timedelta(seconds=time_to_wait)
         while datetime.now() < endtime:
 
-            # Check for the arduino to say we're done
-            msg = arduino.readline().decode("utf-8").strip("\r\n")
-            if len(msg) > 0:
-                print(msg)
-                # TODO: save trigger data
-            if msg == "Finished":
-                print("Finished recieved from arduino")
-                finished = True
-                break
+            if final_config["globals"]["arduino_required"]:
+                # Check for the arduino to say we're done
+                msg = arduino.readline().decode("utf-8").strip("\r\n")
+                if len(msg) > 0:
+                    print(msg)
+                    # TODO: save trigger data
+                if msg == "Finished":
+                    print("Finished recieved from arduino")
+                    break
 
             # Update pbar
             if (datetime.now() - datetime_prev).seconds > 0:
                 pbar.update((datetime.now() - datetime_prev).seconds)
                 datetime_prev = datetime.now()
-
-        # If Python finishes first, wait a moment for the arduino to finish
-        if not finished:
-            try:
-                confirmation = wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Finished", seconds_to_wait=10
-                )
-            except ValueError as e:
-                print(e)
-
-    except (KeyboardInterrupt) as e:
-        pass
 
     finally:
         # End the processes and close the arduino regardless
@@ -556,7 +551,8 @@ def refactor_acquire_video(
         pbar.update((datetime.now() - datetime_prev).seconds)
         pbar.close()
         print("Ending processes, this may take a moment...")
-        arduino.close()
+        if final_config["globals"]["arduino_required"]:
+            arduino.close()
         end_processes(acquisition_loops, writers, None, writer_timeout=300)
         print("Done.")
 

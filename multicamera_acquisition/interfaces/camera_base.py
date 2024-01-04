@@ -8,14 +8,18 @@ class CameraError(Exception):
 
 
 def get_camera(
-    brand="flir",
+    brand="basler",
     id=0,
     name=None,
     config=None,
 ):
     """Get a camera object.
+
     Parameters
     ----------
+    fps : int
+        The desired frame rate for the camera.
+
     brand : string (default: 'flir')
         The brand of camera to use.  Currently only 'flir' is supported. If
         'flir', the software PySpin is used. if 'basler', the software pypylon
