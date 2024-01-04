@@ -45,11 +45,15 @@ of the input pins over the serial connection as a byte-string in the following
 format, where each <pin> is 2 bytes (int16), each <state> is 1 byte (uint8),
 and <cycleIndex> is 4 bytes (unsigned long):
 
-    "STX<pin1><state1>...<pinN><stateN><cycleIndex>ETX"
+    "<STX><pin1><state1>...<pinN><stateN><cycleIndex><ETX"
 
 (6) Once per second, the microcontroller will check for an interrupt signal,
 which should be the single character "I". If detected, the microcontroller will
 send the string "INTERRUPTED" over the serial connection and return to the
+main loop (i.e. step 1).
+
+(7) When the microcontroller has completed the specified number of acquisition
+cycles, it will send the string "F<ETX>" over the serial connection and return to the 
 main loop (i.e. step 1).
 */
 
@@ -253,6 +257,8 @@ void acquisitionLoop(
             elapsed_cycle_time = elapsed_cycle_time - cycle_duration;
         }
     }
+    // Send the finish message
+    Serial.write("F");  
 }
 
 

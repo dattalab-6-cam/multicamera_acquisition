@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 def packIntAsLong(value):
     """Packs a python 4 byte integer to an arduino long
+
     Parameters
     ----------
     value : int
@@ -22,29 +23,71 @@ def packIntAsLong(value):
     return struct.pack("i", value)
 
 
-def wait_for_serial_confirmation(
-    arduino, expected_confirmation, seconds_to_wait=5, timeout_duration_s=0.1
-):
-    confirmation = None
-    for i in range(int(seconds_to_wait / timeout_duration_s)):
-        confirmation = arduino.readline().decode("utf-8").strip("\r\n")
-        if confirmation == expected_confirmation:
-            logging.info("Confirmation recieved: {}".format(confirmation))
+def validate_arduino_config(config):
+    """
+    Validate the configuration dictionary for the Arduino interface. Checks that
+    - no pins are reused for different purposes
+    - XXX
+    """
+    # JACK TODO: write this function
+
+
+def generate_output_schedule(config):
+    """
+    Generate a sequence of state changes for the output pins of the arduino.
+    These changes will be performed during each acquisition cycle and will be used
+    to trigger cameras and lights.
+
+    Parameters:
+    ----------
+    config : dict
+        Configuration dictionary.
+
+    Returns:
+    --------
+    times : list
+        The time in microseconds at which each state change should occur.
+    pins : list
+        The output pin for each state change.
+    states : list
+        The state (0 or 1) for each state change.
+    """
+    # JACK TODO: write this function, make sure to raise errors if the timing cant work out
+    pass
+
+
+def check_for_response(serial_connection, expected_response):
+    """
+    Check if the arduino sends an expected response within 2 seconds.
+    """
+    for i in range(20):  # connection has 0.1 second timeout
+        msg = serial_connection.readline().decode("utf-8").strip("\r\n")
+        if msg == expected_response:
+            return True
+    return False
+
+
+def read_until_byte(serial_connection, byte, limit=1000):
+    """
+    Read from the serial connection until the specified byte is received.
+
+    Parameters:
+    -----------
+    serial_connection : serial.Serial
+        The serial connection to read from.
+
+    byte : bytes
+        The byte to read until.
+
+    limit : int
+        The maximum number of bytes to read before giving up.
+    """
+    msg = b""
+    for i in range(limit):
+        msg += serial_connection.read()
+        if msg[-1] == byte:
             break
-        else:
-            if len(confirmation) > 0:
-                logging.info(
-                    'PySerial: "{}" confirmation expected, got "{}"". Trying again.'.format(
-                        expected_confirmation, confirmation
-                    )
-                )
-    if confirmation != expected_confirmation:
-        raise ValueError(
-            'Confirmation "{}" signal never recieved from Arduino'.format(
-                expected_confirmation
-            )
-        )
-    return confirmation
+    return msg
 
 
 def find_serial_ports():
@@ -76,46 +119,129 @@ def find_serial_ports():
             pass
     return result
 
-class Arduino(object):
 
+class Arduino(object):
     """
-    Represents an Arduino setup for synchronization between cameras.
+    Handles communication with arduino for triggering cameras and lights, and performing sync IO.
 
     Attributes:
-    - config (dict): Configuration dictionary containing parameters like FPS, pulse durations, cycle durations,
-                     camera type, and offsets for synchronization.
-    - fps (int): Frames per second of the system.
-    - azure_pulse_dur (int): Duration of the ir pulse for the Azure camera.
-    - acq_cycle_dur (int): Duration of the acquisition cycle.
-    - camera_type (str): Type of the camera to trigger; either 'top' or 'bottom'.
-    - basler_offset (int): Offset duration for Basler camera pulse.
-    - azure_offset (int): Offset duration for Azure camera pulse.
-    - n_azures (int): Number of Azure cameras
-
+    - config (dict): Configuration dictionary.
+    - serial_connection (serial.Serial): Serial connection to arduino.
+    - output_schedule: Sequence of state changes per acquisition cycle as a tuple (times, pins, states).
     """
 
-    def __init__(self, config):
-        
+    def __init__(self, basename, config):
+        """
+        Save attributes, creates a triggerdata file, determines the schedule of output state changes
+        that the arduino should perform during each acquisition cycle, and validates the config.
+        """
+        # save attributes
         self.config = config
-        
-        self.fps = self.config['fps']
-        self.azure_pulse_dur = self.config['azure_pulse_dur']
-        self.acq_cycle_dur = self.config['acq_cycle_dur']
-        self.camera_type = self.config['camera_type_arduino']
-        self.basler_offset = self.config['basler_offset']
-        self.azure_offset = self.config['azure_offset']
-        self.n_azures = self.config['n_azures']
+        self.serial_connection = None
 
-        self.n_pulses = self.config['n_pulses']
-        self.azure_idle_time = self.config['azure_idle_time']
-        self.trigger_offset = self.config['trigger_offset']
+        # create triggerdata file
+        input_pins = self.config["trigger_data_input_pins"]
+        if len(input_pins) > 0:
+            header = "time," + ",".join([f"pin_{pin}" for pin in input_pins]) + "\n"
+            self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
+            self.trigger_data_file.write(header)
 
-        self.trigger_viz_figsize = self.config['trigger_viz_figsize']
+        # validate the schedule and config
+        validate_arduino_config(config, self.output_schedule)
 
+        # determine schedule of output state changes
+        self.output_schedule = generate_output_schedule(config)
 
-        return None
+        # vizualize the schedule if requested
+        if config["arduino"]["plot_trigger_schedule"]:
+            self.viz_triggers()
+
+    def open_serial_connection(self):
+        """
+        Open serial connection with the arduino. Use the port specified in the config file if
+        it exists, otherwise find the port automatically. After the connection is established, check for
+        a READY message from the arduino. If the message is not received, raise a RuntimeError.
+        """
+        if self.config["arduino"]["port"] is None:
+            ports = find_serial_ports()
+            if len(ports) == 0:
+                raise RuntimeError("No serial ports found!")
+
+            for port in ports:
+                with serial.Serial(port=port, timeout=0.1) as serial_connection:
+                    found_ready_arduino = check_for_response(serial_connection, "READY")
+                    if found_ready_arduino:
+                        break
+        else:
+            port = self.config["arduino"]["port"]
+            with serial.Serial(port=port, timeout=0.1) as serial_connection:
+                found_ready_arduino = check_for_response(serial_connection, "READY")
+
+        if found_ready_arduino:
+            self.serial_connection = serial.Serial(port=port, timeout=0.1)
+            print(f"Fount ready arduino on port: {port}")
+        else:
+            raise RuntimeError(
+                "Could not find ready arduino! Try restarting the arduino."
+            )
+
+    def close(self):
+        """
+        Close the serial connection and the triggerdata file.
+        """
+        self.serial_connection.close()
+        self.trigger_data_file.close()
+
+    def start_acquisition(self):
+        """
+        Start acquisition by sending instructions to the arduino. Raise a RuntimeError if the
+        arduino does not respond with the string "RECEIVED" within 2 seconds.
+        """
+        # flush input buffer to get rid of READY messages
+        self.serial_connection.flushInput()
+
+        # send instructions to arduino
+        # JACK TODO: send instructions to arduino
+
+        # check for response
+        acquisition_started = check_for_response(self.serial_connection, "RECEIVED")
+        if not acquisition_started:
+            raise RuntimeError(
+                "Could not start acquisition! Arduino did not respond with RECEIVED."
+            )
+
+    def interrupt_acquisition(self):
+        """
+        Interrupt acquisition. Raise a RuntimeError if the arduino does not respond
+        with the string "INTERRUPTED" within 2 seconds.
+        """
+        # JACK TODO: write interrupt message to arduino, check for response
+        pass
+
+    def check_for_input(self):
+        """
+        Check for input from the arduino. Two kinds of input are possible:
+        - The character "F<ETX>" indicates that the arduino has finished the acquisition loop.
+        - A triggerdata message, which reports the state of the arduino's input pins and
+          has the format "<STX><pin1><state1>...<pinN><stateN><cycleIndex><ETX>"
+
+        Returns:
+        --------
+        finished : bool
+            True if the arduino has finished the acquisition loop, False otherwise.
+        """
+        if self.serial_connection.in_waiting > 0:
+            msg = read_until_byte(self.serial_connection, b"\x03")
+            if msg == b"F\x03":
+                return True
+            elif msg[0] == "\x02":
+                # JACK TODO: parse triggerdata message, write to file
+                pass
+            else:
+                raise RuntimeError(f"Unexpected message from arduino: {msg}")
+        return False
+
     def generate_basler_frametimes(self):
-
         """
         Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
 
@@ -134,24 +260,29 @@ class Arduino(object):
         """
 
         valid_fps = [30, 60, 90, 120, 150]
-        assert self.fps in valid_fps, ValueError(f'fps not in {valid_fps}')
+        assert self.fps in valid_fps, ValueError(f"fps not in {valid_fps}")
 
         # convert to microseconds
-        interframe_interval = (1/self.fps)*1e6
+        interframe_interval = (1 / self.fps) * 1e6
         # get nframes per cycle
         nframes = np.ceil(self.acq_cycle_dur / interframe_interval).astype(int)
 
-        if self.camera_type =='top':
+        if self.camera_type == "top":
             bottom_offset = 0
-        elif self.camera_type == 'bottom':
+        elif self.camera_type == "bottom":
             bottom_offset = 1750
         else:
-            raise ValueError('camera must be one of the following: top, bottom')
+            raise ValueError("camera must be one of the following: top, bottom")
 
         times = []
         # get times
         for n in range(nframes):
-            t = (interframe_interval * n) + (self.nazures * self.azure_pulse_dur) + self.azure_offset + self.basler_offset
+            t = (
+                (interframe_interval * n)
+                + (self.nazures * self.azure_pulse_dur)
+                + self.azure_offset
+                + self.basler_offset
+            )
             t += bottom_offset
             times.append(t)
 
@@ -159,13 +290,12 @@ class Arduino(object):
         if self.fps in (120, 150):
             times[1] += 510
         # edge case to deal with last frame interfering with azure
-        if self.fps == 150 and self.camera_type =='bottom':
+        if self.fps == 150 and self.camera_type == "bottom":
             times[-1] -= 330
 
         return times
-    
-    def generate_azure_pulse_inds(self):
 
+    def generate_azure_pulse_inds(self):
         """
         Generate Azure pulse times and handle offsets for triggering.
 
@@ -181,7 +311,6 @@ class Arduino(object):
 
         Notes:
         - This method modifies the 'azure_pulse_times' attribute.
-
         """
 
         # generate azure pulse times
@@ -190,10 +319,10 @@ class Arduino(object):
         for n in range(self.n_pulses):
             x1 = x0 + (self.nazures * self.pulse_dur)
             azure_pulse_times.append((x0, x1))
-            x0=(self.pulse_dur * self.nazures + self.idle_time)*(n+1)
+            x0 = (self.pulse_dur * self.nazures + self.idle_time) * (n + 1)
 
         if self.trigger_offset:
-            # get offsets to deal with cases 
+            # get offsets to deal with cases
             post_offset = azure_pulse_times[3][0]
             pre_offset = self.acq_cycle_dur - post_offset
             # number of pulses precreding arduino trigger
@@ -213,10 +342,8 @@ class Arduino(object):
                 azure_pulse_times[n] = (x0, x1)
 
         return azure_pulse_times
-    
 
     def viz_triggers(self):
-
         """
         Visualize the synchronization triggers for Azure and Basler cameras.
 
@@ -242,12 +369,14 @@ class Arduino(object):
 
         for n in range(self.n_pulses):
             x0, x1 = azure_times[n]
-            ax.axvline(x0, ymax=1/2)
-            ax.axvline(x1, ymax=1/2)
-            ax.axhline(1.0, xmin=(x0/self.acq_cycle_dur), xmax=x1/self.acq_cycle_dur)
+            ax.axvline(x0, ymax=1 / 2)
+            ax.axvline(x1, ymax=1 / 2)
+            ax.axhline(
+                1.0, xmin=(x0 / self.acq_cycle_dur), xmax=x1 / self.acq_cycle_dur
+            )
 
         for t in basler_times:
-            plt.axvline(t, ymax=1/2, color='red')
+            plt.axvline(t, ymax=1 / 2, color="red")
 
         plt.show()
 

@@ -25,11 +25,7 @@ from multicamera_acquisition.interfaces.config import (
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
-from multicamera_acquisition.interfaces.arduino import (
-    find_serial_ports,
-    packIntAsLong,
-    wait_for_serial_confirmation,
-)
+from multicamera_acquisition.interfaces.arduino import Arduino
 
 # from multicamera_acquisition.visualization import MultiDisplay
 
@@ -407,6 +403,7 @@ def refactor_acquire_video(
 
     # Connect to the arduino (or other microcontroller)
     arduino = Arduino(save_location, base_filename, final_config)
+    arduino.open_serial_connection()
 
     # Create the various processes
     writers = []
