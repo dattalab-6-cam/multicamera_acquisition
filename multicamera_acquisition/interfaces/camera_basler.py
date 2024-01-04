@@ -1,9 +1,11 @@
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 from pypylon import pylon
+from pypylon._genicam import RuntimeException
 import numpy as np
 import os
 import time
 
+import pdb
 
 class BaslerCamera(BaseCamera):
 
@@ -143,7 +145,13 @@ class BaslerCamera(BaseCamera):
         serial_nos = []
         models = []
         for i, device in enumerate(devices):
-            camera = pylon.InstantCamera(self.system.CreateDevice(device))
+            try:
+                camera = pylon.InstantCamera(self.system.CreateDevice(device))
+            except RuntimeException as e:
+                # TODO: what is the proper way to check if we can open a camera, rather than catching the error?
+                serial_nos.append(None)
+                models.append(None)
+                continue
             camera.Open()
             sn = str(camera.GetDeviceInfo().GetSerialNumber())
             model = camera.GetDeviceInfo().GetModelName()
@@ -278,6 +286,14 @@ class BaslerCamera(BaseCamera):
         "Stop recording images."
         self.cam.StopGrabbing()
         self.running = False
+
+    def close(self):
+        """Closes the camera and cleans up.  Automatically called if the camera
+        is opening using a `with` clause."""
+
+        self.stop()
+        self.cam.Close()
+        del self.cam
 
     def get_image(self, timeout=None):
         """Get an image from the camera.

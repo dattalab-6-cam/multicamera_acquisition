@@ -6,6 +6,7 @@ import glob
 import serial
 import logging
 
+
 def packIntAsLong(value):
     """Packs a python 4 byte integer to an arduino long
     Parameters
@@ -46,7 +47,7 @@ def wait_for_serial_confirmation(
 
 
 def find_serial_ports():
-    """ Lists serial port names, across OS's.
+    """Lists serial port names, across OS's.
     https://stackoverflow.com/questions/12090503/listing-available-com-ports-with-python
 
         :raises EnvironmentError:
@@ -54,15 +55,15 @@ def find_serial_ports():
         :returns:
             A list of the serial ports available on the system
     """
-    if sys.platform.startswith('win'):
-        ports = ['COM%s' % (i + 1) for i in range(256)]
-    elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+    if sys.platform.startswith("win"):
+        ports = ["COM%s" % (i + 1) for i in range(256)]
+    elif sys.platform.startswith("linux") or sys.platform.startswith("cygwin"):
         # this excludes your current terminal "/dev/tty"
-        ports = glob.glob('/dev/tty[A-Za-z]*')
-    elif sys.platform.startswith('darwin'):
-        ports = glob.glob('/dev/tty.*')
+        ports = glob.glob("/dev/tty[A-Za-z]*")
+    elif sys.platform.startswith("darwin"):
+        ports = glob.glob("/dev/tty.*")
     else:
-        raise EnvironmentError('Unsupported platform')
+        raise EnvironmentError("Unsupported platform")
 
     result = []
     for port in ports:

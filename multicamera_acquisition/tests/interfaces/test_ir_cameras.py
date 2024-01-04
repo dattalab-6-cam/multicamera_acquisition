@@ -18,7 +18,7 @@ def camera_type(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
-    return pytestconfig.getoption("camera_type", default="basler_emulated")
+    return pytestconfig.getoption("camera_type")  # default emulated, see conftest.py
 
 
 @pytest.fixture(scope="function")
@@ -73,6 +73,27 @@ class Test_Camera_InitAndStart():
         img = camera.get_array(timeout=1000)
         assert isinstance(img, np.ndarray)
         camera.stop()
+
+
+class Test_OpenMultipleCameras():
+    """Test how we open multiple cameras so they don't interfere
+    """
+    def test_two_cameras(self, fps):
+        # should default to 0
+        cam1 = BaslerCamera(id=0, fps=fps)
+        cam2 = BaslerCamera(id=1, fps=fps)
+        cam1.init()
+        cam2.init()
+        # cam1.start()
+        # cam2.start()
+        # img1 = cam1.get_array(timeout=1000)
+        # img2 = cam2.get_array(timeout=1000)
+        # assert isinstance(img1, np.ndarray)
+        # assert isinstance(img2, np.ndarray)
+        # cam1.stop()
+        # cam2.stop()
+        cam1.close()
+        cam2.close()
 
 
 class Test_CameraIDMethods():

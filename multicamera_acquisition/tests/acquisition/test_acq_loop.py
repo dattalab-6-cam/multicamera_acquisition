@@ -20,7 +20,7 @@ from multicamera_acquisition.interfaces.camera_basler import (
     BaslerCamera
 )
 
-from multicamera_acquisition.video_io_ffmpeg import count_frames
+from multicamera_acquisition.video_utils import count_frames
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +81,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
 
     # Create the AcquisitionLoop process
     acq_config = AcquisitionLoop.default_acq_loop_config()
-    acq_config["max_frames_to_acqure"] = n_test_frames
+    acq_config["max_frames_to_acqure"] = int(n_test_frames)
     acq_loop = AcquisitionLoop(
         write_queue,
         None,
