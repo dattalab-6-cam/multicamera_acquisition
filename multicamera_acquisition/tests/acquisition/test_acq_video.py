@@ -89,11 +89,19 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         assert count_frames(str(first_video_file_name)) == (int(n_test_frames))
 
 
-def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_test_frames, fps):
+def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
-        {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
+        {"name": "top", "brand": camera_brand, "id": 0},
+        {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
+
+    # Set the trigger behavior
+    if trigger_type == "continuous":
+        short_name = "continuous"
+    elif trigger_type == "arduino":
+        short_name = "arduino"
+    for camera in camera_list:
+        camera["short_name"] = short_name
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list, fps)
@@ -148,9 +156,17 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
 
 def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, fps):
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
-        {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
+        {"name": "top", "brand": camera_brand, "id": 0},
+        {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
+
+    # Set the trigger behavior
+    if trigger_type == "continuous":
+        short_name = "continuous"
+    elif trigger_type == "arduino":
+        short_name = "arduino"
+    for camera in camera_list:
+        camera["short_name"] = short_name
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list, fps)
