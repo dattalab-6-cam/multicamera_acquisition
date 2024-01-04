@@ -25,14 +25,30 @@ Sources:
 2. Check additional drivers to see if NVIDIA drivers are available and reboot your computer
 3. Click `Using X.OrgX ...` and run `Apply Changes` and reboot again
 
-### k4aviewer
+### Update and install support packages
+```
+sudo apt install git
+sudo apt install curl
+sudo apt install build-essential
+sudo apt-get update
+sudo apt install ffmpeg
 
+sudo apt-get update
+sudo apt-get install -y libsoundio1
+```
+
+### Install Anaconda
+```
+curl -L https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o "$HOME/miniconda3_latest.sh"
+chmod +x $HOME/miniconda3_latest.sh
+$HOME/miniconda3_latest.sh
+```
+Restart your terminal for the changes to take effect.
+
+### k4aviewer
 ```
 sudo apt-add-repository -y -n 'deb http://archive.ubuntu.com/ubuntu focal main'
 sudo apt-add-repository -y 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-get install -y libsoundio1
-sudo apt-add-repository -r -y -n 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-add-repository -r -y 'deb http://archive.ubuntu.com/ubuntu focal main'
 
 curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3/libk4a1.3_1.3.0_amd64.deb > /tmp/libk4a1.3_1.3.0_amd64.deb
 echo 'libk4a1.3 libk4a1.3/accepted-eula-hash string 0f5d5c5de396e4fee4c0753a21fee0c1ed726cf0316204edda484f08cb266d76' | sudo debconf-set-selections
@@ -42,7 +58,7 @@ curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a
 sudo dpkg -i /tmp/libk4a1.3-dev_1.3.0_amd64.deb
 
 curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0/libk4abt1.0_1.0.0_amd64.deb > /tmp/libk4abt1.0_1.0.0_amd64.deb
-echo 'libk4abt1.0	libk4abt1.0/accepted-eula-hash	string	03a13b63730639eeb6626d24fd45cf25131ee8e8e0df3f1b63f552269b176e38' | sudo debconf-set-selections
+echo 'libk4abt1.0 libk4abt1.0/accepted-eula-hash string	03a13b63730639eeb6626d24fd45cf25131ee8e8e0df3f1b63f552269b176e38' | sudo debconf-set-selections
 sudo dpkg -i /tmp/libk4abt1.0_1.0.0_amd64.deb
 
 curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0-dev/libk4abt1.0-dev_1.0.0_amd64.deb > /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
@@ -55,10 +71,17 @@ sudo dpkg -i /tmp/k4a-tools_1.3.0_amd64.deb
 Then update the udev rules
 
 ```
-wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules``
+wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules
 sudo mv 99-k4a.rules /etc/udev/rules.d/
 ```
 Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
+
+If you are using Ubuntu 22.04, you will need to run the following lines to ensure the drivers and packages are in the correct location. 
+```
+find / -name libstdc++.so.6 2>/dev/null
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+```
+
 
 #### Pylon installation
 1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download `pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package`
@@ -79,16 +102,15 @@ export QT_DEBUG_PLUGINS=1
 /opt/pylon/bin/pylonviewer
 ```
 
+<!-- do we still want to support Flir? I am removing the spinnaker stuff for now. -->
+<!-- TODO: Decide if we need Flir, if yes, add spinnaker installation instructions -->
+
 ##### Setting USB camera settings
-For both pylon and spinnaker, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
+For pylon, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
 In pylon, this can be done with 
 ```
 sudo sh /opt/pylon/share/pylon/setup-usb.sh
-```
-In spinnaker, navigate to the spinnaker download folder and run 
-```
-sudo sh configure_usbfs.sh
-```
+``` 
 
 #### Enabling USB reset
 
@@ -130,10 +152,6 @@ sudo apt install libfuse2
 ```
 If you want to have the IDE available in your Desktop menu then fllow the instructions at this [link](https://askubuntu.com/questions/1311600/add-an-appimage-application-to-the-top-menu-bar)
 
-#### ffmpeg
-```
-sudo apt install ffmpeg
-```
 
 #### Package installation
 
@@ -147,8 +165,7 @@ cd multicamera_acquisition
 python setup.py develop
 conda install -c anaconda ipykernel
 python3 -m ipykernel install --user --name=multicam
-pip3 install pypylon, Pillow, matplotlib, numpy, pyusb
-pip3 install 
+pip3 install pypylon Pillow matplotlib numpy pyusb pyyaml notebook
 sudo usermod -a -G dialout <your-username>
 ```
 
@@ -166,24 +183,8 @@ bash ./patch.sh
 
 
 ### Basic usage 
-```{python}
-from multicamera_acquisition.acquisition import acquire_video
+See notebooks folder for examples.
 
-camera_list = [
-    {'name': 'top', 'serial': 24535665, 'brand':'basler', 'gain': 12, 'exposure_time': 3000, 'display': False},
-    {'name': 'side1', 'serial': 24548223, 'brand':'basler', 'gain': 12, exposure_time': 3000, 'display': False},
-    {'name': 'side2', 'serial': 22181547, 'brand':'flir', 'gain': 12, exposure_time': 3000, 'display': False},
-    {'name': 'side3', 'serial': 22181612, 'brand':'flir', 'gain': 12, exposure_time': 3000, 'display': False},
-]
-
-acquire_video(
-    'your/save/location/',
-    camera_list,
-    framerate = 30,
-    recording_duration_s = 10,
-    append_datetime=True,
-)
-```
 
 ## Synchronization
 
