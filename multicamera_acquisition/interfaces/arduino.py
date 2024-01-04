@@ -5,6 +5,7 @@ import sys
 import glob
 import serial
 import logging
+import matplotlib.pyplot as plt
 
 
 def packIntAsLong(value):
@@ -93,7 +94,6 @@ class Arduino(object):
 
     """
 
-
     def __init__(self, config):
         
         self.config = config
@@ -110,8 +110,12 @@ class Arduino(object):
         self.azure_idle_time = self.config['azure_idle_time']
         self.trigger_offset = self.config['trigger_offset']
 
+        self.trigger_viz_figsize = self.config['trigger_viz_figsize']
+
+
         return None
     def generate_basler_frametimes(self):
+
         """
         Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
 
@@ -128,6 +132,7 @@ class Arduino(object):
         - ValueError: If the provided FPS is not within the valid supported frame rates [30, 60, 90, 120, 150].
         - ValueError: If the camera parameter is not 'top' or 'bottom'.
         """
+
         valid_fps = [30, 60, 90, 120, 150]
         assert self.fps in valid_fps, ValueError(f'fps not in {valid_fps}')
 
@@ -208,3 +213,42 @@ class Arduino(object):
                 azure_pulse_times[n] = (x0, x1)
 
         return azure_pulse_times
+    
+
+    def viz_triggers(self):
+
+        """
+        Visualize the synchronization triggers for Azure and Basler cameras.
+
+        Returns:
+        - tuple: A tuple containing the generated figure and axes objects.
+
+        Used attributes:
+        - self.generate_azure_pulse_inds(): Generates Azure pulse times for visualization.
+        - self.generate_basler_frametimes(): Generates Basler frame times for visualization.
+        - self.trigger_viz_figsize: Size of the figure for visualization.
+        - self.acq_cycle_dur: Duration of the acquisition cycle.
+        - self.n_pulses: Number of pulses.
+        """
+
+        azure_times = self.generate_azure_pulse_inds()
+        basler_times = self.generate_basler_frametimes()
+
+        # plotting
+        fig = plt.figure(figsize=self.trigger_viz_figsize)
+        ax = plt.gca()
+        ax.set_ylim(0, 2)
+        ax.set_xlim((0, self.acq_cycle_dur))
+
+        for n in range(self.n_pulses):
+            x0, x1 = azure_times[n]
+            ax.axvline(x0, ymax=1/2)
+            ax.axvline(x1, ymax=1/2)
+            ax.axhline(1.0, xmin=(x0/self.acq_cycle_dur), xmax=x1/self.acq_cycle_dur)
+
+        for t in basler_times:
+            plt.axvline(t, ymax=1/2, color='red')
+
+        plt.show()
+
+        return fig, ax
