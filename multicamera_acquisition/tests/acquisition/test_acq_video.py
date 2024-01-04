@@ -29,8 +29,9 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
+from multicamera_acquisition.visualization import refactor_MultiDisplay
 
-def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames):
+def create_twocam_config(camera_brand, n_test_frames):
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
         {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
@@ -55,6 +56,17 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames):
     acq_config = AcquisitionLoop.default_acq_loop_config()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
+
+    display_config = refactor_MultiDisplay.default_display_config()
+    full_config["rt_display"] = display_config
+
+    return full_config
+
+
+
+def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames):
+    
+    full_config = create_twocam_config(camera_brand, n_test_frames)
 
     # Run the func!
     save_loc, full_config = refactor_acquire_video(

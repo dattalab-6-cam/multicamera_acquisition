@@ -16,12 +16,14 @@ from numbers import Number
 
 class refactor_MultiDisplay(mp.Process):
 
-    def __init__(self, queues, config = None):
+    def __init__(self, queues, camera_names, ranges, config = None):
         super().__init__()
 
         # Store params
         self.config = config
         self.queues = queues
+        self.camera_names = camera_names
+        self.display_ranges = ranges
 
         # Set up the config
         if config is None:
@@ -30,12 +32,10 @@ class refactor_MultiDisplay(mp.Process):
             self.validate_config()
 
         # break out config into object attrs
-        self.camera_names = config['camera_names']
         self.num_cameras = len(self.camera_names)
         self.downsample = config['downsample']
         self.cameras_per_row = config['cameras_per_row']
         self.display_size = config['size']
-        self.display_ranges = config['ranges']
 
 
     def _init_layout(self):
@@ -128,8 +128,8 @@ class refactor_MultiDisplay(mp.Process):
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
-                    continue
                     # print(f"No data: {self.camera_names[qi]}")
+                    continue
 
             if quit:
                 break
@@ -139,10 +139,8 @@ class refactor_MultiDisplay(mp.Process):
 
 
     @staticmethod
-    def default_display_config(camera_names, ):
+    def default_display_config():
         return {
-            'camera_names': camera_names,
-            'ranges': [(0, 256) for _ in camera_names],
             'downsample': 4,
             'cameras_per_row': 3,
             'size': (300, 300),

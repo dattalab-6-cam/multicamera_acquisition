@@ -10,6 +10,7 @@ import pytest
 import sys
 
 from multicamera_acquisition.visualization import refactor_MultiDisplay
+from multicamera_acquisition.acquisition import refactor_acquire_video
 
 from multicamera_acquisition.video_io_ffmpeg import count_frames
 
@@ -19,6 +20,13 @@ from multicamera_acquisition.tests.writer.test_writers import (
     n_test_frames,
     dummy_frames_func
 )
+
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import ( 
+    camera_type,
+    camera_brand
+)
+
+from multicamera_acquisition.tests.acquisition.test_acq_video import create_twocam_config
 
 
 @pytest.fixture(scope="function")
@@ -55,5 +63,28 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
         proc.join(timeout=60)
     display.join(timeout=60)
 
+
+
+@pytest.mark.gui
+def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames):
+    """
+    Run an acquisition with display enabled.
+
+    Note: when using emulated cameras, display will run faster than 'real time'
+    because there is no delay to emulate framerate.
+    """
+    full_config = create_twocam_config(camera_brand, n_test_frames)
+    full_config['cameras']['top']['display'] = True
+    full_config['cameras']['bottom']['display'] = True
+    full_config['acq_loop']['display_frames'] = True
+
+    # Run the func!
+    save_loc, full_config = refactor_acquire_video(
+        tmp_path,
+        full_config,
+        recording_duration_s=5,
+        append_datetime=True,
+        overwrite=False,
+    )
 
 
