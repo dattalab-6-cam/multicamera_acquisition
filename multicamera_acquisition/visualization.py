@@ -9,6 +9,7 @@ import logging
 import time
 import matplotlib.pyplot as plt
 import pandas as pd
+import queue as sync_queue
 from collections.abc import Iterable
 from numbers import Number
 
@@ -20,21 +21,21 @@ class refactor_MultiDisplay(mp.Process):
 
         # Store params
         self.config = config
-
-        self.pipe = None
         self.queues = queues
-        self.camera_names = config['camera_names']
-        self.num_cameras = len(self.camera_names)
-        self.downsample = config['downsample']
-        self.cameras_per_row = config['cameras_per_row']
-        self.display_size = config['size']
-        self.display_ranges = config['ranges']
 
         # Set up the config
         if config is None:
             self.config = self.default_display_config()
         else:
             self.validate_config()
+
+        # break out config into object attrs
+        self.camera_names = config['camera_names']
+        self.num_cameras = len(self.camera_names)
+        self.downsample = config['downsample']
+        self.cameras_per_row = config['cameras_per_row']
+        self.display_size = config['size']
+        self.display_ranges = config['ranges']
 
 
     def _init_layout(self):
@@ -74,8 +75,10 @@ class refactor_MultiDisplay(mp.Process):
     
     def _fetch_images(self, queue, camera_name, log_if_error):
         try:
-            if queue.qsize() > 1:
-                while queue.qsize() > 1:
+            # Note: earlier code used queue.qsize() > 1; have not yet verified
+            # that queue.empty performs the same
+            if not queue.empty():
+                while not queue.empty():
                     data = get_latest(queue, timeout=0.01)
             else:
                 data = queue.get(timeout=0.01)
@@ -111,8 +114,9 @@ class refactor_MultiDisplay(mp.Process):
 
                 # retrieve frame
                 if data[0] is not None:
+
                     initialized[qi] = True
-                    img = format_frame(
+                    frame = format_frame(
                         data[0],
                         downsample = self.downsample,
                         display_size = self.display_size,
@@ -120,6 +124,7 @@ class refactor_MultiDisplay(mp.Process):
                         is_depth = data[0].dtype == np.uint16 or ("lucid" in camera_name))
                     
                     # update label with new image
+                    img = ImageTk.PhotoImage(frame)
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
@@ -143,21 +148,10 @@ class refactor_MultiDisplay(mp.Process):
             'size': (300, 300),
         }
     
-
     def validate_config(self):
         
-        pass
-        # for k in refactor_MultiDisplay.default_display_config([]):
-        #     assert 'camera_names' in self.config, f"Display config missing '{k}'"
-        
-        # assert (
-        #     isinstance(self.config['camera_names'], Iterable),
-        # ), "Display config `camera_names` must be a list or tuple."
-        # assert (
-        #     isinstance(self.config['ranges'], Iterable) and
-        #     isinstance(self.config['ranges'][0], Iterable) and
-        #     len(self.config['ranges'][0]) == 2
-        # ), ""
+        return True
+        # return config.validate_against_schema(self.config, self.get_config_schema())
         
 
 def get_latest(queue, timeout=0.1):
@@ -174,9 +168,9 @@ def get_latest(queue, timeout=0.1):
                     item = next_item
                 else:
                     break
-            except queue.Empty:
+            except sync_queue.Empty:
                 break
-    except queue.Empty:
+    except sync_queue.Empty:
         item = None
 
     return item

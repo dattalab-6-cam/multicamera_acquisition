@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import os
 import pytest
-
+import sys
 
 from multicamera_acquisition.visualization import refactor_MultiDisplay
 
@@ -39,6 +39,7 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
     return (display, dummy_frames_procs)
 
 
+@pytest.mark.gui
 def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
     # Get the writer and dummy frames proc
@@ -54,10 +55,5 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
         proc.join(timeout=60)
     display.join(timeout=60)
 
-    # NB: this won't work! Because multiprocessing stuff runs in its own scope.
-    # Would need to use a pipe / shared value to communicate between the two.
 
-    # Check that the video exists
-    # assert writer.video_file_name.exists()
-    # assert count_frames(str(writer.video_file_name).replace(".mp4", ".muxed.mp4")) == n_test_frames
 
