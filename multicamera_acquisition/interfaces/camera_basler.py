@@ -47,8 +47,8 @@ class BaslerCamera(BaseCamera):
         if self.config is None:
             self.config = BaslerCamera.default_camera_config()  # If no config file is specified, use the default
 
-        if fps is not None or "fps" in self.config.keys():
-            warnings.warn("Providing fps for Baslers is deprecated and generally not necessary.")
+        if (fps is not None or "fps" in self.config.keys()) and ("trigger_mode" in self.config.keys() and self.config["trigger_mode"] == "arduino"):
+            warnings.warn("Providing fps for Baslers in triggered mode is deprecated and generally not necessary.")
 
     def __repr__(self):
         """Returns a string representation of the camera object.
@@ -270,9 +270,13 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerActivation.SetValue("RisingEdge")
             self.cam.TriggerMode.SetValue("On")
         elif mode == "no_trigger":
+            if self.fps is None:
+                warnings.warn("No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps.")
+                self.fps = 30
             self.cam.AcquisitionMode.SetValue("Continuous")
-            self.cam.TriggerSelector.SetValue("FrameStart")
             self.cam.TriggerMode.SetValue("Off")
+            self.cam.AcquisitionFrameRateEnable.SetValue(True)
+            self.cam.AcquisitionFrameRate.SetValue(float(self.fps))
 
         else:
             raise ValueError("Trigger mode must be 'hardware' or 'no_trigger'")
@@ -322,7 +326,7 @@ class BaslerCamera(BaseCamera):
                 Otherwise, wait indefinitely.
 
         get_timestamp : bool (default: False)
-            If True, returns timestamp of frame (from the camera's clock).
+            If True, returns timestamp of frame (from the camera's clock, in microseconds).
 
         Returns
         -------

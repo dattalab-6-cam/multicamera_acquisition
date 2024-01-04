@@ -127,7 +127,7 @@ class Test_CameraIDMethods():
 class Test_FPSWithoutTrigger():
     """Test that we can set the camera fps when we're in non-trigger mode.
     """
-    @pytest.mark.parametrize("_fps", [1, 10, 30])
+    @pytest.mark.parametrize("_fps", [30, 60, 90, 120])
     def test_fps(self, _fps, camera_type):
         if camera_type == 'basler_camera':
             cam = BaslerCamera(id=0, fps=_fps)
@@ -144,6 +144,7 @@ class Test_FPSWithoutTrigger():
         cam.close()
 
         # Check that the time between the two images is close to the desired fps
-        dt = ts2 - ts1
+        dt = (ts2 - ts1)/1e9  # convert to sec
         empirical_fps = 1 / dt
+        print(empirical_fps)
         assert np.isclose(empirical_fps, _fps, atol=0.1)
