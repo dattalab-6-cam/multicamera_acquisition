@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import sys
 
 from multicamera_acquisition.visualization import (
-    refactor_MultiDisplay,
+    MultiDisplay,
     load_first_frames,
     plot_image_grid
 )
@@ -40,13 +40,13 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
     """Generate linked MultiDisplay and DummyFrames processes for testing
     """
     cameras = ['top', 'bottom']
-    config = refactor_MultiDisplay.default_display_config(cameras)
+    config = MultiDisplay.default_display_config(cameras)
     queues = [mp.Queue() for c in cameras]
     dummy_frames_procs = [
         get_DummyFrames_process(fps, queue, n_test_frames)
         for queue in queues
     ]
-    display = refactor_MultiDisplay(
+    display = MultiDisplay(
         queues,
         config=config,
     )

@@ -20,7 +20,7 @@ from multicamera_acquisition.config.config import (
 )
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
 from multicamera_acquisition.paths import prepare_rec_dir
-from multicamera_acquisition.visualization import refactor_MultiDisplay
+from multicamera_acquisition.visualization import MultiDisplay
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 # from multicamera_acquisition.interfaces.arduino import (
@@ -448,7 +448,7 @@ def refactor_acquire_video(
 
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
-        disp = refactor_MultiDisplay(
+        disp = MultiDisplay(
             display_queues,
             config = final_config['rt_display']
         )
