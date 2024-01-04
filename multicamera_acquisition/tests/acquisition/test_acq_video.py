@@ -39,8 +39,8 @@ def trigger_type(pytestconfig):
 def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
 
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": "40347941"},
-        {"name": "bottom", "brand": camera_brand, "id": "40393557"}
+        {"name": "top", "brand": camera_brand, "id": 0},
+        {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
 
     # Set the trigger behavior
@@ -86,7 +86,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
 
     # Check that the video has the right number of frames
     for camera_name in full_config["cameras"].keys():
-        assert count_frames(str(first_video_file_name)) == (int(n_test_frames) - 1)
+        assert count_frames(str(first_video_file_name)) == (int(n_test_frames))
 
 
 def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_test_frames, fps):

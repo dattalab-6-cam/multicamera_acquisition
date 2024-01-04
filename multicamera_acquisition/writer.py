@@ -417,6 +417,7 @@ class VideoMuxer(mp.Process):
 
         # NB: don't try to delete / rename the files here, it throws weird permission errors.
 
+        # TODO: check exit code of subproc, if error, dont delete the original file
         # Declare success!
         self.success.set()
 
