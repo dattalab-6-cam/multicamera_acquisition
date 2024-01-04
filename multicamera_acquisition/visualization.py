@@ -12,6 +12,7 @@ import pandas as pd
 import queue as sync_queue
 from collections.abc import Iterable
 from numbers import Number
+import glob, os.path
 
 
 class refactor_MultiDisplay(mp.Process):
@@ -22,8 +23,6 @@ class refactor_MultiDisplay(mp.Process):
         # Store params
         self.config = config
         self.queues = queues
-        self.camera_names = camera_names
-        self.display_ranges = ranges
 
         # Set up the config
         if config is None:
@@ -32,6 +31,8 @@ class refactor_MultiDisplay(mp.Process):
             self.validate_config()
 
         # break out config into object attrs
+        self.camera_names = config['camera_names']
+        self.display_ranges = config['display_ranges']
         self.num_cameras = len(self.camera_names)
         self.downsample = config['downsample']
         self.cameras_per_row = config['cameras_per_row']
@@ -141,6 +142,8 @@ class refactor_MultiDisplay(mp.Process):
     @staticmethod
     def default_display_config():
         return {
+            'camera_names': ['top', 'bottom'],
+            'ranges': [None, None],
             'downsample': 4,
             'cameras_per_row': 3,
             'size': (300, 300),
@@ -274,10 +277,11 @@ def plot_image_grid(images, display_config):
     """
 
     cfg = display_config
-    nrow = int(np.ceil(len(cfg['camera_names']) // cfg['cameras_per_row']))
-    fig, ax = plt.subplots(nrow, cfg['cameras_per_row'])
+    nrow = int(np.ceil(len(cfg['camera_names']) / cfg['cameras_per_row']))
+    fig, ax = plt.subplots(nrow, cfg['cameras_per_row'],
+        figsize = (2 * cfg['cameras_per_row'], 2 * nrow))
     ax = ax.ravel()
-    
+
     # plot image for each camera in display config, formatted as in Multidisplay
     for a, camera_name, rng in zip(ax, cfg['camera_names'], cfg['ranges']):
         frame = images[camera_name]
@@ -289,31 +293,46 @@ def plot_image_grid(images, display_config):
             frame.dtype == np.uint16 or ("lucid" in camera_name))
         a.imshow(frame)
         a.set_title(camera_name)
+        a.set_xticks([])
+        a.set_yticks([])
     
     # hide unused axes
     for a in ax[len(cfg['camera_names']):]:
-        ax.set_axis_off()
+        a.set_axis_off()
 
+    fig.tight_layout()
     return fig, ax
 
 
 def load_first_frames(location):
     """
     Load first frame of an acquisition for visualization
+
     Parameters
     ----------
-    location : str
+    location : Path
         Directory passed to `acquire_video`
     Returns
     -------
     images : dict[str, array]
         Mapping of camera name to first frame of acquired video
     """
-    # TODO: implement first_frames once metadata is saved
-    raise NotImplementedError
-
-
-
+    
+    images = {}
+    files = list(glob.glob(str(location / "*.mp4")))
+    if len(files) == 0:
+        logging.log(logging.WARN, f"No recordings found at {location}")
+    for f in files:
+        basename = os.path.basename(f)
+        cam_name = basename.split('.')[-2]
+        cap = cv2.VideoCapture(f)
+        if cap.isOpened():
+            _, frame = cap.read()
+            images[cam_name] = frame
+        else:
+            logging.log(logging.WARN, f"Could not read video {f}.")
+    return images
+        
 
 class MultiDisplay(mp.Process):
     def __init__(

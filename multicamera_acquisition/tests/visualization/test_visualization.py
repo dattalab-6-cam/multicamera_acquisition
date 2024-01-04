@@ -7,9 +7,15 @@ import cv2
 import numpy as np
 import os
 import pytest
+import matplotlib.pyplot as plt
 import sys
 
-from multicamera_acquisition.visualization import refactor_MultiDisplay
+from multicamera_acquisition.visualization import (
+    refactor_MultiDisplay,
+    load_first_frames,
+    plot_image_grid
+)
+
 from multicamera_acquisition.acquisition import refactor_acquire_video
 
 from multicamera_acquisition.video_io_ffmpeg import count_frames
@@ -67,15 +73,12 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
 @pytest.mark.gui
 def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames):
-    """
-    Run an acquisition with display enabled.
+    """Run an acquisition with display enabled.
 
     Note: when using emulated cameras, display will run faster than 'real time'
     because there is no delay to emulate framerate.
     """
     full_config = create_twocam_config(camera_brand, n_test_frames)
-    full_config['cameras']['top']['display'] = True
-    full_config['cameras']['bottom']['display'] = True
     full_config['acq_loop']['display_frames'] = True
 
     # Run the func!
@@ -88,3 +91,18 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames):
     )
 
 
+def test_image_grid(tmp_path, camera_brand):
+    """Run an acquisition and display its first frames in a grid
+    """
+
+    full_config = create_twocam_config(camera_brand, 5)
+    save_loc, full_config = refactor_acquire_video(
+        tmp_path,
+        full_config,
+        recording_duration_s=5,
+        append_datetime=True,
+        overwrite=False,
+    )
+    first_frames = load_first_frames(save_loc)
+    fig, ax = plot_image_grid(first_frames, full_config['rt_display'])
+    plt.show()

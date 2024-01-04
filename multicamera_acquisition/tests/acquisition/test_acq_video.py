@@ -72,7 +72,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames):
     save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
-        recording_duration_s=5,
+        recording_duration_s=1,
         append_datetime=True,
         overwrite=False,
     )

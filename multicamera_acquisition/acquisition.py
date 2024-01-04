@@ -420,10 +420,9 @@ def refactor_acquire_video(
 
         # Setup display queue for camera if requested
         display_queue = None
-        if camera_dict["display"] and final_config["acq_loop"]["display_frames"]:
+        if (camera_name in final_config['rt_display']['camera_names']
+            and final_config["acq_loop"]["display_frames"]):
             display_queue = mp.Queue()
-            display_cameras.append(camera_dict["name"])
-            display_ranges.append(camera_dict["display_range"])
             display_queues.append(display_queue)
 
         # Create an acquisition loop process
@@ -451,8 +450,6 @@ def refactor_acquire_video(
         # create a display process which recieves frames from the acquisition loops
         disp = refactor_MultiDisplay(
             display_queues,
-            display_cameras,
-            ranges = display_ranges,
             config = final_config['rt_display']
         )
         disp.start()
