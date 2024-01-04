@@ -32,8 +32,6 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
-from multicamera_acquisition.tests.acquisition.test_acq_video import create_twocam_config
-
 
 @pytest.fixture(scope="function")
 def multidisplay_processes(tmp_path, fps, n_test_frames):
@@ -68,6 +66,38 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
     for proc in dummy_frames_procs:
         proc.join(timeout=60)
     display.join(timeout=60)
+
+
+def create_twocam_config(camera_brand, n_test_frames):
+    camera_list = [
+        {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
+        {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
+    ]
+
+    fps = 30
+
+    # Parse the "camera list" into a partial config
+    partial_new_config = partial_config_from_camera_list(camera_list, fps)
+
+    # Add ffmpeg writers to each camera
+    # TODO: allow this to be nvc dynamically for testing. 
+    ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps)
+    for camera_name in partial_new_config["cameras"].keys():
+        ffmpeg_writer_config["camera_name"] = camera_name
+        partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
+
+    # Create the full config, filling in defaults where necessary
+    full_config = create_full_camera_default_config(partial_new_config)
+
+    # Set up the acquisition loop part of the config
+    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config["max_frames_to_acqure"] = n_test_frames
+    full_config["acq_loop"] = acq_config
+
+    display_config = MultiDisplay.default_display_config()
+    full_config["rt_display"] = display_config
+
+    return full_config
 
 
 
