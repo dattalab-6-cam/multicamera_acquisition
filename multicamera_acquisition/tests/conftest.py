@@ -12,3 +12,9 @@ def pytest_addoption(parser):
         action="store",
         default=200,
     )
+
+    parser.addoption(
+        "--trigger_type",
+        action="store",
+        default="continuous",
+    )

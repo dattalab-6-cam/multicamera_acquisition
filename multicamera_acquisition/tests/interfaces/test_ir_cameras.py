@@ -18,7 +18,7 @@ def camera_type(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
-    return pytestconfig.getoption("camera_type", default="basler_emulated")
+    return pytestconfig.getoption("camera_type")  # default emulated, see conftest.py
 
 
 @pytest.fixture(scope="function")

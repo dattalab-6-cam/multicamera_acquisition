@@ -31,15 +31,30 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
 )
 
 
-def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, fps):
+@pytest.fixture(scope="session")
+def trigger_type(pytestconfig):
+    return pytestconfig.getoption("trigger_type")  # default continuous (ie no trigger required), see conftest.py
+
+
+def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
+
+
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
-        {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
+        {"name": "top", "brand": camera_brand, "id": 0},
+        {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
+
+    # Set the trigger behavior
+    if trigger_type == "continuous":
+        short_name = "continuous"
+    elif trigger_type == "arduino":
+        short_name = "arduino"
+    for camera in camera_list:
+        camera["short_name"] = short_name
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list, fps)
-    
+
     # Add ffmpeg writers to each camera
     # TODO: allow this to be nvc dynamically for testing. 
     ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps)
