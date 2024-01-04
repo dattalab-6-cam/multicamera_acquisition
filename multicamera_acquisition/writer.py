@@ -5,7 +5,9 @@ import multiprocessing as mp
 import subprocess
 import time
 import warnings
+import os
 from pathlib import Path
+
 
 import numpy as np
 
@@ -66,10 +68,7 @@ class BaseWriter(mp.Process):
         
         # We want the stem to be everything up to the first frame number,
         # so that we can start new videos with the same stem + new frame number.
-        self.orig_stem = self.video_file_name.stem.split(".")[0]
-
-        # Create the metadata file
-        self.initialize_metadata()
+        self.orig_stem = ".".join(self.video_file_name.stem.split(".")[:-1])
 
         # Set up the config
         if config is None:
@@ -90,6 +89,7 @@ class BaseWriter(mp.Process):
                 ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
             )
         self.metadata_file = open(self.metadata_file_name, "a")
+        self.metadata_writer = csv.writer(self.metadata_file)
 
     def _get_new_pipe(self, data_shape):
         pass
@@ -97,7 +97,8 @@ class BaseWriter(mp.Process):
     def run(self):
 
         # Get CSV writer for metadata file
-        metadata_writer = csv.writer(self.metadata_file)
+        self.initialize_metadata()
+        
 
         # Loop until we get a stop signal
         while True:
@@ -125,9 +126,15 @@ class BaseWriter(mp.Process):
                 continue
 
             # Write the metadata
-            metadata_writer.writerow(
-                [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
-            )
+            try:
+                self.metadata_writer.writerow(
+                    [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
+                )
+            except ValueError as e:
+                print(f"frame id: {self.frame_id}")
+                print(f"current fr: {current_frame}")
+                raise
+
 
             # Reset the pipe if needed (after self._reset_writer())
             if self.pipe is None:
@@ -139,11 +146,10 @@ class BaseWriter(mp.Process):
 
             # Increment the frame counter
             self.frame_id = self.frame_id + 1
-            self.new_debug_attr = "HELLO"
 
             # If the current frame is greater than the max, create a new video and metadata file
-            if self.frame_id > self.config["max_video_frames"]:
-                self._reset_writers(current_frame)
+            if self.frame_id >= self.config["max_video_frames"]:
+                self._reset_writers()
 
         logging.log(logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})")
         self.close_video()
@@ -151,23 +157,26 @@ class BaseWriter(mp.Process):
         logging.log(logging.DEBUG, f"Writer run finished ({self.config['camera_name']})")
         self.finish()
 
-    def _reset_writers(self, current_frame):
+    def _reset_writers(self):
 
         # Reset the video writer
         self.close_video()
-        self.frame_id = 0
         self.video_file_name = (
             self.video_file_name.parent
-            / f"{self.orig_stem}.{current_frame}.{self.video_file_name.suffix}"
+            / f"{self.orig_stem}.{self.frame_id}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
         )
+        # new pipe will be created on next frame
 
         # Reset the metadata writer
         self.metadata_file.close()
         self.metadata_file_name = (
             self.metadata_file_name.parent
-            / f"{self.orig_stem}.{current_frame}.metadata.csv"
+            / f"{self.orig_stem}.{self.frame_id}.metadata.csv"
         )
         self.initialize_metadata()
+
+        # Reset the frame id counter
+        self.frame_id = 0
 
     def append(self, data):
         pass
@@ -255,7 +264,7 @@ class NVC_Writer(BaseWriter):
             gpu_id=self.config["gpu"],
             format=nvc.PixelFormat.NV12,
         )
-        self.encFile = open(self.video_file_name, "xb")
+        self.encFile = open(self.video_file_name, "wb")
         logging.log(logging.DEBUG, "Pipe created")
 
     def append(self, data):
@@ -284,18 +293,6 @@ class NVC_Writer(BaseWriter):
             encByteArray = bytearray(self.encFrame)
             self.encFile.write(encByteArray)
 
-    def _wait_to_finish(self):
-
-        # Encoder is asynchronous, so we need to flush it
-        while True:
-            success = self.pipe.FlushSinglePacket(self.encFrame)
-            if success:
-                encByteArray = bytearray(self.encFrame)
-                self.encFile.write(encByteArray)
-                self.frames_flushed += 1
-            else:
-                break
-
     def close_video(self):
 
         # Flush the PyNvCodec encoder
@@ -312,12 +309,26 @@ class NVC_Writer(BaseWriter):
 
         # Set the video to be muxed if requested
         if self.config["auto_remux_videos"]:
+            print(f"muxing video {self.video_file_name.name}")  #TODO: figure out why the second videos are getting muxed twice!
             self._mux_video(self.video_file_name)
+
+    def _wait_to_finish(self):
+
+        # Encoder is asynchronous, so we need to flush it
+        while True:
+            success = self.pipe.FlushSinglePacket(self.encFrame)
+            if success:
+                encByteArray = bytearray(self.encFrame)
+                self.encFile.write(encByteArray)
+                self.frames_flushed += 1
+            else:
+                break
 
     def _mux_video(self, video_file_name):
 
         # Create a muxer process
-        muxer = VideoMuxer(video_file_name)
+        success_event = mp.Event()
+        muxer = VideoMuxer(video_file_name, success_event)
 
         # Start the muxer process
         muxer.start()
@@ -332,15 +343,29 @@ class NVC_Writer(BaseWriter):
         # Join the muxer processes
         if hasattr(self, "muxer_processes"):
             for muxer in self.muxer_processes:
+                print("joining muxer")
                 muxer.join()
+                if not muxer.success.is_set():
+                    warnings.warn(f"Failed to mux {muxer.video_file_name}")
+        
+        if self.config["auto_remux_videos"]:
+            print("renaming vids")
+
+            # Delete the original video
+            os.remove(self.video_file_name)
+
+            # Rename the muxed video
+            muxed_video_file_name = self.video_file_name.parent / f"{self.video_file_name.stem}.muxed.mp4"
+            os.rename(muxed_video_file_name, self.video_file_name)
 
 
 class VideoMuxer(mp.Process):
-    def __init__(self, target_file):
+    def __init__(self, target_file, success_event):
         super().__init__()
         if not isinstance(target_file, Path):
             target_file = Path(target_file)
         self.skip = False
+        self.success = success_event
         self.video_file_name = target_file
         self._validate_target_file()
 
@@ -373,6 +398,8 @@ class VideoMuxer(mp.Process):
         command = [
             "ffmpeg",
             '-y',
+            '-loglevel', 
+            'error',  # suppress ffmpeg output
             "-i",
             str(self.video_file_name),
             "-c:v",
@@ -382,11 +409,17 @@ class VideoMuxer(mp.Process):
             str(tmp_file_name)
         ]
 
-        # Run the muxing
+        # Run the muxing once the video is ready (ie released by the writer)
         self._mux_pipe = subprocess.Popen(command)
 
         # Wait for the muxing to finish
         self._mux_pipe.wait()
+
+        # NB: don't try to delete / rename the files here, it throws weird permission errors.
+
+        # Declare success!
+        self.success.set()
+
 
 
 class FFMPEG_Writer(BaseWriter):

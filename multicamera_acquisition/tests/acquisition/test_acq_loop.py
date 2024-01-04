@@ -81,7 +81,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
 
     # Create the AcquisitionLoop process
     acq_config = AcquisitionLoop.default_acq_loop_config()
-    acq_config["max_frames_to_acqure"] = n_test_frames
+    acq_config["max_frames_to_acqure"] = int(n_test_frames)
     acq_loop = AcquisitionLoop(
         write_queue,
         None,

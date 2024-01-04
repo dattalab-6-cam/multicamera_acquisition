@@ -360,9 +360,11 @@ def refactor_acquire_video(
             display_range: [0, 1000]
     """
 
+    print(config["cameras"]["top"]["writer"]["max_video_frames"])
+
     # Create the recording directory
     save_location = prepare_rec_dir(save_location, append_datetime=append_datetime, overwrite=overwrite)
-    base_filename = prepare_base_filename(save_location, file_prefix=file_prefix, append_datetime=append_datetime, append_camera_serial=append_camera_serial)
+    base_filename = prepare_base_filename(file_prefix=file_prefix, append_datetime=append_datetime, append_camera_serial=append_camera_serial)
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -402,7 +404,7 @@ def refactor_acquire_video(
         else:
             format_kwargs = dict(camera_name=camera_dict["name"])
         video_file_name = save_location / base_filename.format(**format_kwargs)
-        metadata_file_name = save_location / base_filename.format(**format_kwargs)
+        metadata_file_name = save_location / base_filename.format(**format_kwargs).replace(".mp4", ".metadata.csv")
 
         # Get a writer process
         writer = get_writer(
@@ -476,12 +478,13 @@ def refactor_acquire_video(
         pass
 
     # End the processes
+    pbar.update((datetime.now() - datetime_prev).seconds)
     pbar.close()
     print("Ending processes, this may take a moment...")
     end_processes(acquisition_loops, writers, None, writer_timeout=300)
     print("Done.")
 
-    return save_location, final_config
+    return save_location, video_file_name, final_config
 
 
 def acquire_video(

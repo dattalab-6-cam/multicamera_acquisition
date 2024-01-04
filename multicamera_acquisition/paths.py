@@ -33,13 +33,13 @@ def ensure_dir(file_path):
 
 def most_recent_subdirectory(dataset_loc):
     """return the subdirectory that has been generated most
-    recently with the "%Y-%m-%d_%H-%M-%S" time scheme used in AVGN
+    recently with the "%Y%m%d-%H%M%S" time scheme used in AVGN
     """
     if not isinstance(dataset_loc, Path):
         dataset_loc = Path(dataset_loc)
     subdir_list = list((dataset_loc).iterdir())
     directory_dates = [
-        datetime.strptime(i.name, "%Y-%m-%d_%H-%M-%S") for i in subdir_list
+        datetime.strptime(i.name, "%Y%m%d_%H%M%S") for i in subdir_list
     ]
     return subdir_list[np.argsort(directory_dates)[-1]]
 
@@ -60,7 +60,7 @@ def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
 
     # Resolve subfolder name, if requested
     if append_datetime:
-        date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_location = save_location.joinpath(date_str)
 
     # Check if the directory already exists
