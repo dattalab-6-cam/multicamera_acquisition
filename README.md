@@ -105,22 +105,26 @@ export QT_DEBUG_PLUGINS=1
 <!-- do we still want to support Flir? I am removing the spinnaker stuff for now. -->
 <!-- TODO: Decide if we need Flir, if yes, add spinnaker installation instructions -->
 
-##### Setting USB camera settings [optional]
-For pylon, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
+##### Setting USB camera settings
+For Pypylon to record videos and transfer large amount of data (i.e. video data) over USB, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
 In pylon, this can be done with 
 ```
 sudo sh /opt/pylon/share/pylon/setup-usb.sh
 ``` 
 
-#### Enabling USB reset [optional]
-
-In addition, it is useful to give the library the ability to reset the cameras programatically. 
-You can do this by making a .rules file (e.g.`sudo nano /etc/udev/rules.d/99-basler.rules`)
-
+#### Enabling USB reset
+Give the library the ability to reset the cameras programatically.
+You can do this by making a .rules file using `nano` or `vim`:
 ```
-SUBSYSTEM=="usb", ATTRS{idVendor}=="xxxx", MODE="0666"
+cd /etc/udev/rules.d/
+sudo nano 99-basler.rules
 ```
-For Basler, the ID should be `TTRS{idVendor}=="0x2676"`
+
+Then, add the following line to the file:
+```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0x2676", MODE="0666"
+```
+Save (CTRL + O) and exit (CTRL + X) `nano`.
 
 Then, reset udev rules.
 ```
@@ -162,11 +166,10 @@ cd multicamera_acquisition
 pip install -e .
 ```
 
-#### Add user to dialout group to access serial ports [optional]
+#### Add user to dialout group to access serial ports
 ```
 sudo usermod -a -G dialout <your-username>
 ```
-
 
 #### NVIDIA GPU encoding patch (Linux)
 
@@ -178,6 +181,7 @@ cd nvidia-patch
 bash ./patch.sh
 ```
 
+<!-- TODO: Test this part, NVIDIA VPF not tested on laptop-->
 
 
 ### Basic usage 
