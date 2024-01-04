@@ -1,5 +1,5 @@
 import struct
-import numpy
+import numpy as np
 import warnings
 import sys
 import glob
@@ -74,3 +74,43 @@ def find_serial_ports():
         except (OSError, serial.SerialException):
             pass
     return result
+
+class Arduino(object):
+    def __init__(self, fps):
+        self.fps = fps
+        return None
+    def generate_basler_frametimes(self, nazures=2, azure_offset=10, basler_offset=10, camera='top'):
+
+        valid_fps = [30, 60, 90, 120, 150]
+        assert self.fps in valid_fps, ValueError(f'fps not in {valid_fps}')
+
+        # hardcoded values
+        pulse_dur = 160
+        cyc_dur = 33333
+        # convert to microseconds 
+        interframe_interval = (1/self.fps)*1e6
+        # get nframes per cycle
+        nframes = np.ceil(cyc_dur / interframe_interval).astype(int)
+
+        if camera =='top':
+            bottom_offset = 0
+        elif camera == 'bottom':
+            bottom_offset = 1750
+        else:
+            raise ValueError('camera must be one of the following: top, bottom')
+        
+        times = []
+        # get times
+        for n in range(nframes):
+            t = (interframe_interval * n) + (nazures * pulse_dur) + azure_offset + basler_offset
+            t += bottom_offset
+            times.append(t)
+
+        # edge case to deal with second frame interfering with azure
+        if self.fps in (120, 150):
+            times[1] += 510
+        # edge case to deal with last frame interfering with azure
+        if self.fps == 150 and camera =='bottom':
+            times[-1] -= 330
+
+        return times
