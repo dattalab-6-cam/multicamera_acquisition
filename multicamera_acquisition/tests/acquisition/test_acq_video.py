@@ -154,7 +154,7 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
 
 
 
-def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, fps):
+def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0},
         {"name": "bottom", "brand": camera_brand, "id": 1}
