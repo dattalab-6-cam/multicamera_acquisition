@@ -59,7 +59,7 @@ class BaslerCamera(BaseCamera):
         basic_info = f'<{self.__class__.__module__ + "." + self.__class__.__qualname__} object at {address}>'
 
         # Add camera-specific info
-        attrs_to_list = ["id", "name", "serial_number", "model", "running"]
+        attrs_to_list = ["name", "serial_number", "device_index", "model", "running"]
         cam_info = "Basler Camera: \n" + "\n\t".join([f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list])
 
         return basic_info + "\n" + cam_info
@@ -74,7 +74,7 @@ class BaslerCamera(BaseCamera):
             'exposure': 1000,
             "brand": "basler",
             'trigger': {
-                'short_name': 'arduino',
+                'trigger_type': 'arduino',
                 'acquisition_mode': 'Continuous',
                 'trigger_source': 'Line2',
                 'trigger_selector': 'FrameStart',
@@ -225,7 +225,7 @@ class BaslerCamera(BaseCamera):
 
         # Set trigger
         trigger = self.config["trigger"]
-        if trigger["short_name"] == "arduino":
+        if trigger["trigger_type"] == "arduino":
             self.cam.AcquisitionMode.SetValue(trigger["acquisition_mode"])
             max_fps = self.cam.AcquisitionFrameRate.GetMax()
             self.cam.AcquisitionFrameRate.SetValue(max_fps)
@@ -235,12 +235,12 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerActivation.SetValue(trigger["trigger_activation"])
             self.cam.TriggerMode.SetValue("On")
 
-        elif trigger["short_name"] == "software":
+        elif trigger["trigger_type"] == "software":
             # TODO - implement software trigger
             # TODO - this error isn't raised in the main thread. how to propagate it?
             raise NotImplementedError("Software trigger not implemented for Basler cameras")
-        elif trigger["short_name"] == "continuous":
-            self.set_trigger_mode("continuous")
+        elif trigger["trigger_type"] == "no_trigger":
+            self.set_trigger_mode("no_trigger")
         else:
             raise ValueError("Trigger must be 'arduino' or 'software'")
 
@@ -249,7 +249,7 @@ class BaslerCamera(BaseCamera):
         """
 
         # Ensure user doesnt request emulated cameras with arduino trigger mode
-        if self.config["trigger"]["short_name"] == "arduino" and self.config["brand"] == "basler_emulated":
+        if self.config["trigger"]["trigger_type"] == "arduino" and self.config["brand"] == "basler_emulated":
             raise ValueError("Cannot use arduino trigger with emulated cameras.")
 
     def set_trigger_mode(self, mode):
@@ -260,22 +260,22 @@ class BaslerCamera(BaseCamera):
         mode : str
             The trigger mode to use.  Must be one of:
                 - 'hardware': use the arduino trigger
-                - 'continuous': acquire continuously without requiring a trigger.
+                - 'no_trigger': acquire continuously without requiring a trigger.
         """
         if mode == "hardware":
-            # self.cam.AcquisitionMode.SetValue("Continuous")
+            self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
             self.cam.TriggerSource.SetValue("Line1")
             self.cam.TriggerSelector.SetValue("FrameStart")
             self.cam.TriggerActivation.SetValue("RisingEdge")
             self.cam.TriggerMode.SetValue("On")
-        elif mode == "continuous":
+        elif mode == "no_trigger":
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerSelector.SetValue("FrameStart")
             self.cam.TriggerMode.SetValue("Off")
 
         else:
-            raise ValueError("Trigger mode must be 'hardware' or 'continuous'")
+            raise ValueError("Trigger mode must be 'hardware' or 'no_trigger'")
 
     def start(self):
         "Start recording images."
@@ -381,8 +381,7 @@ def enumerate_basler_cameras(behav_on_none="raise"):
     elif len(devices) == 0 and behav_on_none == "pass":
         return None, None
 
-    # Otherwise, loop through all found devices 
-    # and print their serial numbers
+    # Otherwise, loop through all found devices
     serial_nos = []
     models = []
     for i, device in enumerate(devices):
@@ -390,9 +389,6 @@ def enumerate_basler_cameras(behav_on_none="raise"):
         camera.Open()
         sn = camera.GetDeviceInfo().GetSerialNumber()
         model = camera.GetDeviceInfo().GetModelName()
-        print(f"Camera {i+1}:")
-        print(f"\tSerial Number: {sn}")
-        print(f"\tModel: {model}")
         camera.Close()
         serial_nos.append(sn)
         models.append(model)
@@ -406,11 +402,13 @@ class EmulatedBaslerCamera(BaslerCamera):
     """
 
     @staticmethod
-    def get_class_and_filter_emulated():
+    def get_emulated_filter():
+        """Returns a device filter that can be passed to pylon.TlFactory.GetInstance().EnumerateDevices().
+        """
         device_class = "BaslerCamEmu"
         di = pylon.DeviceInfo()
         di.SetDeviceClass(device_class)
-        return device_class, [di]
+        return [di]
 
     def __init__(self, id=None, name=None, config=None, fps=None):
         super().__init__(id=id, name=name, config=config, fps=fps)
@@ -418,26 +416,24 @@ class EmulatedBaslerCamera(BaslerCamera):
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
         """
-
-        # Prepare the emulation
-        self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
         try:
-            max_devices = max(int(os.environ["PYLON_CAMEMU"]), self.device_index + 1)
-
+            current_num_devices = int(os.environ["PYLON_CAMEMU"])
             # Add a device if necessary
-            if self.device_index > max_devices:
-                self.num_devices = int(max_devices) + 1
-                os.environ["PYLON_CAMEMU"] = str(self.num_devices)
-            else:
-                self.num_devices = max_devices
+            if self.device_index >= current_num_devices:
+                current_num_devices = self.device_index + 1  # since device index is 0-indexed
+                os.environ["PYLON_CAMEMU"] = str(current_num_devices)
         except KeyError:
+            current_num_devices = self.device_index + 1  # If no emulated devices exist, make one
+            os.environ["PYLON_CAMEMU"] = str(current_num_devices)
 
-            # If no emulated devices exist, make one
-            self.num_devices = self.device_index + 1  # in case a camera of id=1 tries to be made first, eg.
-            os.environ["PYLON_CAMEMU"] = str(self.num_devices)
+        self.num_devices = current_num_devices
 
         # Sleep to allow the env var to update (??)
         time.sleep(0.1)
+
+        # Prepare the emulation
+        self.device_filter = EmulatedBaslerCamera.get_emulated_filter()
+        self.system = pylon.TlFactory.GetInstance()
 
     def _enumerate_cameras(self, behav_on_none="raise"):
         """Implemented for compatibility with BaslerCamera.
@@ -450,12 +446,14 @@ class EmulatedBaslerCamera(BaslerCamera):
     def _create_pylon_cam(self):
         """Override the camera creation to make an emulated camera
         """
+        devices = self.system.EnumerateDevices(self.device_filter)
+        try:
+            self.cam = pylon.InstantCamera(
+                self.system.CreateDevice(devices[self.device_index])
+            )
+        except Exception as e:
+            raise RuntimeError(f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}")
         self.model_name = "Emulated"
-        self.cam = self._create_first()
-
-    def _create_first(self):
-        tlf = pylon.TlFactory.GetInstance()
-        return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[self.device_index]))
 
     @staticmethod
     def default_camera_config():
@@ -466,7 +464,7 @@ class EmulatedBaslerCamera(BaslerCamera):
             'exposure': 1000,
             "brand": "basler_emulated",
             'trigger': {
-                'short_name': 'arduino',
+                'trigger_type': 'arduino',
                 'acquisition_mode': 'Continuous',
                 'trigger_source': 'Line2',
                 'trigger_selector': 'FrameStart',

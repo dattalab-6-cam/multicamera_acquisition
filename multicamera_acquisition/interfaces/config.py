@@ -28,7 +28,7 @@ ALL_DISPLAY_PARAMS = [
 ]
 
 ALL_TRIGGER_PARAMS = [
-    "short_name",
+    "trigger_type",
     'acquisition_mode',
     'trigger_source',
     'trigger_selector',

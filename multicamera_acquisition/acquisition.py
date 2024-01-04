@@ -385,7 +385,7 @@ def refactor_acquire_video(
 
         globals:
             fps: 30
-            arduino_required: False  # since trigger short name is set to continuous
+            arduino_required: False  # since trigger short name is set to no_trigger
         cameras:
             top:
                 name: top
@@ -396,7 +396,7 @@ def refactor_acquire_video(
                 display: True
                 roi: null  # or an roi to crop the image
                 trigger:
-                    short_name: continuous  # convenience attr for no-trigger acquisition
+                    trigger_type: no_trigger  # convenience attr for no-trigger acquisition
                 writer:
                     codec: h264
                     fmt: YUV420

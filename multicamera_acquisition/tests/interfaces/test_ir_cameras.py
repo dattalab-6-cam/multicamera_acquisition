@@ -60,7 +60,7 @@ def camera(camera_type, fps):
 
 
 class Test_Camera_InitAndStart():
-    """Test the basler camera subclas
+    """Test the ability of the camera to initialize and start without a trigger.
     """
 
     def test_start(self, camera):
@@ -68,7 +68,7 @@ class Test_Camera_InitAndStart():
         camera.stop()
 
     def test_grab_one(self, camera):
-        camera.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
+        camera.set_trigger_mode("no_trigger")  # allows cam to caquire without hardware triggers
         camera.start()
         img = camera.get_array(timeout=1000)
         assert isinstance(img, np.ndarray)
@@ -100,7 +100,7 @@ class Test_OpenMultipleCameras():
 
 
 class Test_CameraIDMethods():
-    """Test the basler camera subclas
+    """Test passing the camera id to the camera class.
     """
     def test_default_device_index(self, fps):
         # should default to 0
@@ -122,3 +122,28 @@ class Test_CameraIDMethods():
     def test_id_errs(self):
         with pytest.raises(CameraError):
             _ = BaslerCamera(id="abc")  # no cam with this sn should exist
+
+
+class Test_FPSWithoutTrigger():
+    """Test that we can set the camera fps when we're in non-trigger mode.
+    """
+    @pytest.mark.parametrize("_fps", [1, 10, 30])
+    def test_fps(self, _fps, camera_type):
+        if camera_type == 'basler_camera':
+            cam = BaslerCamera(id=0, fps=_fps)
+        elif camera_type == 'basler_emulated':
+            pytest.skip("Emulated camera doesn't support fps (seemingly)")
+
+        cam.init()
+        cam.set_trigger_mode("no_trigger")
+
+        # Capture two images and check that the time between them is close to the desired fps
+        cam.start()
+        img1, ts1 = cam.get_array(get_timestamp=True)
+        img2, ts2 = cam.get_array(get_timestamp=True)
+        cam.close()
+
+        # Check that the time between the two images is close to the desired fps
+        dt = ts2 - ts1
+        empirical_fps = 1 / dt
+        assert np.isclose(empirical_fps, _fps, atol=0.1)
