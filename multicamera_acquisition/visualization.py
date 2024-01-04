@@ -30,21 +30,20 @@ class MultiDisplay(mp.Process):
         else:
             self.validate_config()
 
-        # break out config into object attrs
-        self.camera_names = config['camera_names']
-        self.display_ranges = config['ranges']
-        self.num_cameras = len(self.camera_names)
-        self.downsample = config['downsample']
-        self.cameras_per_row = config['cameras_per_row']
-        self.display_size = config['size']
-
 
     def _init_layout(self):
+        
+        # unpack config to local vars
+        display_size = self.config['display_size']
+        cameras_per_row = self.config['cameras_per_row']
+        num_cameras = len(self.config['camera_names'])
+        camera_names = self.config['camera_names']
 
+        # Set up tk widnow
         root = tk.Tk()
-        xdim = self.display_size[0] * self.cameras_per_row
-        ydim = self.display_size[1] * int(
-            np.ceil(self.num_cameras / self.cameras_per_row)
+        xdim = display_size[0] * cameras_per_row
+        ydim = display_size[1] * int(
+            np.ceil(num_cameras / cameras_per_row)
         )
         root.title("Camera view")  # this is the title of the window
         root.geometry(f"{xdim}x{ydim}")  # this is the size of the window
@@ -52,21 +51,21 @@ class MultiDisplay(mp.Process):
         rowi = 0
         labels = []
         # create a label to hold the image
-        for ci, camera_name in enumerate(self.camera_names):
+        for ci, camera_name in enumerate(camera_names):
             # create the camera name label
             label_text = tk.Label(root, text=camera_name)
-            label_text.grid(row=rowi, column=ci % self.cameras_per_row, sticky="nsew")
+            label_text.grid(row=rowi, column=ci % cameras_per_row, sticky="nsew")
 
             # create the camerea image label
             label = tk.Label(root)  # this is where the image will go
-            label.grid(row=rowi + 1, column=ci % self.cameras_per_row, sticky="nsew")
+            label.grid(row=rowi + 1, column=ci % cameras_per_row, sticky="nsew")
 
-            if (ci + 1) % self.cameras_per_row == 0:
+            if (ci + 1) % cameras_per_row == 0:
                 rowi += 2
 
             labels.append(label)
 
-        for i in range(self.cameras_per_row):
+        for i in range(cameras_per_row):
             root.grid_columnconfigure(i, weight=1)
         for i in range(rowi):
             root.grid_rowconfigure(i, weight=1)
@@ -95,6 +94,11 @@ class MultiDisplay(mp.Process):
     
 
     def run(self):
+
+        camera_names = self.config['camera_names']
+        display_ranges = self.config['ranges']
+        downsample = self.config['downsample']
+        display_size = self.config['size']
         
         root, labels = self._init_layout()
 
@@ -102,7 +106,7 @@ class MultiDisplay(mp.Process):
         while True:
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
-            for qi, (queue, camera_name) in enumerate(zip(self.queues, self.camera_names)):
+            for qi, (queue, camera_name) in enumerate(zip(self.queues, camera_names)):
                 
                 data = self._fetch_images(
                     queue,
@@ -119,9 +123,9 @@ class MultiDisplay(mp.Process):
                     initialized[qi] = True
                     frame = format_frame(
                         data[0],
-                        downsample = self.downsample,
-                        display_size = self.display_size,
-                        display_range = self.display_ranges[qi],
+                        downsample = downsample,
+                        display_size = display_size,
+                        display_range = display_ranges[qi],
                         is_depth = data[0].dtype == np.uint16 or ("lucid" in camera_name))
                     
                     # update label with new image
@@ -129,7 +133,7 @@ class MultiDisplay(mp.Process):
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
-                    # print(f"No data: {self.camera_names[qi]}")
+                    # print(f"No data: {camera_names[qi]}")
                     continue
 
             if quit:
