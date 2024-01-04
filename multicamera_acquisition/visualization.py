@@ -17,7 +17,7 @@ import glob, os.path
 
 class MultiDisplay(mp.Process):
 
-    def __init__(self, queues, camera_names, ranges, config = None):
+    def __init__(self, queues, config = None):
         super().__init__()
 
         # Store params
@@ -32,7 +32,7 @@ class MultiDisplay(mp.Process):
 
         # break out config into object attrs
         self.camera_names = config['camera_names']
-        self.display_ranges = config['display_ranges']
+        self.display_ranges = config['ranges']
         self.num_cameras = len(self.camera_names)
         self.downsample = config['downsample']
         self.cameras_per_row = config['cameras_per_row']

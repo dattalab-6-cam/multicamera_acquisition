@@ -16,7 +16,7 @@ from multicamera_acquisition.visualization import (
     plot_image_grid
 )
 
-from multicamera_acquisition.acquisition import refactor_acquire_video
+from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
 
 from multicamera_acquisition.video_io_ffmpeg import count_frames
 
@@ -32,14 +32,22 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
+from multicamera_acquisition.interfaces.config import (
+    partial_config_from_camera_list,
+    create_full_camera_default_config,
+)
+
+from multicamera_acquisition.writer import (
+    FFMPEG_Writer,
+)
+
 
 @pytest.fixture(scope="function")
 def multidisplay_processes(tmp_path, fps, n_test_frames):
     """Generate linked MultiDisplay and DummyFrames processes for testing
     """
-    cameras = ['top', 'bottom']
-    config = MultiDisplay.default_display_config(cameras)
-    queues = [mp.Queue() for c in cameras]
+    config = MultiDisplay.default_display_config()
+    queues = [mp.Queue() for c in config['camera_names']]
     dummy_frames_procs = [
         get_DummyFrames_process(fps, queue, n_test_frames)
         for queue in queues
@@ -49,23 +57,6 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
         config=config,
     )
     return (display, dummy_frames_procs)
-
-
-@pytest.mark.gui
-def test_MultiDisplay(multidisplay_processes, n_test_frames):
-
-    # Get the writer and dummy frames proc
-    display, dummy_frames_procs = multidisplay_processes
-    
-    # Start the writer and dummy frames proc
-    display.start()
-    for proc in dummy_frames_procs:
-        proc.start()
-
-    # Wait for the processes to finish
-    for proc in dummy_frames_procs:
-        proc.join(timeout=60)
-    display.join(timeout=60)
 
 
 def create_twocam_config(camera_brand, n_test_frames):
@@ -99,6 +90,22 @@ def create_twocam_config(camera_brand, n_test_frames):
 
     return full_config
 
+
+@pytest.mark.gui
+def test_MultiDisplay(multidisplay_processes, n_test_frames):
+
+    # Get the writer and dummy frames proc
+    display, dummy_frames_procs = multidisplay_processes
+    
+    # Start the writer and dummy frames proc
+    display.start()
+    for proc in dummy_frames_procs:
+        proc.start()
+
+    # Wait for the processes to finish
+    for proc in dummy_frames_procs:
+        proc.join(timeout=60)
+    display.join(timeout=60)
 
 
 @pytest.mark.gui

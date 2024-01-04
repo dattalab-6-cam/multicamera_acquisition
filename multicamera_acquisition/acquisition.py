@@ -383,8 +383,6 @@ def refactor_acquire_video(
     # Create the various processes
     writers = []
     acquisition_loops = []
-    display_cameras = []
-    display_ranges = []
     display_queues = []
 
     for camera_name, camera_dict in final_config["cameras"].items():
