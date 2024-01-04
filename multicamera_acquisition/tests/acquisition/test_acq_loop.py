@@ -29,9 +29,10 @@ from multicamera_acquisition.tests.acquisition.test_acq_video import (
 
 def test_acq_loop_init(fps):
     loop = AcquisitionLoop(
-        mp.Queue(),
-        mp.Queue(),
-        fps,
+        write_queue=mp.Queue(),
+        display_queue=mp.Queue(),
+        fps=fps,
+        camera_device_index=None,
         camera_config=BaslerCamera.default_camera_config(),
     )
     assert isinstance(loop.await_process, mp.synchronize.Event)
@@ -42,6 +43,12 @@ def test_acq_loop_init(fps):
 def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     """Test the whole darn thing!
     """
+
+    if writer_type == "nvc":
+        try:
+            import PyNvCodec as nvc
+        except ImportError:
+            pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
 
     print(camera_type)
     # Get the Camera config
@@ -79,9 +86,10 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     acq_config = AcquisitionLoop.default_acq_loop_config()
     acq_config["max_frames_to_acqure"] = int(n_test_frames)
     acq_loop = AcquisitionLoop(
-        write_queue,
-        None,
-        fps,
+        write_queue=write_queue,
+        display_queue=None,
+        fps=fps,
+        camera_device_index=None,
         camera_config=camera_config,
         acq_loop_config=acq_config,
     )

@@ -8,6 +8,7 @@ import warnings
 
 import pdb
 
+
 class BaslerCamera(BaseCamera):
 
     def __init__(self, id=None, name=None, config=None, lock=True, fps=None):
@@ -39,7 +40,12 @@ class BaslerCamera(BaseCamera):
 
         # Create the camera object
         self._create_pylon_sys()  # init the pylon API software layer
-        self._resolve_device_index()  # sets self.device_index based on the id the user provides
+
+        # Resolve the device index (ie, find which camera to connect to)
+        if self.serial_number is not None and self.device_index is None:
+            self._resolve_device_index()  # sets self.device_index based on the id the user provides
+        elif self.serial_number is None and self.device_index is None:
+            raise ValueError("Camera unexpectedly has no serial number or device index.")
 
         # Load a default config if needed
         if self.config is None:
@@ -182,7 +188,7 @@ class BaslerCamera(BaseCamera):
                 self.system.CreateDevice(devices[self.device_index])
             )
         except Exception as e:
-            raise RuntimeError(f"Camera with id {self.id} failed to open: {e}")
+            raise RuntimeError(f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}")
         
     def _configure_basler(self):
         """ Given the loaded config, set up the basler for acquisition with the config therein.
@@ -362,8 +368,11 @@ def enumerate_basler_cameras(behav_on_none="raise"):
 
     Returns
     -------
-    cameras : list of strings
-        A list of serial numbers of all connected cameras.
+    serial_nos, models : tuple
+
+        serial_nos: list of serial numbers of all connected cameras.
+
+        models: list of model names of all connected cameras.
     """
 
     # Instantiate an object for the camera finder
@@ -374,7 +383,7 @@ def enumerate_basler_cameras(behav_on_none="raise"):
     if len(devices) == 0 and behav_on_none == "raise":
         raise RuntimeError("No cameras found.")
     elif len(devices) == 0 and behav_on_none == "pass":
-        return None
+        return None, None
 
     # Otherwise, loop through all found devices 
     # and print their serial numbers
@@ -417,10 +426,10 @@ class EmulatedBaslerCamera(BaslerCamera):
         # Prepare the emulation
         self.device_class, self.device_filter = EmulatedBaslerCamera.get_class_and_filter_emulated()
         try:
-            max_devices = max(int(os.environ["PYLON_CAMEMU"]), self.id + 1)
+            max_devices = max(int(os.environ["PYLON_CAMEMU"]), self.device_index + 1)
 
             # Add a device if necessary
-            if self.id > max_devices:
+            if self.device_index > max_devices:
                 self.num_devices = int(max_devices) + 1
                 os.environ["PYLON_CAMEMU"] = str(self.num_devices)
             else:
@@ -428,7 +437,7 @@ class EmulatedBaslerCamera(BaslerCamera):
         except KeyError:
 
             # If no emulated devices exist, make one
-            self.num_devices = self.id + 1  # in case a camera of id=1 tries to be made first, eg.
+            self.num_devices = self.device_index + 1  # in case a camera of id=1 tries to be made first, eg.
             os.environ["PYLON_CAMEMU"] = str(self.num_devices)
 
         # Sleep to allow the env var to update (??)

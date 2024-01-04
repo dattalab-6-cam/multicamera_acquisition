@@ -189,21 +189,20 @@ class BaseCamera(object):
             It is preferred to set this from the config, but this is provided
             for convenience.
         """
-        self.id = id
         if isinstance(id, int):
             self.serial_number = None
-            self.index = id
+            self.device_index = id
             if id > 10:
                 warn("Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int.")
         elif isinstance(id, str):
             self.serial_number = id
-            self.index = None
+            self.device_index = None
         elif id is None:
             self.serial_number = None
-            self.index = 0
+            self.device_index = 0
             warn("No camera ID provided.  Using device index 0.")
         else:
-            raise ValueError("Invalid camera ID")
+            raise ValueError("Invalid camera ID, must be int or str.")
 
         self.config = config
         self.name = name
@@ -221,14 +220,12 @@ class BaseCamera(object):
         # If user wants a specific serial no, find the index of that camera
         if self.serial_number is not None:
             if not np.any([sn == self.serial_number for sn in camera_serials]):
-                raise CameraError(f"Camera with serial number {self.id} not found.")
-            device_index = camera_serials.index(self.id)
-        elif self.index is not None:
-            device_index = self.index
+                raise CameraError(f"Camera with serial number {self.serial_number} not found.")
+            device_index = camera_serials.index(self.serial_number)
+            self.device_index = device_index
         else:
             raise CameraError("Must specify either serial number or index of camera to connect to.")
 
-        self.device_index = device_index
         self.model_name = model_names[device_index]
 
     def check_config(self, config=None):

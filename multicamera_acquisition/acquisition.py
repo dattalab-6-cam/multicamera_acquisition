@@ -10,7 +10,8 @@ import numpy as np
 import serial
 
 from tqdm import tqdm
-from multicamera_acquisition.interfaces.camera_base import get_camera
+from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
+from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
 from multicamera_acquisition.writer import get_writer
 from multicamera_acquisition.config.config import (
     load_config,
@@ -37,6 +38,7 @@ class AcquisitionLoop(mp.Process):
         write_queue,
         display_queue,
         fps,
+        camera_device_index,
         write_queue_depth=None,
         camera_config=None,
         acq_loop_config=None,
@@ -49,6 +51,12 @@ class AcquisitionLoop(mp.Process):
 
         display_queue : multiprocessing.Queue
             A queue from which frames will be read for display.
+
+        fps : int
+            The frames per second to acquire. Currently unused?
+
+        camera_device_index : int
+            The device index of the camera to acquire from.
 
         write_queue_depth : multiprocessing.Queue (default: None)
             A queue to which depth frames will be written (azure only).
@@ -69,6 +77,7 @@ class AcquisitionLoop(mp.Process):
         self.write_queue_depth = write_queue_depth
         self.camera_config = camera_config
         self.fps = fps
+        self.camera_device_index = camera_device_index
 
         # Get config
         if acq_loop_config is None:
@@ -125,7 +134,7 @@ class AcquisitionLoop(mp.Process):
         # receive a device index.
         cam = get_camera(
             brand=self.camera_config["brand"],
-            id=self.camera_config["id"],
+            id=self.camera_device_index,
             name=self.camera_config["name"],
             config=self.camera_config,
         )
@@ -200,11 +209,7 @@ class AcquisitionLoop(mp.Process):
                     raise e
                 if self.acq_config["dropped_frame_warnings"]:
                     warnings.warn(
-                        "Dropped {} frame on #{}: \n{}".format(
-                            current_frame,
-                            cam.serial_number,
-                            type(e).__name__,  # , str(e)
-                        )
+                        f"Dropped frame after receiving {n_frames_received} on {current_iter} iters: \n{type(e).__name__}"
                     )
             current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
@@ -271,6 +276,47 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             disp.join(timeout=1)
         if disp.is_alive():
             disp.terminate()
+
+
+def resolve_device_indices(config):
+    """Resolve device indices for all cameras in the config.
+
+    Parameters
+    ----------
+    config : dict
+        The recording config.
+
+    Returns
+    -------
+    device_index_dict : dict
+        A dict mapping camera names to device indices.
+    """
+
+    device_index_dict = {}
+
+    # Resolve any Basler cameras
+    serial_nos, _ = enumerate_basler_cameras(behav_on_none="pass")
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] not in ["basler", "basler_emulated"]:
+            continue
+        if camera_dict["id"] is None:
+            raise ValueError(f"Camera {camera_name} has no id specified.")
+        elif isinstance(camera_dict["id"], int):
+            dev_idx = camera_dict["id"]
+        elif isinstance(camera_dict["id"], str):
+            if camera_dict["id"] not in serial_nos:
+                raise CameraError(f"Camera with serial number {camera_dict['id']} not found.")
+            else:
+                dev_idx = serial_nos.index(camera_dict["id"])
+        device_index_dict[camera_name] = dev_idx
+
+    # Resolve any Azure cameras
+    # TODO
+
+    # Resolve any Lucid cameras
+    # TODO
+
+    return device_index_dict
 
 
 def refactor_acquire_video(
@@ -384,10 +430,13 @@ def refactor_acquire_video(
         assert isinstance(config, dict)
 
     # Add the display params to the config
-    # final_config = add_rt_display_params_to_config(config, rt_display_params)
     final_config = config
 
     # TODO: add arduino configs
+
+    # Resolve camera device indices
+    device_index_dict = resolve_device_indices(final_config)
+    print(device_index_dict)
 
     # Check that the config is valid
     validate_recording_config(final_config)
@@ -469,6 +518,7 @@ def refactor_acquire_video(
             write_queue=write_queue,
             display_queue=None,
             fps=final_config["globals"]["fps"],
+            camera_device_index=device_index_dict[camera_name],
             write_queue_depth=write_queue_depth,
             camera_config=camera_dict,
             acq_loop_config=final_config["acq_loop"],
