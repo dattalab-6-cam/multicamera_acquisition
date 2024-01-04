@@ -8,10 +8,12 @@ import warnings
 
 import pdb
 
+
 class BaslerCamera(BaseCamera):
 
-    def __init__(self, id=None, name=None, config=None, lock=True, fps=None):
-        """Set up a camera object, instance ready to connect to a camera.
+    def __init__(self, id=None, name=None, config=None, fps=None):
+        """Encapsulates a connection to a Basler camera.
+
         Parameters
         ----------
         id : int or str (default: 0)
@@ -25,17 +27,12 @@ class BaslerCamera(BaseCamera):
             A dictionary of config params. 
             If config is None, uses the camera's default config file.
 
-        lock : bool (default: True)
-            Not implemented for Baslers, does nothing here.
-
         fps : int (default: None)
-            The desired frame rate for the recording. 
-            It is possible to set this from the config, but this is provided
-            for convenience, and will take precedence.
+            Current deprecated for Basler cameras.  Baslers are enabled for their max fps by default.
         """
 
         # Init the parent class
-        super().__init__(id=id, name=name, config=config, lock=lock, fps=fps)
+        super().__init__(id=id, name=name, config=config, fps=fps)
 
         # Create the camera object
         self._create_pylon_sys()  # init the pylon API software layer
@@ -49,10 +46,9 @@ class BaslerCamera(BaseCamera):
             warnings.warn("Providing fps for Baslers is deprecated and generally not necessary.")
 
     def __repr__(self):
+        """Returns a string representation of the camera object.
         """
-        Returns a string representation of the camera object.
-        """
-        
+
         # Typical python info
         address = hex(id(self))
         basic_info = f'<{self.__class__.__module__ + "." + self.__class__.__qualname__} object at {address}>'
@@ -65,6 +61,8 @@ class BaslerCamera(BaseCamera):
 
     @staticmethod
     def default_camera_config():
+        """Generate a default config for a Basler camera.
+        """
         config = {
             'roi': None,  # ie use the entire roi
             'gain': 6,
@@ -91,17 +89,15 @@ class BaslerCamera(BaseCamera):
         return writer_config
 
     def _create_pylon_sys(self):
+        """Creates a self.system attribute with the pylon device layer (pylon.TlFactory.GetInstance())
         """
-        Creates the following attributes:
-            - self.system: the pylon system (pylon.TlFactory.GetInstance())
-        """
-        # Start the pylon device layer
         self.system = pylon.TlFactory.GetInstance()
 
-    #TODO: make this a static method?
     def _enumerate_cameras(self, behav_on_none="raise"):
         """ Enumerate all Basler cameras connected to the system.
-        Called by self._resolve_device_index() in __init__.
+
+        Called by self._resolve_device_index() in super().__init__().
+
         Parameters
         ----------
         behav_on_none : str (default: 'raise')
@@ -146,8 +142,11 @@ class BaslerCamera(BaseCamera):
         return serial_nos, models
 
     def init(self):
-        """Initializes the camera.  Automatically called if the camera is opened
-        using a `with` clause."""
+        """Initializes, opens, and configures the camera.  
+
+        This is automatically called if the camera is opened
+        using a `with` clause.
+        """
 
         # Create the pypylon camera object
         self._create_pylon_cam()
@@ -168,8 +167,11 @@ class BaslerCamera(BaseCamera):
         # Configure the camera according to the config file
         self._configure_basler()
 
+        self.initialized = True
+
     def _create_pylon_cam(self):
-        """
+        """Creates the pylon camera object, without opening it.
+
         Creates the following attributes:
             - self.cam: the pylon camera (pylon.InstantCamera(self.system.CreateDevice(self.devices[index])))
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
@@ -183,7 +185,7 @@ class BaslerCamera(BaseCamera):
             )
         except Exception as e:
             raise RuntimeError(f"Camera with id {self.id} failed to open: {e}")
-        
+
     def _configure_basler(self):
         """ Given the loaded config, set up the basler for acquisition with the config therein.
         """
@@ -238,13 +240,22 @@ class BaslerCamera(BaseCamera):
             raise ValueError("Trigger must be 'arduino' or 'software'")
 
     def check_config(self):
+        """Check for some common issues with Basler configs.
+        """
 
         # Ensure user doesnt request emulated cameras with arduino trigger mode
         if self.config["trigger"]["short_name"] == "arduino" and self.config["brand"] == "basler_emulated":
             raise ValueError("Cannot use arduino trigger with emulated cameras.")
 
     def set_trigger_mode(self, mode):
-        """Set the trigger to be hardware or software
+        """Shortcut method to quickly change the camera's trigger settings.
+
+        Parameters
+        ----------
+        mode : str
+            The trigger mode to use.  Must be one of:
+                - 'hardware': use the arduino trigger
+                - 'continuous': acquire continuously without requiring a trigger.
         """
         if mode == "hardware":
             # self.cam.AcquisitionMode.SetValue("Continuous")
@@ -272,23 +283,25 @@ class BaslerCamera(BaseCamera):
         self.running = False
 
     def close(self):
-        """Closes the camera and cleans up.  Automatically called if the camera
-        is opening using a `with` clause."""
-
+        """Stops grabbing, closes the camera, and deletes the camera object.
+        Automatically called if the camera is opening using a `with` clause.
+        """
         self.stop()
         self.cam.Close()
         del self.cam
 
     def get_image(self, timeout=None):
         """Get an image from the camera.
+
         Parameters
         ----------
         timeout : int (default: None)
             Wait up to timeout milliseconds for an image if not None.
                 Otherwise, wait indefinitely.
+
         Returns
         -------
-        img : PySpin Image
+        img : PyPylon image (?)
         """
         if timeout is None:
             timeout = 10000
@@ -296,17 +309,23 @@ class BaslerCamera(BaseCamera):
 
     def get_array(self, timeout=None, get_timestamp=False):
         """Get an image from the camera.
+
         Parameters
         ----------
         timeout : int (default: None)
             Wait up to timeout milliseconds for an image if not None.
                 Otherwise, wait indefinitely.
+
         get_timestamp : bool (default: False)
-            If True, returns timestamp of frame f(camera timestamp)
+            If True, returns timestamp of frame (from the camera's clock).
+
         Returns
         -------
         img : Numpy array
+            The image as a numpy array.
+
         tstamp : int
+            The timestamp of the frame, if get_timestamp=True.
         """
         if self.cam.IsGrabbing() == False:
             raise ValueError("Camera is not set up to grab frames.")
@@ -327,28 +346,6 @@ class BaslerCamera(BaseCamera):
             return img_array, tstamp
         else:
             return img_array
-
-    def get_info(self, name=None):
-        """Gen information on a camera node (attribute or method).
-        Parameters
-        ----------
-        name : string
-            The name of the desired node
-        Returns
-        -------
-        info : dict
-            A dictionary of retrieved properties.  *Possible* keys include:
-                - `'access'`: read/write access of node.
-                - `'description'`: description of node.
-                - `'value'`: the current value.
-                - `'unit'`: the unit of the value (as a string).
-                - `'min'` and `'max'`: the min/max value.
-        """
-        raise NotImplementedError
-
-    def document(self):
-        """Creates a MarkDown documentation string for the camera."""
-        raise NotImplementedError
 
 
 def enumerate_basler_cameras(behav_on_none="raise"):
@@ -407,8 +404,8 @@ class EmulatedBaslerCamera(BaslerCamera):
         di.SetDeviceClass(device_class)
         return device_class, [di]
 
-    def __init__(self, id=None, name=None, config=None, lock=True, fps=None):
-        super().__init__(id=id, name=name, config=config, lock=lock, fps=fps)
+    def __init__(self, id=None, name=None, config=None, fps=None):
+        super().__init__(id=id, name=name, config=config, fps=fps)
 
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
@@ -450,7 +447,7 @@ class EmulatedBaslerCamera(BaslerCamera):
 
     def _create_first(self):
         tlf = pylon.TlFactory.GetInstance()
-        return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[0]))
+        return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[self.device_index]))
 
     @staticmethod
     def default_camera_config():
