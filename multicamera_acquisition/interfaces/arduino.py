@@ -1,5 +1,6 @@
 import struct
 import numpy as np
+import yaml
 import warnings
 import sys
 import glob
@@ -88,20 +89,23 @@ class Arduino(object):
     - azure_pulse_dur (int): Duration of the ir pulse for the Azure camera.
     - acq_cycle_dur (int): Duration of the acquisition cycle.
     - camera_type (str): Type of the camera to trigger; either 'top' or 'bottom'.
+    - bottom_offset(int): Offset for bottom cameras (i.e. add const. to top camera times to shift to left.)
     - basler_offset (int): Offset duration for Basler camera pulse.
     - azure_offset (int): Offset duration for Azure camera pulse.
     - n_azures (int): Number of Azure cameras
 
     """
 
-    def __init__(self, config):
+    def __init__(self, config_file, config):
         
+        self.config_file = config_file
         self.config = config
         
         self.fps = self.config['fps']
         self.azure_pulse_dur = self.config['azure_pulse_dur']
         self.acq_cycle_dur = self.config['acq_cycle_dur']
         self.camera_type = self.config['camera_type_arduino']
+        self.bottom_offset = self.config['bottom_offset']
         self.basler_offset = self.config['basler_offset']
         self.azure_offset = self.config['azure_offset']
         self.n_azures = self.config['n_azures']
@@ -114,6 +118,60 @@ class Arduino(object):
 
 
         return None
+    
+    @staticmethod
+    def default_arduino_config(fps):
+
+        """
+        Generates a default configuration for Arduino setup with given frames per second (FPS).
+
+        Args:
+        - fps (int): Frames per second for the system.
+
+        Returns:
+        - dict: Default configuration dictionary with preset parameters for synchronization.
+
+        Notes:
+        - The returned dictionary contains default values for various parameters required for Arduino setup:
+          'fps', 'azure_pulse_dur', 'acq_cycle_dur', 'camera_type', 'basler_offset', 'azure_offset',
+          'n_azures', 'bottom_offset', 'n_pulses', 'azure_idle_time', 'trigger_offset'.
+        """
+
+        config = {
+            'fps': fps,
+            'azure_pulse_dur': 160,
+            'acq_cycle_dur': 33333,
+            'camera_type': 'top',
+            'basler_offset': 10,
+            'azure_offset': 10,
+            'n_azures': 2,
+            'bottom_offset': 1750,
+            'n_pulses': 9,
+            'azure_idle_time': 1450,
+            'trigger_offset': True
+        }
+
+        return config
+
+
+    def save_config(self):
+        '''Save the current arduino config to a YAML file.
+        '''
+
+        with open(self.config_file, 'w') as f:
+            yaml.dump(self.config, f, default_flow_style=False)
+
+    def load_config(self, check_if_valid=False):
+        '''Load a camera configuration YAML file.
+        '''
+
+        with open(self.config_file, 'r') as f:
+            config = yaml.load(f)
+        self.config = config
+
+        if check_if_valid:
+            self.check_config()
+
     def generate_basler_frametimes(self):
 
         """
@@ -142,17 +200,17 @@ class Arduino(object):
         nframes = np.ceil(self.acq_cycle_dur / interframe_interval).astype(int)
 
         if self.camera_type =='top':
-            bottom_offset = 0
+            _offset = 0
         elif self.camera_type == 'bottom':
-            bottom_offset = 1750
+            _offset = self.bottom_offset
         else:
             raise ValueError('camera must be one of the following: top, bottom')
 
         times = []
         # get times
         for n in range(nframes):
-            t = (interframe_interval * n) + (self.nazures * self.azure_pulse_dur) + self.azure_offset + self.basler_offset
-            t += bottom_offset
+            t = (interframe_interval * n) + (self.n_azures * self.azure_pulse_dur) + self.azure_offset + self.basler_offset
+            t += _offset
             times.append(t)
 
         # edge case to deal with second frame interfering with azure
@@ -188,9 +246,9 @@ class Arduino(object):
         azure_pulse_times = []
         x0 = 0
         for n in range(self.n_pulses):
-            x1 = x0 + (self.nazures * self.pulse_dur)
+            x1 = x0 + (self.n_azures * self.azure_pulse_dur)
             azure_pulse_times.append((x0, x1))
-            x0=(self.pulse_dur * self.nazures + self.idle_time)*(n+1)
+            x0=(self.azure_pulse_dur * self.n_azures + self.azure_idle_time)*(n+1)
 
         if self.trigger_offset:
             # get offsets to deal with cases 
