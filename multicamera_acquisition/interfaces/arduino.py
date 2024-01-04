@@ -154,24 +154,6 @@ class Arduino(object):
         return config
 
 
-    def save_config(self):
-        '''Save the current arduino config to a YAML file.
-        '''
-
-        with open(self.config_file, 'w') as f:
-            yaml.dump(self.config, f, default_flow_style=False)
-
-    def load_config(self, check_if_valid=False):
-        '''Load a camera configuration YAML file.
-        '''
-
-        with open(self.config_file, 'r') as f:
-            config = yaml.load(f)
-        self.config = config
-
-        if check_if_valid:
-            self.check_config()
-
     def generate_basler_frametimes(self):
 
         """
