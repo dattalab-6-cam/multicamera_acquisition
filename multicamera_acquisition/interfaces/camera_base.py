@@ -11,7 +11,6 @@ def get_camera(
     brand="flir",
     id=0,
     name=None,
-    config_file=None,
     config=None,
 ):
     """Get a camera object.
@@ -26,13 +25,9 @@ def get_camera(
         If an int, the index of the camera to acquire.
         If a string, the serial number of the camera.
 
-    config_file : path-like str or Path (default: None)
-        Path to config file. 
-        If config and config_file are both None, uses the camera's default config file.
-
     config : dict (default: None)
         A dictionary of config values.  
-        If config and config_file are both None, uses the camera's default config file.
+        If config is None, uses the camera's default config file.
 
     Returns
     -------
@@ -85,11 +80,11 @@ def get_camera(
 
     elif brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
-        cam = BaslerCamera(id=id, name=name, config_file=config_file, config=config)
+        cam = BaslerCamera(id=id, name=name, config=config)
 
     elif brand == "basler_emulated":
         from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
-        cam = EmulatedBaslerCamera(id=id, name=name, config_file=config_file, config=config)
+        cam = EmulatedBaslerCamera(id=id, name=name, config=config)
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
@@ -165,7 +160,7 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True, fps=None):
+    def __init__(self, id=0, name=None, config=None, lock=True, fps=None):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
@@ -176,13 +171,9 @@ class BaseCamera(object):
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
 
-        config_file : path-like str or Path (default: None)
-            Path to config file. 
-            If config and config_file are both None, uses the camera's default config file.
-
         config : dict (default: None)
             A dictionary of config values.  
-            If config and config_file are both None, uses the camera's default config file.
+            If config is None, uses the camera's default config file.
 
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
@@ -210,7 +201,6 @@ class BaseCamera(object):
         else:
             raise ValueError("Invalid camera ID")
 
-        self.config_file = config_file
         self.config = config
         self.name = name
         self.lock = lock
@@ -236,45 +226,6 @@ class BaseCamera(object):
 
         self.device_index = device_index
         self.model_name = model_names[device_index]
-
-    def save_config(self):
-        """Save the current camera configuration to a YAML file.
-        """
-        with open(self.config_file, 'w') as f:
-            yaml.dump(self.config, f, default_flow_style=False)
-
-    def load_config(self, check_if_valid=False):
-        """Load a camera configuration YAML file.
-        """
-        with open(self.config_file, 'r') as f:
-            config = yaml.load(f)
-        self.config = config
-
-        if check_if_valid:
-            self.check_config()
-
-    def update_config(self, new_config):
-        """Update the config file.
-
-        Parameters
-        ----------
-        new_config: dict
-            Dictionary of new config values
-        """
-        def recursive_update(config, updates):
-            for key, value in updates.items():
-                if key in config and isinstance(config[key], dict):
-                    # If the key is a dictionary, recurse
-                    recursive_update(config[key], value)
-                else:
-                    # Otherwise, update the value directly
-                    config[key] = value
-            return config
-
-        tmp_config = recursive_update(self.config, new_config)
-        if self.check_config(tmp_config):
-            self.config = tmp_config
-            self.save_config()
 
     def check_config(self, config=None):
         """Check if the camera configuration is valid.

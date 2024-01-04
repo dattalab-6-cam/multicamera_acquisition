@@ -9,7 +9,7 @@ import pdb
 
 class BaslerCamera(BaseCamera):
 
-    def __init__(self, id=None, name=None, config_file=None, config=None, lock=True, fps=None):
+    def __init__(self, id=None, name=None, config=None, lock=True, fps=None):
         """Set up a camera object, instance ready to connect to a camera.
         Parameters
         ----------
@@ -20,13 +20,9 @@ class BaslerCamera(BaseCamera):
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
 
-        config_file : path-like str or Path (default: None)
-            Path to config file.
-            If config_file and config are both None, uses the camera's default config file.
-
         config : dict (default: None)
             A dictionary of config params. 
-            If config_file and config are both None, uses the camera's default config file.
+            If config is None, uses the camera's default config file.
 
         lock : bool (default: True)
             Not implemented for Baslers, does nothing here.
@@ -38,7 +34,7 @@ class BaslerCamera(BaseCamera):
         """
 
         # Init the parent class
-        super().__init__(id=id, name=name, config_file=config_file, config=config, lock=lock, fps=fps)
+        super().__init__(id=id, name=name, config=config, lock=lock, fps=fps)
 
         # Create the camera object
         self._create_pylon_sys()  # init the pylon API software layer
@@ -50,16 +46,10 @@ class BaslerCamera(BaseCamera):
         # see self.init() and self._configure_basler().)
 
         # Load self.config, checking for mismatches with self.fps
-        if self.config_file is not None and self.config is not None:
-            raise ValueError("Cannot specify both config_file and config.")
-        elif self.config_file is not None:
-            self.load_config(check_if_valid=False)  # TODO: could set check to be true by default? unsure.
+        if self.config is not None:
             if "fps" in self.config and self.fps is not None:
                 raise ValueError(f"fps specified twice; in config {self.config['fps']} and as camera kwarg {self.fps}.")
-        elif self.config is not None:
-            if "fps" in self.config and self.fps is not None:
-                raise ValueError(f"fps specified twice; in config {self.config['fps']} and as camera kwarg {self.fps}.")
-        elif self.config_file is None and self.config is None:
+        elif self.config is None:
             self.config = BaslerCamera.default_camera_config(self.fps)  # If no config file is specified, use the default
 
         if self.fps is None:
@@ -258,6 +248,14 @@ class BaslerCamera(BaseCamera):
             self.set_trigger_mode("continuous")
         else:
             raise ValueError("Trigger must be 'arduino' or 'software'")
+        
+
+    def check_config(self):
+        
+        # Ensure user doesnt request emulated cameras with arduino trigger mode
+        if self.config["trigger"]["short_name"] == "arduino" and self.config["brand"] == "basler_emulated":
+            raise ValueError("Cannot use arduino trigger with emulated cameras.")
+        
 
     def set_trigger_mode(self, mode):
         """Set the trigger to be hardware or software
@@ -423,8 +421,8 @@ class EmulatedBaslerCamera(BaslerCamera):
         di.SetDeviceClass(device_class)
         return device_class, [di]
 
-    def __init__(self, id=None, name=None, config_file=None, config=None, lock=True, fps=None):
-        super().__init__(id=id, name=name, config_file=config_file, config=config, lock=lock, fps=fps)
+    def __init__(self, id=None, name=None, config=None, lock=True, fps=None):
+        super().__init__(id=id, name=name, config=config, lock=lock, fps=fps)
 
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
