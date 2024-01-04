@@ -118,6 +118,10 @@ class AcquisitionLoop(mp.Process):
         """
 
         # Get the Camera object instance
+        # TODO: resolve device indices in one go before starting any cameras,
+        # that way all six cameras don't have to iterate through all six of each other!
+        # Then just add the device index to the config and allow the cameras to directly
+        # receive a device index.
         cam = get_camera(
             brand=self.camera_config["brand"],
             id=self.camera_config["id"],
@@ -359,8 +363,6 @@ def refactor_acquire_video(
             display_framerate: 30
             display_range: [0, 1000]
     """
-
-    print(config["cameras"]["top"]["writer"]["max_video_frames"])
 
     # Create the recording directory
     save_location = prepare_rec_dir(save_location, append_datetime=append_datetime, overwrite=overwrite)
@@ -729,6 +731,7 @@ def acquire_video(
                 depth=True,
             )
 
+            
             cam = get_camera(**camera_dict)
 
         else:
