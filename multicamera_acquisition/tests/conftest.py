@@ -18,3 +18,15 @@ def pytest_addoption(parser):
         action="store",
         default="continuous",
     )
+
+    parser.addoption(
+        "--writer_type",
+        action="store",
+        default="nvc",
+    )
+
+    parser.addoption(
+        "--fps",
+        action="store",
+        default=30,
+    )

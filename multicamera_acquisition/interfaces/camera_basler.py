@@ -4,6 +4,7 @@ from pypylon._genicam import RuntimeException
 import numpy as np
 import os
 import time
+import warnings
 
 import pdb
 
@@ -29,8 +30,8 @@ class BaslerCamera(BaseCamera):
 
         fps : int (default: None)
             The desired frame rate for the recording. 
-            It is preferred to set this from the config, but this is provided
-            for convenience.
+            It is possible to set this from the config, but this is provided
+            for convenience, and will take precedence.
         """
 
         # Init the parent class
@@ -40,20 +41,12 @@ class BaslerCamera(BaseCamera):
         self._create_pylon_sys()  # init the pylon API software layer
         self._resolve_device_index()  # sets self.device_index based on the id the user provides
 
-        # Load the config
-        # (NB: we load the config info here, but we don't actually 
-        # configure the camera itself until *after* .open()'ing it, 
-        # see self.init() and self._configure_basler().)
+        # Load a default config if needed
+        if self.config is None:
+            self.config = BaslerCamera.default_camera_config()  # If no config file is specified, use the default
 
-        # Load self.config, checking for mismatches with self.fps
-        if self.config is not None:
-            if "fps" in self.config and self.fps is not None:
-                raise ValueError(f"fps specified twice; in config {self.config['fps']} and as camera kwarg {self.fps}.")
-        elif self.config is None:
-            self.config = BaslerCamera.default_camera_config(self.fps)  # If no config file is specified, use the default
-
-        if self.fps is None:
-            self.fps = self.config["fps"]
+        if fps is not None or "fps" in self.config.keys():
+            warnings.warn("Providing fps for Baslers is deprecated and generally not necessary.")
 
     def __repr__(self):
         """
@@ -71,9 +64,8 @@ class BaslerCamera(BaseCamera):
         return basic_info + "\n" + cam_info
 
     @staticmethod
-    def default_camera_config(fps):
+    def default_camera_config():
         config = {
-            'fps': fps,
             'roi': None,  # ie use the entire roi
             'gain': 6,
             'exposure': 1000,
@@ -84,7 +76,6 @@ class BaslerCamera(BaseCamera):
                 'trigger_source': 'Line2',
                 'trigger_selector': 'FrameStart',
                 'trigger_activation': 'RisingEdge',
-                #TODO: anything dependent on fps?
             }
         }
         return config
@@ -137,7 +128,7 @@ class BaslerCamera(BaseCamera):
         for i, device in enumerate(devices):
             try:
                 camera = pylon.InstantCamera(self.system.CreateDevice(device))
-            except RuntimeException as e:
+            except RuntimeException:
                 # TODO: what is the proper way to check if we can open a camera, rather than catching the error?
                 serial_nos.append(None)
                 models.append(None)
@@ -186,8 +177,6 @@ class BaslerCamera(BaseCamera):
         di = pylon.DeviceInfo()
         devices = self.system.EnumerateDevices([di,])
 
-        # Create the camera with the desired index
-        # print(f"Creating camera with index {self.device_index}, id {self.id}, sn {self.serial_number}.")
         try:
             self.cam = pylon.InstantCamera(
                 self.system.CreateDevice(devices[self.device_index])
@@ -231,7 +220,6 @@ class BaslerCamera(BaseCamera):
         trigger = self.config["trigger"]
         if trigger["short_name"] == "arduino":
             self.cam.AcquisitionMode.SetValue(trigger["acquisition_mode"])
-            # self.cam.AcquisitionFrameRateEnable.SetValue('On')
             max_fps = self.cam.AcquisitionFrameRate.GetMax()
             self.cam.AcquisitionFrameRate.SetValue(max_fps)
             self.cam.TriggerMode.SetValue("Off")  # why have to set to off here?
@@ -248,14 +236,12 @@ class BaslerCamera(BaseCamera):
             self.set_trigger_mode("continuous")
         else:
             raise ValueError("Trigger must be 'arduino' or 'software'")
-        
 
     def check_config(self):
-        
+
         # Ensure user doesnt request emulated cameras with arduino trigger mode
         if self.config["trigger"]["short_name"] == "arduino" and self.config["brand"] == "basler_emulated":
             raise ValueError("Cannot use arduino trigger with emulated cameras.")
-        
 
     def set_trigger_mode(self, mode):
         """Set the trigger to be hardware or software
@@ -271,7 +257,7 @@ class BaslerCamera(BaseCamera):
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerSelector.SetValue("FrameStart")
             self.cam.TriggerMode.SetValue("Off")
-            
+
         else:
             raise ValueError("Trigger mode must be 'hardware' or 'continuous'")
 
@@ -329,7 +315,7 @@ class BaslerCamera(BaseCamera):
 
         img_array = None
         tstamp = None
-        
+
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
             if get_timestamp:
@@ -367,7 +353,7 @@ class BaslerCamera(BaseCamera):
 
 def enumerate_basler_cameras(behav_on_none="raise"):
     """ Enumerate all Basler cameras connected to the system.
-    
+
     Parameters
     ----------
     behav_on_none : str (default: 'raise')
@@ -467,10 +453,9 @@ class EmulatedBaslerCamera(BaslerCamera):
         return pylon.InstantCamera(tlf.CreateFirstDevice(self.device_filter[0]))
 
     @staticmethod
-    def default_camera_config(fps):
-        #TODO: is there a way to get this to inherit gracefully?
+    def default_camera_config():
+        # TODO: is there a way to get this to inherit gracefully?
         config = {
-            'fps': fps,
             'roi': None,  # ie use the entire roi
             'gain': 6,
             'exposure': 1000,
@@ -481,7 +466,7 @@ class EmulatedBaslerCamera(BaslerCamera):
                 'trigger_source': 'Line2',
                 'trigger_selector': 'FrameStart',
                 'trigger_activation': 'RisingEdge',
-                #TODO: anything dependent on fps?
+                # TODO: anything dependent on fps?
             }
         }
         return config

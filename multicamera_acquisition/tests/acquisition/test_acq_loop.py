@@ -22,22 +22,18 @@ from multicamera_acquisition.interfaces.camera_basler import (
 
 from multicamera_acquisition.video_utils import count_frames
 
-
-@pytest.fixture(scope="session")
-def writer_type(pytestconfig):
-    """A session-wide fixture to return the Writer type
-    from the command line option.
-    """
-    return pytestconfig.getoption("writer_type", default="ffmpeg")
+from multicamera_acquisition.tests.acquisition.test_acq_video import (
+    writer_type,
+)
 
 
 def test_acq_loop_init(fps):
     loop = AcquisitionLoop(
         mp.Queue(),
         mp.Queue(),
-        camera_config=BaslerCamera.default_camera_config(fps),
+        fps,
+        camera_config=BaslerCamera.default_camera_config(),
     )
-    assert loop.camera_config["fps"] == fps
     assert isinstance(loop.await_process, mp.synchronize.Event)
     assert isinstance(loop.await_main_thread, mp.synchronize.Event)
     assert loop.acq_config["frame_timeout"] == 1000
@@ -59,7 +55,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera as Camera
     else:
         raise NotImplementedError
-    camera_config = Camera.default_camera_config(fps)
+    camera_config = Camera.default_camera_config()
     camera_config["name"] = "test"
     camera_config["id"] = id
     camera_config["trigger"] = {"short_name": "continuous"}  # overwrite defaults to allow cam to run without triggers
@@ -85,6 +81,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     acq_loop = AcquisitionLoop(
         write_queue,
         None,
+        fps,
         camera_config=camera_config,
         acq_loop_config=acq_config,
     )
@@ -107,4 +104,4 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     if writer_type == "ffmpeg":
         assert count_frames(str(writer.video_file_name)) == n_test_frames
     elif writer_type == "nvc":
-        assert count_frames(str(writer.video_file_name).replace(".mp4", ".muxed.mp4")) == n_test_frames
+        assert count_frames(str(writer.video_file_name)) == n_test_frames
