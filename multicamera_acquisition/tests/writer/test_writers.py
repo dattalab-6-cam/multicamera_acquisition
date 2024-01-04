@@ -96,7 +96,7 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
 
     # Check that the video exists
     assert writer.video_file_name.exists()
-    assert count_frames(str(writer.video_file_name).replace(".mp4", ".muxed.mp4")) == n_test_frames
+    assert count_frames(str(writer.video_file_name)) == n_test_frames
 
 
 @pytest.fixture(scope="function")
