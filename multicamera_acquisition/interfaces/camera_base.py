@@ -10,6 +10,7 @@ class CameraError(Exception):
 def get_camera(
     brand="flir",
     id=0,
+    name=None,
     config_file=None,
     config=None,
 ):
@@ -84,11 +85,11 @@ def get_camera(
 
     elif brand == "basler":
         from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
-        cam = BaslerCamera(id=id, config_file=config_file, config=config)
+        cam = BaslerCamera(id=id, name=name, config_file=config_file, config=config)
 
     elif brand == "basler_emulated":
         from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
-        cam = EmulatedBaslerCamera(id=id, config_file=config_file, config=config)
+        cam = EmulatedBaslerCamera(id=id, name=name, config_file=config_file, config=config)
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
