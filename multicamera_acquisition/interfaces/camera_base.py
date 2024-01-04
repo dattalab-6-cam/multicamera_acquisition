@@ -8,7 +8,6 @@ class CameraError(Exception):
 
 
 def get_camera(
-    fps,
     brand="basler",
     id=0,
     name=None,

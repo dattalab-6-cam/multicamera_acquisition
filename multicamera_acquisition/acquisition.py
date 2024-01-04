@@ -124,7 +124,6 @@ class AcquisitionLoop(mp.Process):
         # Then just add the device index to the config and allow the cameras to directly
         # receive a device index.
         cam = get_camera(
-            self.fps,
             brand=self.camera_config["brand"],
             id=self.camera_config["id"],
             name=self.camera_config["name"],
