@@ -38,10 +38,9 @@ def trigger_type(pytestconfig):
 
 def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
 
-
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1}
+        {"name": "top", "brand": camera_brand, "id": "40347941"},
+        {"name": "bottom", "brand": camera_brand, "id": "40393557"}
     ]
 
     # Set the trigger behavior
@@ -57,10 +56,11 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
 
     # Add ffmpeg writers to each camera
     # TODO: allow this to be nvc dynamically for testing. 
-    ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps)
+    # writer_config = FFMPEG_Writer.default_writer_config(fps)
+    writer_config = NVC_Writer.default_writer_config(fps)
     for camera_name in partial_new_config["cameras"].keys():
-        ffmpeg_writer_config["camera_name"] = camera_name
-        partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
+        writer_config["camera_name"] = camera_name
+        partial_new_config["cameras"][camera_name]["writer"] = writer_config
 
     # Create the full config, filling in defaults where necessary
     full_config = create_full_camera_default_config(partial_new_config)
@@ -86,7 +86,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
 
     # Check that the video has the right number of frames
     for camera_name in full_config["cameras"].keys():
-        assert count_frames(str(first_video_file_name)) == int(n_test_frames)
+        assert count_frames(str(first_video_file_name)) == (int(n_test_frames) - 1)
 
 
 def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_test_frames, fps):

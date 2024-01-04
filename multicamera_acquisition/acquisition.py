@@ -149,7 +149,8 @@ class AcquisitionLoop(mp.Process):
         # thread to continue
         self.await_process.set()  # report to the main loop that the camera is ready
 
-        current_frame = 0
+        current_iter = 0
+        n_frames_received = 0
         first_frame = False
         while not self.stopped.is_set():
             try:
@@ -161,27 +162,28 @@ class AcquisitionLoop(mp.Process):
                     data = cam.get_array(timeout=self.acq_config["frame_timeout"], get_timestamp=True)
 
                 if len(data) != 0:
+                    n_frames_received += 1
 
                     # If this is an azure camera, we write the depth data to a separate queue
                     if self.camera_config["brand"] == "azure":
                         depth, ir, camera_timestamp = data
 
                         self.write_queue.put(
-                            tuple([ir, camera_timestamp, current_frame])
+                            tuple([ir, camera_timestamp, current_iter])
                         )
                         self.write_queue_depth.put(
-                            tuple([depth, camera_timestamp, current_frame])
+                            tuple([depth, camera_timestamp, current_iter])
                         )
                         if self.acq_config["display_frames"]:
-                            if current_frame % self.display_every_n == 0:
+                            if current_iter % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple([depth, camera_timestamp, current_frame])
+                                    tuple([depth, camera_timestamp, current_iter])
                                 )
                     else:
-                        data = data + tuple([current_frame])
+                        data = data + tuple([current_iter])
                         self.write_queue.put(data)
                         if self.acq_config["display_frames"]:
-                            if current_frame % self.acq_config["display_every_n"] == 0:
+                            if current_iter % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
             except Exception as e:
@@ -189,7 +191,8 @@ class AcquisitionLoop(mp.Process):
                 if type(e).__name__ == "SpinnakerException":
                     pass
                 elif type(e).__name__ == "TimeoutException":
-                    print(f"{cam.name} cam:{e}")
+                    # print(f"{cam.name} cam:{e}")
+                    print(f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames")
                     pass
                 else:
                     raise e
@@ -201,13 +204,14 @@ class AcquisitionLoop(mp.Process):
                             type(e).__name__,  # , str(e)
                         )
                     )
-            current_frame += 1
+            current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
-                if current_frame >= self.acq_config["max_frames_to_acqure"]:
+                if current_iter >= self.acq_config["max_frames_to_acqure"]:
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
-        logging.debug(f"Writing empties to stop queue, {self.camera_config['name']}")
+        print(f"Writing empties to stop queue, {self.camera_config['name']}")
+        print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
