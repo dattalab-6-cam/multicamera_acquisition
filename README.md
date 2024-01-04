@@ -157,12 +157,9 @@ If you want to have the IDE available in your Desktop menu then fllow the instru
 ```
 conda create -n multicam python=3.10
 conda activate multicam
-git clone https://github.com/timsainb/multicamera_acquisition.git
+git clone https://github.com/dattalab-6-cam/multicamera_acquisition.git
 cd multicamera_acquisition
-python setup.py develop
-conda install -c anaconda ipykernel
-python3 -m ipykernel install --user --name=multicam
-pip3 install pypylon Pillow matplotlib numpy pyusb pyyaml notebook
+pip install -e .
 ```
 
 #### Add user to dialout group to access serial ports [optional]
