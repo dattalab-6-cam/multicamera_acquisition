@@ -30,7 +30,7 @@ should consist of a sequence 7 lines, as follows:
     (8) comma separated list of deterministic output state-change times in microseconds
     (9) comma separated list of deterministic output pins corresponding to the times in (8)
     (10) comma separated states (0 or 1) corresponding to the times in (8)
-    (11) ETX (End of Text) character, aka b'\x03'
+    (11) \n (End of Text) character, aka b'\x03'
 
 (3) After the microcontroller has seen a correctly formatted data packet, it
 will send the string "RECEIVED" over the serial connection and then immediately
@@ -45,7 +45,7 @@ of the input pins over the serial connection as a byte-string in the following
 format, where each <pin> is 2 bytes (int16), each <state> is 1 byte (uint8),
 and <cycleIndex> is 4 bytes (unsigned long):
 
-    "<STX><pin1><state1>...<pinN><stateN><cycleIndex><ETX"
+    "<STX><pin1><state1>...<pinN><stateN><cycleIndex><\n"
 
 (6) Once per second, the microcontroller will check for an interrupt signal,
 which should be the single character "I". If detected, the microcontroller will
@@ -53,7 +53,7 @@ send the string "INTERRUPTED" over the serial connection and return to the
 main loop (i.e. step 1).
 
 (7) When the microcontroller has completed the specified number of acquisition
-cycles, it will send the string "F<ETX>" over the serial connection and return to the
+cycles, it will send the string "F<\n>" over the serial connection and return to the
 main loop (i.e. step 1).
 */
 
@@ -113,7 +113,7 @@ void parseLine(const char *input, unsigned long *output, int maxNumbers, int *co
  * in the following format, where each <pin> is 2 bytes (int16), each <state> is
  * 1 byte (uint8), and <cycleIndex> is 4 bytes (unsigned long):
  *
- *    "STX<pin1><state1>...<pinN><stateN><cycleIndex>ETX"
+ *    "STX<pin1><state1>...<pinN><stateN><cycleIndex>\n"
  *
  * @param input_pins An array of input pins to monitor.
  * @param num_input_pins The number of input pins to monitor.
@@ -123,7 +123,7 @@ void sendInputStates(unsigned long *input_pins, int num_input_pins, unsigned lon
 {
 
     // Calculate the total size needed for the buffer
-    // 1 for STX, 3 for each pin/state, 4 for cycle_index, 1 for ETX
+    // 1 for STX, 3 for each pin/state, 4 for cycle_index, 1 for \n
     int bufferSize = (num_input_pins * 3) + 6;
     uint8_t buffer[bufferSize];
 
@@ -351,18 +351,18 @@ void loop()
             line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), state_change_states, MAX_STATE_CHANGES, nullptr);
 
-            // Read the ETX character
-            char lastChar = Serial.read();
+            // Read the \n character
+            char lastChar = Serial.readline();
 
-            // If the last character is not the ETX character, clear the serial
+            // If the last character is not the \n character, clear the serial
             // buffer, send an error message, and return to the main loop
-            if (lastChar != '\x03')
+            if (lastChar != '\n')
             {
                 Serial.flush();
                 Serial.println("ERROR");
             }
 
-            // If the last character is the ETX character, then send the
+            // If the last character is the \n character, then send the
             // "RECEIVED" message and begin acquisition
             else
             {
