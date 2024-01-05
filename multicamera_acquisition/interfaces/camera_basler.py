@@ -73,6 +73,8 @@ class BaslerCamera(BaseCamera):
             'gain': 6,
             'exposure': 1000,
             "brand": "basler",
+            "display": False,
+            "display_range": (0, 255),
             'trigger': {
                 'trigger_type': 'arduino',
                 'acquisition_mode': 'Continuous',
@@ -477,6 +479,8 @@ class EmulatedBaslerCamera(BaslerCamera):
             'gain': 6,
             'exposure': 1000,
             "brand": "basler_emulated",
+            "display": False,
+            "display_range": (0, 255),
             'trigger': {
                 'trigger_type': 'no_trigger',
             }

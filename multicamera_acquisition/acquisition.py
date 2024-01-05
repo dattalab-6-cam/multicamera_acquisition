@@ -20,6 +20,7 @@ from multicamera_acquisition.config.config import (
     add_rt_display_params_to_config,
 )
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
+from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
@@ -361,7 +362,10 @@ def refactor_acquire_video(
     save_location : Path
         The directory in which the recording was saved.
 
-    config: dict
+    video_file_name : Path
+        The path to the video file.
+
+    final_config: dict
         The final recording config used.
 
     Examples
@@ -417,9 +421,8 @@ def refactor_acquire_video(
             dropped_frame_warnings: False
             max_frames_to_acqure: null
         rt_display:
-            display_downsample: 4
-            display_framerate: 30
-            display_range: [0, 1000]
+            downsample: 4
+            range: [0, 1000]
     """
 
     # Create the recording directory
@@ -476,7 +479,7 @@ def refactor_acquire_video(
     # Create the various processes
     writers = []
     acquisition_loops = []
-    # display_queues = [] # TODO: implement display queues
+    display_queues = []
 
     for camera_name, camera_dict in final_config["cameras"].items():
 
@@ -515,10 +518,19 @@ def refactor_acquire_video(
         else:
             write_queue_depth = None
 
+        # Setup display queue for camera if requested
+        display_queue = None
+        if (
+            camera_name in final_config['rt_display']['camera_names']
+            and final_config["acq_loop"]["display_frames"]
+        ):
+            display_queue = mp.Queue()
+            display_queues.append(display_queue)
+
         # Create an acquisition loop process
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
-            display_queue=None,
+            display_queue=display_queue,
             fps=final_config["globals"]["fps"],
             camera_device_index=device_index_dict[camera_name],
             write_queue_depth=write_queue_depth,
@@ -538,7 +550,15 @@ def refactor_acquire_video(
         # Block until the acq loop process reports that it's initialized
         acquisition_loop.await_process.wait()
 
-    # TODO: display queues here
+    if len(display_queues) > 0:
+        # create a display process which recieves frames from the acquisition loops
+        disp = MultiDisplay(
+            display_queues,
+            config=final_config['rt_display']
+        )
+        disp.start()
+    else:
+        disp = None
 
     # Wait for the acq loop processes to start their cameras
     for acquisition_loop in acquisition_loops:

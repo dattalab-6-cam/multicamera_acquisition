@@ -30,6 +30,8 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
+from multicamera_acquisition.visualization import MultiDisplay
+
 
 @pytest.fixture(scope="session")
 def trigger_type(pytestconfig):
@@ -161,8 +163,8 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     # Check that the video has the right number of frames
     # NB: this won't work unless we mux the videos, so this also tests the muxing.
     for camera_name in full_config["cameras"].keys():
-        assert count_frames(str(first_video_file_name)) == n_test_frames/2
-        assert count_frames(str(next_video_file_name)) == n_test_frames/2
+        assert count_frames(str(first_video_file_name)) == n_test_frames / 2
+        assert count_frames(str(next_video_file_name)) == n_test_frames / 2
 
 
 def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
@@ -201,6 +203,9 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     acq_config = AcquisitionLoop.default_acq_loop_config()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
+
+    display_config = MultiDisplay.default_display_config()
+    full_config["rt_display"] = display_config
 
     # Run the func!
     save_loc, first_video_file_name, full_config = refactor_acquire_video(
