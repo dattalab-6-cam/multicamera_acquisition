@@ -73,7 +73,7 @@ def generate_output_schedule(config, n_azures=2):
 
     # expand pins to correpond to times
     top_pins = config['arduino']['top_camera_pins']*len(toptimes) + config['arduino']['top_light_pins']*len(toptimes)
-    bottom_pins = config['arduino']['bottom_pins']*len(bottomtimes) + config['arduino']['bottom_light_pins']*len(bottomtimes)
+    bottom_pins = config['arduino']['bottom_camera_pins']*len(bottomtimes) + config['arduino']['bottom_light_pins']*len(bottomtimes)
 
     def _generate_states(times):
         return [1 if i % 2 == 0 else 0 for i in range(len(times))]
@@ -90,7 +90,7 @@ def generate_output_schedule(config, n_azures=2):
     pins = top_pins+bottom_pins
     states = topstates_expanded+bottomstates_expanded
 
-    for pin in config['arduino']['']
+    # for pin in config['arduino']['']
 
     return times, pins, states
 
