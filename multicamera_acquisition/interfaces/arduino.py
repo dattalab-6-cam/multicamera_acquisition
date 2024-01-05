@@ -90,6 +90,7 @@ def generate_output_schedule(config, n_azures=2):
     pins = top_pins+bottom_pins
     states = topstates_expanded+bottomstates_expanded
 
+    # add azure times/pins
     for pin, azure_time in zip(config['arduino']['azure_pins'], config['arduino']['azure_times']):
         pins.append(pin)
         times.append(azure_time)
@@ -422,10 +423,6 @@ class Arduino(object):
         random_flip_interval = self.config['arduino']['random_flip_interval']
         # get output pin times, pin numbers, and states
         times, outpins, states = generate_output_schedule(self.config)
-
-        # check for ints
-        for val in [num_cycles, cycle_dur, input_check_interval, random_flip_interval]:
-            assert type(val) == int, 'One of the values you are passing to the microcontroller is not int, check your config and try again.'
 
         sequence = (
             b'\x02' +
