@@ -134,7 +134,7 @@ def test_image_grid(tmp_path, camera_brand, fps):
     """
 
     n_test_frames = 5
-    full_config = create_twocam_config(camera_brand, n_test_frames, fps)
+    full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type="no_trigger")
     save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
