@@ -455,10 +455,11 @@ class Arduino(object):
         # send interrupt signal
         self.serial_connection.write(b'I')
         # check for correct response
-        if check_for_response(self.serial_connection, "INTERRUPTED"):
-            return
-        else:
-            raise RuntimeError('Arduino not interrupted')
+        acquisition_interrupted = check_for_response(self.serial_connection, "INTERRUPTED")
+        if not acquisition_interrupted:
+            raise RuntimeError(
+                "Could not interrupt acquisition! Arduino did not recieve interrupt signal."
+            )
 
     def check_for_input(self):
         """
