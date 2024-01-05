@@ -7,7 +7,6 @@ basler and flir, but with some pecularities.
 """
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from multicamera_acquisition.config.default_azure_config import default_azure_config
 from pyk4a import (
     PyK4A,
     Config,
@@ -21,7 +20,7 @@ import warnings
 
 
 class AzureCamera(BaseCamera):
-    def __init__(self, id=0, name=None, config_file=None, lock=True):
+    def __init__(self, id=0, name=None, config=None, lock=True):
         """Create an instance of an Azure Kinect camera, without actually "open"ing it (i.e. without starting the connection).
         Parameters
         ----------
@@ -30,8 +29,9 @@ class AzureCamera(BaseCamera):
             If a string, the serial number of the camera.
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
-        config : path-like str or Path (default: None)
-            Path to config file. If None, uses the camera's default config file.
+        config : dict (default: None)
+            A dictionary of config params.
+            If None, uses the default config.
         lock : bool (default: True)
             If True, setting new attributes after initialization results in
             an error.
@@ -39,25 +39,46 @@ class AzureCamera(BaseCamera):
         """
 
         # Init the parent class
-        super().__init__(id=id, name=name, config_file=config_file, lock=lock)
+        super().__init__(id=id, name=name, config=config, lock=lock)
 
         # Resolve which device to use
         self._resolve_device_index()  # sets self.device_index based on the id the user provides
 
         # Load the config
         # (NB: we must configure the Azure *before* opening it, contrary to the other cameras [or so it seems from our existing code])
-        if self.config_file is None:
-            self.config = (
-                default_azure_config()
-            )  # If no config file is specified, use the default
-            # TODO: save the default config to a file once we know where acquisition is happening.
-        else:
-            self.load_config(
-                check_if_valid=False
-            )  # could set check to be true by efault? unsure.
-        self._load_config(
-            check_if_valid=True
-        )  # this is the only chance we'll have to check if it's valid, so do it here
+        # If no config file is specified, use the default
+        if self.config is None:
+            self.config = AzureCamera.default_camera_config()
+
+        # TODO: add a check that the config is valid
+
+    def __repr__(self):
+        """Returns a string representation of the camera object."""
+        # python info
+        address = hex(id(self))
+        basic_info = f'<{self.__class__.__module__ + "." + self.__class__.__qualname__} object at {address}>'
+
+        # TODO: ADD more camera-specific info
+        attrs_to_list = ["serial_number", "device_index"]
+        cam_info = "Basler Camera: \n" + "\n\t".join(
+            [f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list]
+        )
+
+        return basic_info + "\n" + cam_info
+
+    @staticmethod
+    def default_camera_config():
+        """A default config dict for an Azure Kinect camera."""
+
+        # also to include: name, sn, model, firmware, acq mode (eg nfov unbinned)
+        config = {
+            "fps": 30,
+            "depth_mode": "NFOV_UNBINNED",  # "narrow field of view, unbinned"
+            "synchronized_images_only": False,
+            "sync_mode": "subordinate",
+            "subordinate_delay_off_master_usec": 500,
+        }
+        return config
 
     def init(self):
         """Initialize the camera."""
