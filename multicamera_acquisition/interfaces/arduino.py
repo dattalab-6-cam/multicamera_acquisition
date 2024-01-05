@@ -31,7 +31,7 @@ def validate_arduino_config(config):
     - XXX
     """
     # get all pins into one list
-    pins = config['arduino']['input_pins']+config['arduino']['random_bit_pins']+config['arduino']['output_pins']
+    pins = config['arduino']['input_pins']+config['arduino']['random_pins']+config['arduino']['output_pins']
     # check if lengths match after removing duplicates with set()
     assert len(pins) == len(set(pins)), 'Pins should only be specified once, please remove duplicate pins in config'
 
@@ -334,7 +334,7 @@ class Arduino(object):
         a READY message from the arduino. If the message is not received, raise a RuntimeError.
         """
         if self.config["arduino"]["port"] is None:
-            ports = find_serial_ports()
+            ports = find_serial_ports()state_change_times
             if len(ports) == 0:
                 raise RuntimeError("No serial ports found!")
 
@@ -363,7 +363,7 @@ class Arduino(object):
         self.serial_connection.close()
         self.trigger_data_file.close()
 
-    def start_acquisition(self):
+    def start_acquisition(self, num_cycles, azure_fps=30):
         """
         Start acquisition by sending instructions to the arduino. Raise a RuntimeError if the
         arduino does not respond with the string "RECEIVED" within 2 seconds.
@@ -372,7 +372,32 @@ class Arduino(object):
         self.serial_connection.flushInput()
 
         # send instructions to arduino
-        # JACK TODO: send instructions to arduino
+        # JACK TODO: send instructions to arduino\
+
+        # acq duration based off azure framerate of 30 hz
+        cycle_dur = (1/azure_fps)*1e6
+        # n cycles between each input pin state check
+        input_check_interval = self.config['arduino']['input_check_interval']
+        # n cycles between each random bit update
+        random_flip_interval = self.config['arduino']['random_flip_interval']
+        # get output pin times, pin numbers, and states
+        times, outpins, states = generate_output_schedule(self.config)
+
+        sequence = (
+            b'\x02' +
+            f'{num_cycles}\n'.encode(),
+            f'{cycle_dur}\n'.encode(),
+            (','.join(map(str, self.config['arduino']['input_pins'])) + '\n').encode(),
+            f",{input_check_interval},".encode() +
+            (','.join(map(str, self.config['arduino']['random_pins'])) + '\n').encode(),
+            f",{random_flip_interval},".encode() +
+            ','.join(map(str, times)).encode(),
+            (','.join(map(str, outpins)) + '\n').encode(),
+            ','.join(map(str, states)).encode() +
+            b'\x03'
+            )
+        for seq in sequence:
+            self.serial_connection.write(seq)
 
         # check for response
         acquisition_started = check_for_response(self.serial_connection, "RECEIVED")
