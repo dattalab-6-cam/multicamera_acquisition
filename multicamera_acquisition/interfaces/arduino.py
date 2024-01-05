@@ -334,7 +334,7 @@ class Arduino(object):
         a READY message from the arduino. If the message is not received, raise a RuntimeError.
         """
         if self.config["arduino"]["port"] is None:
-            ports = find_serial_ports()state_change_times
+            ports = find_serial_ports()
             if len(ports) == 0:
                 raise RuntimeError("No serial ports found!")
 
