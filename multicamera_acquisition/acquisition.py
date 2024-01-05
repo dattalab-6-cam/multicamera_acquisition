@@ -508,7 +508,7 @@ def refactor_acquire_video(
                 video_file_name_depth,
                 metadata_file_name_depth,
                 writer_type=camera_dict["writer"]["type"],
-                config=camera_dict["writer_depth"], # TODO: make a separate writer_depth config for depth
+                config=camera_dict["writer_depth"],  # TODO: make a separate writer_depth config for depth
             )
         else:
             write_queue_depth = None
@@ -563,10 +563,10 @@ def refactor_acquire_video(
 
         # Listen for confirmation from arduino that we're going, abort if not 
         try:
-            confirmation = wait_for_serial_confirmation(
+            _ = wait_for_serial_confirmation(
                 arduino, expected_confirmation="Start", seconds_to_wait=10
             )
-        except:
+        except ValueError:
             # kill everything if we can't get confirmation
             end_processes(acquisition_loops, writers, [])
             return save_location, video_file_name, final_config
