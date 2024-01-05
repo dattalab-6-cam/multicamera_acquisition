@@ -36,7 +36,7 @@ def validate_arduino_config(config):
     assert len(pins) == len(set(pins)), 'Pins should only be specified once, please remove duplicate pins in config'
 
 
-def generate_output_schedule(config):
+def generate_output_schedule(config, n_azures=2):
     """
     Generate a sequence of state changes for the output pins of the arduino.
     These changes will be performed during each acquisition cycle and will be used
@@ -56,8 +56,38 @@ def generate_output_schedule(config):
     states : list
         The state (0 or 1) for each state change.
     """
+
     # JACK TODO: write this function, make sure to raise errors if the timing cant work out
-    pass
+    toptimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type='top')
+    bottomtimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type='bottom')
+    
+    # expand toptimes to have a time for each pin
+    def _expand_arr(x, y):
+        return [_x for _x in x for _ in range(len(y))]
+    
+    toptimes_expanded = _expand_arr(toptimes, config['arduino']['top_pins'])
+    bottomtimes_expanded = _expand_arr(bottomtimes, config['arduino']['bottom_pins'])
+
+    # expand pins to correpond to times
+    top_pins = config['arduino']['top_pins']*len(toptimes)
+    bottom_pins = config['arduino']['bottom_pins']*len(bottomtimes)
+
+    def _generate_states(times):
+        return [1 if i % 2 == 0 else 0 for i in range(len(times))]
+    
+    # generate and expand states to appropriate pins pins
+    topstates = _generate_states(toptimes)
+    topstates_expanded = _expand_arr(topstates, config['arduino']['top_pins'])
+
+    bottomstates = _generate_states(bottomtimes)
+    bottomstates_expanded = _expand_arr(bottomstates, config['arduino']['bottom_pins'])
+
+    # concat all into final lists to return
+    times = toptimes_expanded+bottomtimes_expanded
+    pins = top_pins+bottom_pins
+    states = topstates_expanded+bottomstates_expanded
+
+    return times, pins, states
 
 
 def check_for_response(serial_connection, expected_response):
@@ -174,7 +204,9 @@ def generate_basler_frametimes(config, n_azures=2, camera_type='top'):
     for n in range(nframes):
         t = (interframe_interval * n) + (n_azures * config['azure_pulse_dur']) + config['azure_offset'] + config['basler_offset']
         t += _offset
-        times.append(t)
+        end = t+config['exposure_time']
+        times.append(int(t))
+        times.append(int(end))
 
     # edge case to deal with second frame interfering with azure
     if config['fps'] in (120, 150):
@@ -375,13 +407,17 @@ class Arduino(object):
         # JACK TODO: send instructions to arduino\
 
         # acq duration based off azure framerate of 30 hz
-        cycle_dur = (1/azure_fps)*1e6
+        cycle_dur = int((1/azure_fps)*1e6)
         # n cycles between each input pin state check
         input_check_interval = self.config['arduino']['input_check_interval']
         # n cycles between each random bit update
         random_flip_interval = self.config['arduino']['random_flip_interval']
         # get output pin times, pin numbers, and states
         times, outpins, states = generate_output_schedule(self.config)
+
+        # check for ints
+        for val in [num_cycles, cycle_dur, input_check_interval, random_flip_interval]:
+            assert type(val) == int, 'One of the values you are passing to the microcontroller is not int, check your config and try again.'
 
         sequence = (
             b'\x02' +
