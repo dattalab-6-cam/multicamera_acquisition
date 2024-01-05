@@ -214,11 +214,14 @@ class AcquisitionLoop(mp.Process):
             current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
+                    if not self.stopped.is_set():
+                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping.")
+                        self.stopped.set()
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
         print(f"Writing empties to stop queue, {self.camera_config['name']}")
-        print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
+        # print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
@@ -385,7 +388,7 @@ def refactor_acquire_video(
 
         globals:
             fps: 30
-            arduino_required: False  # since trigger short name is set to continuous
+            arduino_required: False  # since trigger short name is set to no_trigger
         cameras:
             top:
                 name: top
@@ -396,7 +399,7 @@ def refactor_acquire_video(
                 display: True
                 roi: null  # or an roi to crop the image
                 trigger:
-                    short_name: continuous  # convenience attr for no-trigger acquisition
+                    trigger_type: no_trigger  # convenience attr for no-trigger acquisition
                 writer:
                     codec: h264
                     fmt: YUV420
@@ -436,7 +439,6 @@ def refactor_acquire_video(
 
     # Resolve camera device indices
     device_index_dict = resolve_device_indices(final_config)
-    print(device_index_dict)
 
     # Check that the config is valid
     validate_recording_config(final_config)
@@ -576,7 +578,7 @@ def refactor_acquire_video(
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         # how long to record
         datetime_prev = datetime.now()
-        time_to_wait = recording_duration_s + 10 if final_config["globals"]["arduino_required"] else recording_duration_s
+        time_to_wait = recording_duration_s + 10
         endtime = datetime_prev + timedelta(seconds=time_to_wait)
         while datetime.now() < endtime:
 
@@ -589,6 +591,9 @@ def refactor_acquire_video(
                 if msg == "Finished":
                     print("Finished recieved from arduino")
                     break
+            elif not any([acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]):
+                print("All acquisition loops have stopped")
+                break
 
             # Update pbar
             if (datetime.now() - datetime_prev).seconds > 0:

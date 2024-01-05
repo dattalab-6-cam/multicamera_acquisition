@@ -65,7 +65,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     camera_config = Camera.default_camera_config()
     camera_config["name"] = "test"
     camera_config["id"] = id
-    camera_config["trigger"] = {"short_name": "continuous"}  # overwrite defaults to allow cam to run without triggers
+    camera_config["trigger"] = {"trigger_type": "no_trigger"}  # overwrite defaults to allow cam to run without triggers
 
     # Create the Writer process
     if writer_type == "nvc":
