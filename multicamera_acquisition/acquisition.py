@@ -19,13 +19,20 @@ from multicamera_acquisition.config.config import (
     validate_recording_config,
     add_rt_display_params_to_config,
 )
-from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
+from multicamera_acquisition.interfaces.config import (
+    create_full_camera_default_config,
+    partial_config_from_camera_list,
+)
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 
 # from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 from multicamera_acquisition.interfaces.arduino import (
-    find_serial_ports, packIntAsLong, wait_for_serial_confirmation)
+    find_serial_ports,
+    packIntAsLong,
+    wait_for_serial_confirmation,
+)
+
 # from multicamera_acquisition.visualization import MultiDisplay
 
 
@@ -97,8 +104,7 @@ class AcquisitionLoop(mp.Process):
 
     @staticmethod
     def default_acq_loop_config():
-        """Get the default config for the acquisition loop.
-        """
+        """Get the default config for the acquisition loop."""
         return {
             "frame_timeout": 1000,
             "display_frames": False,
@@ -108,14 +114,13 @@ class AcquisitionLoop(mp.Process):
         }
 
     def _create_mp_events(self):
-        """Create multiprocessing events.
-        """
+        """Create multiprocessing events."""
         self.await_process = mp.Event()  # was previously "ready"
         self.await_main_thread = mp.Event()  # was previously "primed"
         self.stopped = mp.Event()
 
     def _continue_from_main_thread(self):
-        """ Tell the acquisition loop to continue 
+        """Tell the acquisition loop to continue
         (Called from the main thread)
         """
         self.await_main_thread.set()
@@ -125,8 +130,7 @@ class AcquisitionLoop(mp.Process):
         self.stopped.set()
 
     def run(self):
-        """Acquire frames. This is run when mp.Process.start() is called.
-        """
+        """Acquire frames. This is run when mp.Process.start() is called."""
 
         # Get the Camera object instance
         # TODO: resolve device indices in one go before starting any cameras,
@@ -147,7 +151,7 @@ class AcquisitionLoop(mp.Process):
         self.await_process.set()  # report to the main loop that the camera is ready
 
         # Here, the main thread will loop through all the acq loop objects
-        # and start each camera. The main thread will wait for 
+        # and start each camera. The main thread will wait for
         # each acq loop to report that it has started its camera.
 
         # Wait for the main thread to get to the for-loop
@@ -171,7 +175,9 @@ class AcquisitionLoop(mp.Process):
                     data = cam.get_array(timeout=10000, get_timestamp=True)
                     first_frame = False
                 else:
-                    data = cam.get_array(timeout=self.acq_config["frame_timeout"], get_timestamp=True)
+                    data = cam.get_array(
+                        timeout=self.acq_config["frame_timeout"], get_timestamp=True
+                    )
 
                 if len(data) != 0:
                     n_frames_received += 1
@@ -204,7 +210,9 @@ class AcquisitionLoop(mp.Process):
                     pass
                 elif type(e).__name__ == "TimeoutException":
                     # print(f"{cam.name} cam:{e}")
-                    print(f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames")
+                    print(
+                        f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
+                    )
                     pass
                 else:
                     raise e
@@ -216,7 +224,9 @@ class AcquisitionLoop(mp.Process):
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
                     if not self.stopped.is_set():
-                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping.")
+                        print(
+                            f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping."
+                        )
                         self.stopped.set()
                     break
 
@@ -237,7 +247,7 @@ class AcquisitionLoop(mp.Process):
 
 
 def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
-    """ Use the stop() method to end the acquisition loops, writers, and display
+    """Use the stop() method to end the acquisition loops, writers, and display
     processes, escalating to terminate() if necessary.
     """
 
@@ -309,7 +319,9 @@ def resolve_device_indices(config):
             dev_idx = camera_dict["id"]
         elif isinstance(camera_dict["id"], str):
             if camera_dict["id"] not in serial_nos:
-                raise CameraError(f"Camera with serial number {camera_dict['id']} not found.")
+                raise CameraError(
+                    f"Camera with serial number {camera_dict['id']} not found."
+                )
             else:
                 dev_idx = serial_nos.index(camera_dict["id"])
         device_index_dict[camera_name] = dev_idx
@@ -324,13 +336,13 @@ def resolve_device_indices(config):
 
 
 def refactor_acquire_video(
-        save_location, 
-        config,
-        recording_duration_s=60, 
-        append_datetime=True, 
-        append_camera_serial=False,
-        file_prefix=None,
-        overwrite=False
+    save_location,
+    config,
+    recording_duration_s=60,
+    append_datetime=True,
+    append_camera_serial=False,
+    file_prefix=None,
+    overwrite=False,
 ):
     """Acquire video from multiple, synchronized cameras.
 
@@ -426,8 +438,14 @@ def refactor_acquire_video(
     """
 
     # Create the recording directory
-    save_location = prepare_rec_dir(save_location, append_datetime=append_datetime, overwrite=overwrite)
-    base_filename = prepare_base_filename(file_prefix=file_prefix, append_datetime=append_datetime, append_camera_serial=append_camera_serial)
+    save_location = prepare_rec_dir(
+        save_location, append_datetime=append_datetime, overwrite=overwrite
+    )
+    base_filename = prepare_base_filename(
+        file_prefix=file_prefix,
+        append_datetime=append_datetime,
+        append_camera_serial=append_camera_serial,
+    )
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -482,17 +500,20 @@ def refactor_acquire_video(
     display_queues = []
 
     for camera_name, camera_dict in final_config["cameras"].items():
-
         # Create a writer queue
         write_queue = mp.Queue()
 
         # Generate file names
         if append_camera_serial:
-            format_kwargs = dict(camera_name=camera_dict["name"], camera_id=camera_dict["id"])
+            format_kwargs = dict(
+                camera_name=camera_dict["name"], camera_id=camera_dict["id"]
+            )
         else:
             format_kwargs = dict(camera_name=camera_dict["name"])
         video_file_name = save_location / base_filename.format(**format_kwargs)
-        metadata_file_name = save_location / base_filename.format(**format_kwargs).replace(".mp4", ".metadata.csv")
+        metadata_file_name = save_location / base_filename.format(
+            **format_kwargs
+        ).replace(".mp4", ".metadata.csv")
 
         # Get a writer process
         writer = get_writer(
@@ -507,13 +528,17 @@ def refactor_acquire_video(
         if camera_dict["brand"] == "azure":
             write_queue_depth = mp.Queue()
             video_file_name_depth = save_location / f"{camera_name}.depth.avi"
-            metadata_file_name_depth = save_location / f"{camera_name}.metadata.depth.csv"
+            metadata_file_name_depth = (
+                save_location / f"{camera_name}.metadata.depth.csv"
+            )
             writer_depth = get_writer(
                 write_queue_depth,
                 video_file_name_depth,
                 metadata_file_name_depth,
                 writer_type=camera_dict["writer"]["type"],
-                config=camera_dict["writer_depth"],  # TODO: make a separate writer_depth config for depth
+                config=camera_dict[
+                    "writer_depth"
+                ],  # TODO: make a separate writer_depth config for depth
             )
         else:
             write_queue_depth = None
@@ -571,7 +596,6 @@ def refactor_acquire_video(
 
     # If using arduino, start it. Otherwise, just wait for the specified duration.
     if final_config["globals"]["arduino_required"]:
-
         # Tell the arduino to start recording by sending along the recording parameters
         fps = final_config["globals"]["fps"]
         inv_framerate = int(np.round(1e6 / fps, 0))
@@ -587,7 +611,7 @@ def refactor_acquire_video(
         )
         arduino.write(msg)
 
-        # Listen for confirmation from arduino that we're going, abort if not 
+        # Listen for confirmation from arduino that we're going, abort if not
         try:
             _ = wait_for_serial_confirmation(
                 arduino, expected_confirmation="Start", seconds_to_wait=10
@@ -605,7 +629,6 @@ def refactor_acquire_video(
         time_to_wait = recording_duration_s + 10
         endtime = datetime_prev + timedelta(seconds=time_to_wait)
         while datetime.now() < endtime:
-
             if final_config["globals"]["arduino_required"]:
                 # Check for the arduino to say we're done
                 msg = arduino.readline().decode("utf-8").strip("\r\n")
@@ -615,7 +638,9 @@ def refactor_acquire_video(
                 if msg == "Finished":
                     print("Finished recieved from arduino")
                     break
-            elif not any([acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]):
+            elif not any(
+                [acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]
+            ):
                 print("All acquisition loops have stopped")
                 break
 
