@@ -18,8 +18,6 @@ from multicamera_acquisition.visualization import (
 
 from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
 
-from multicamera_acquisition.video_utils import count_frames
-
 from multicamera_acquisition.tests.writer.test_writers import (
     get_DummyFrames_process,
     fps,
@@ -44,7 +42,6 @@ from multicamera_acquisition.writer import (
 from multicamera_acquisition.tests.acquisition.test_acq_video import trigger_type
 
 
-
 @pytest.fixture(scope="function")
 def multidisplay_processes(tmp_path, fps, n_test_frames):
     """Generate linked MultiDisplay and DummyFrames processes for testing
@@ -62,37 +59,29 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
     return (display, dummy_frames_procs)
 
 
-def create_twocam_config(camera_brand, n_test_frames, trigger_type, fps):
+def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1}
+        {"name": "top", "brand": camera_brand, "id": 0, "trigger_type": trigger_type},
+        {"name": "bottom", "brand": camera_brand, "id": 1, "trigger_type": trigger_type}
     ]
 
-    # Set the trigger behavior
-    if trigger_type == "continuous":
-        short_name = "continuous"
-    elif trigger_type == "arduino":
-        short_name = "arduino"
-    for camera in camera_list:
-        camera["short_name"] = short_name
-
     # Parse the "camera list" into a partial config
-    partial_new_config = partial_config_from_camera_list(camera_list, fps)
+    partial_new_config = partial_config_from_camera_list(camera_list)
 
     # Add ffmpeg writers to each camera
     # TODO: allow this to be nvc dynamically for testing. 
-    writer_config = FFMPEG_Writer.default_writer_config(fps)
-    # writer_config = NVC_Writer.default_writer_config(fps)
+    ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps)
     for camera_name in partial_new_config["cameras"].keys():
-        writer_config["camera_name"] = camera_name
-        partial_new_config["cameras"][camera_name]["writer"] = writer_config
+        ffmpeg_writer_config["camera_name"] = camera_name
+        partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
 
     # Create the full config, filling in defaults where necessary
-    full_config = create_full_camera_default_config(partial_new_config)
+    full_config = create_full_camera_default_config(partial_new_config, fps)
+    full_config["globals"] = dict(fps=fps, arduino_required=False)
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config()
-    acq_config["max_frames_to_acqure"] = int(n_test_frames)
+    acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
     display_config = MultiDisplay.default_display_config()

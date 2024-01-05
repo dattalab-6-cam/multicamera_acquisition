@@ -11,6 +11,7 @@ ALL_CAM_PARAMS = [
     "exposure_time",
     "display",
     "gain",
+    "fps",
 ]
 
 ALL_WRITER_PARAMS = [
@@ -27,7 +28,7 @@ ALL_DISPLAY_PARAMS = [
 ]
 
 ALL_TRIGGER_PARAMS = [
-    "short_name",
+    "trigger_type",
     'acquisition_mode',
     'trigger_source',
     'trigger_selector',
@@ -49,7 +50,7 @@ for pair in itertools.combinations(
     assert all([param not in pair[1] for param in pair[0]]), f"Redundant param names: {pair}"
 
 
-def partial_config_from_camera_list(camera_list, fps):
+def partial_config_from_camera_list(camera_list):
     """ Create a partial recording config from a list of camera dicts.
 
     Parameters
@@ -70,9 +71,6 @@ def partial_config_from_camera_list(camera_list, fps):
                 Whether to display the camera's feed in real-time.
             gain: int
                 The gain for the camera, in (units?). (TODO: valid ranges?)
-
-    fps : int
-        The desired frame rate for the recording.
 
         Other optional parameters depend on the camera brand. It is also possible to control the Writer parameters for each camera. The syntax is 
         flat (not nested) and follows the same rules as the camera params. For example, to set
@@ -105,20 +103,19 @@ def partial_config_from_camera_list(camera_list, fps):
             elif key in ALL_TRIGGER_PARAMS:
                 partial_config["cameras"][camera_name]["trigger"][key] = camera_dict[key]
 
-        # Add fps to this camera
-        # NB: we don't allow the user to specify fps per camera, since it's a global param
-        partial_config["cameras"][camera_name]["fps"] = fps
-
     return partial_config
 
 
-def create_full_camera_default_config(partial_config):
+def create_full_camera_default_config(partial_config, fps):
     """Create a full, default recording config for the cameras + writers.
 
     Parameters
     ----------
     partial_config : dict
         A partial config for cameras + their writers, generated from any user input.
+
+    fps : int
+        The desired fps for the recordings.
 
     Returns
     -------
@@ -135,8 +132,8 @@ def create_full_camera_default_config(partial_config):
     assert len(set(camera_names)) == len(camera_names), "Duplicate camera names found in config"
 
     for camera_name in camera_names:
-        fps = partial_config["cameras"][camera_name]["fps"]
 
+        # Create what will become the full config for this camera
         cam_config = {}
         cam_config["name"] = camera_name
 
@@ -149,16 +146,16 @@ def create_full_camera_default_config(partial_config):
 
         # Find the correct defaults (both camera and writer configs)
         if cam_config["brand"] == "basler":
-            default_cam_conf = BaslerCamera.default_camera_config(fps)
+            default_cam_conf = BaslerCamera.default_camera_config()
             default_writer_conf = BaslerCamera.default_writer_config(fps)
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "basler_emulated":
-            default_cam_conf = EmulatedBaslerCamera.default_camera_config(fps)
+            default_cam_conf = EmulatedBaslerCamera.default_camera_config()
             default_writer_conf = EmulatedBaslerCamera.default_writer_config(fps)
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "azure":
             default_cam_conf = AzureCamera.default_config()
-            default_writer_conf = AzureCamera.default_writer_config()
+            default_writer_conf = AzureCamera.default_writer_config(30)  # TODO: un-hardcode this even tho it wont change
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         else:
             raise NotImplementedError

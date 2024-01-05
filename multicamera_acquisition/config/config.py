@@ -112,18 +112,13 @@ def validate_recording_config(recording_config):
         if recording_config["cameras"][camera_name]["brand"] not in ["basler", "basler_emulated", "azure"]:
             raise ValueError(f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}")
 
-    # Ensure that each IR camera has the same FPS
-    all_fps = []
+    # Warn user that fps for baslers / azures is deprecated
     for camera_name in recording_config["cameras"].keys():
-        if recording_config["cameras"][camera_name]["brand"] in ["basler", "basler_emulated"]:
-            all_fps.append(recording_config["cameras"][camera_name]["fps"])
-    if len(set(all_fps)) > 1:
-        raise ValueError("All IR cameras must have the same FPS")
-    else: 
-        fps = all_fps[0]
+        if "fps" in recording_config["cameras"][camera_name].keys():
+            print("WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported).")
 
     # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
-    if fps % 30 != 0:
+    if recording_config["globals"]["fps"] % 30 != 0:
         raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
 
     # Ensure that the requested frame rate is a multiple of the display frame rate

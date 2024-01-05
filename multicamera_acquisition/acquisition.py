@@ -10,7 +10,8 @@ import numpy as np
 import serial
 
 from tqdm import tqdm
-from multicamera_acquisition.interfaces.camera_base import get_camera
+from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
+from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
 from multicamera_acquisition.writer import get_writer
 from multicamera_acquisition.config.config import (
     load_config,
@@ -19,6 +20,7 @@ from multicamera_acquisition.config.config import (
     add_rt_display_params_to_config,
 )
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config, partial_config_from_camera_list
+from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 from multicamera_acquisition.visualization import MultiDisplay
 
@@ -38,6 +40,8 @@ class AcquisitionLoop(mp.Process):
         self,
         write_queue,
         display_queue,
+        fps,
+        camera_device_index,
         write_queue_depth=None,
         camera_config=None,
         acq_loop_config=None,
@@ -50,6 +54,12 @@ class AcquisitionLoop(mp.Process):
 
         display_queue : multiprocessing.Queue
             A queue from which frames will be read for display.
+
+        fps : int
+            The frames per second to acquire. Currently unused?
+
+        camera_device_index : int
+            The device index of the camera to acquire from.
 
         write_queue_depth : multiprocessing.Queue (default: None)
             A queue to which depth frames will be written (azure only).
@@ -69,6 +79,8 @@ class AcquisitionLoop(mp.Process):
         self.display_queue = display_queue
         self.write_queue_depth = write_queue_depth
         self.camera_config = camera_config
+        self.fps = fps
+        self.camera_device_index = camera_device_index
 
         # Get config
         if acq_loop_config is None:
@@ -125,7 +137,7 @@ class AcquisitionLoop(mp.Process):
         # receive a device index.
         cam = get_camera(
             brand=self.camera_config["brand"],
-            id=self.camera_config["id"],
+            id=self.camera_device_index,
             name=self.camera_config["name"],
             config=self.camera_config,
         )
@@ -201,20 +213,19 @@ class AcquisitionLoop(mp.Process):
                     raise e
                 if self.acq_config["dropped_frame_warnings"]:
                     warnings.warn(
-                        "Dropped {} frame on #{}: \n{}".format(
-                            current_frame,
-                            cam.serial_number,
-                            type(e).__name__,  # , str(e)
-                        )
+                        f"Dropped frame after receiving {n_frames_received} on {current_iter} iters: \n{type(e).__name__}"
                     )
             current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
+                    if not self.stopped.is_set():
+                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping.")
+                        self.stopped.set()
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
         print(f"Writing empties to stop queue, {self.camera_config['name']}")
-        print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
+        # print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
@@ -274,6 +285,47 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             disp.terminate()
 
 
+def resolve_device_indices(config):
+    """Resolve device indices for all cameras in the config.
+
+    Parameters
+    ----------
+    config : dict
+        The recording config.
+
+    Returns
+    -------
+    device_index_dict : dict
+        A dict mapping camera names to device indices.
+    """
+
+    device_index_dict = {}
+
+    # Resolve any Basler cameras
+    serial_nos, _ = enumerate_basler_cameras(behav_on_none="pass")
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] not in ["basler", "basler_emulated"]:
+            continue
+        if camera_dict["id"] is None:
+            raise ValueError(f"Camera {camera_name} has no id specified.")
+        elif isinstance(camera_dict["id"], int):
+            dev_idx = camera_dict["id"]
+        elif isinstance(camera_dict["id"], str):
+            if camera_dict["id"] not in serial_nos:
+                raise CameraError(f"Camera with serial number {camera_dict['id']} not found.")
+            else:
+                dev_idx = serial_nos.index(camera_dict["id"])
+        device_index_dict[camera_name] = dev_idx
+
+    # Resolve any Azure cameras
+    # TODO
+
+    # Resolve any Lucid cameras
+    # TODO
+
+    return device_index_dict
+
+
 def refactor_acquire_video(
         save_location, 
         config,
@@ -313,7 +365,10 @@ def refactor_acquire_video(
     save_location : Path
         The directory in which the recording was saved.
 
-    config: dict
+    video_file_name : Path
+        The path to the video file.
+
+    final_config: dict
         The final recording config used.
 
     Examples
@@ -340,6 +395,7 @@ def refactor_acquire_video(
 
         globals:
             fps: 30
+            arduino_required: False  # since trigger short name is set to no_trigger
         cameras:
             top:
                 name: top
@@ -350,7 +406,7 @@ def refactor_acquire_video(
                 display: True
                 roi: null  # or an roi to crop the image
                 trigger:
-                    short_name: continuous  # convenience attr for no-trigger acquisition
+                    trigger_type: no_trigger  # convenience attr for no-trigger acquisition
                 writer:
                     codec: h264
                     fmt: YUV420
@@ -383,10 +439,12 @@ def refactor_acquire_video(
         assert isinstance(config, dict)
 
     # Add the display params to the config
-    # final_config = add_rt_display_params_to_config(config, rt_display_params)
     final_config = config
 
     # TODO: add arduino configs
+
+    # Resolve camera device indices
+    device_index_dict = resolve_device_indices(final_config)
 
     # Check that the config is valid
     validate_recording_config(final_config)
@@ -396,24 +454,24 @@ def refactor_acquire_video(
     save_config(config_filepath, final_config)
 
     # Find the arduino to be used for triggering
-    # TODO: allow user to specify a port
-    ports = find_serial_ports()
-    found_arduino = False
-    for port in ports:
-        with serial.Serial(port=port, timeout=0.1) as arduino:
-            try:
-                wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Waiting...", seconds_to_wait=2
-                )
-                found_arduino = True
-                break
-            except ValueError:
-                continue
-    if found_arduino is False:
-        raise RuntimeError("Could not find waiting arduino to do triggers!")
-    else:
-        print(f"Using port {port} for arduino.")
-    arduino = serial.Serial(port=port, timeout=1)  #TODO: un-hardcode the timeout
+    if final_config["globals"]["arduino_required"]:
+        ports = find_serial_ports()
+        found_arduino = False
+        for port in ports:
+            with serial.Serial(port=port, timeout=0.1) as arduino:
+                try:
+                    wait_for_serial_confirmation(
+                        arduino, expected_confirmation="Waiting...", seconds_to_wait=2
+                    )
+                    found_arduino = True
+                    break
+                except ValueError:
+                    continue
+        if found_arduino is False:
+            raise RuntimeError("Could not find waiting arduino to do triggers!")
+        else:
+            print(f"Using port {port} for arduino.")
+        arduino = serial.Serial(port=port, timeout=1)  # TODO: un-hardcode the timeout
 
     # Delay recording to allow serial connection to connect
     sleep_duration = 2
@@ -458,15 +516,17 @@ def refactor_acquire_video(
                 video_file_name_depth,
                 metadata_file_name_depth,
                 writer_type=camera_dict["writer"]["type"],
-                config=camera_dict["writer_depth"], # TODO: make a separate writer_depth config for depth
+                config=camera_dict["writer_depth"],  # TODO: make a separate writer_depth config for depth
             )
         else:
             write_queue_depth = None
 
         # Setup display queue for camera if requested
         display_queue = None
-        if (camera_name in final_config['rt_display']['camera_names']
-            and final_config["acq_loop"]["display_frames"]):
+        if (
+            camera_name in final_config['rt_display']['camera_names']
+            and final_config["acq_loop"]["display_frames"]
+        ):
             display_queue = mp.Queue()
             display_queues.append(display_queue)
 
@@ -474,6 +534,8 @@ def refactor_acquire_video(
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
             display_queue=display_queue,
+            fps=final_config["globals"]["fps"],
+            camera_device_index=device_index_dict[camera_name],
             write_queue_depth=write_queue_depth,
             camera_config=camera_dict,
             acq_loop_config=final_config["acq_loop"],
@@ -495,7 +557,7 @@ def refactor_acquire_video(
         # create a display process which recieves frames from the acquisition loops
         disp = MultiDisplay(
             display_queues,
-            config = final_config['rt_display']
+            config=final_config['rt_display']
         )
         disp.start()
     else:
@@ -506,48 +568,54 @@ def refactor_acquire_video(
         acquisition_loop._continue_from_main_thread()
         acquisition_loop.await_process.wait()
 
-    # Tell the arduino to start recording by sending along the recording parameters
-    fps = final_config["cameras"][camera_name]["fps"]
-    inv_framerate = int(np.round(1e6 / fps, 0))
-    num_cycles = int(recording_duration_s * 30)
-    msg = b"".join(
-        map(
-            packIntAsLong,
-            (
-                num_cycles,
-                inv_framerate,
-            ),
-        )
-    )
-    arduino.write(msg)
+    # If using arduino, start it. Otherwise, just wait for the specified duration.
+    if final_config["globals"]["arduino_required"]:
 
-    # Run acquision
-    try:
-        confirmation = wait_for_serial_confirmation(
-            arduino, expected_confirmation="Start", seconds_to_wait=10
+        # Tell the arduino to start recording by sending along the recording parameters
+        fps = final_config["globals"]["fps"]
+        inv_framerate = int(np.round(1e6 / fps, 0))
+        num_cycles = int(recording_duration_s * 30)
+        msg = b"".join(
+            map(
+                packIntAsLong,
+                (
+                    num_cycles,
+                    inv_framerate,
+                ),
+            )
         )
-    except:
-        # kill everything if we can't get confirmation
-        end_processes(acquisition_loops, writers, [])
-        return save_location, video_file_name, final_config
+        arduino.write(msg)
+
+        # Listen for confirmation from arduino that we're going, abort if not 
+        try:
+            _ = wait_for_serial_confirmation(
+                arduino, expected_confirmation="Start", seconds_to_wait=10
+            )
+        except ValueError:
+            # kill everything if we can't get confirmation
+            end_processes(acquisition_loops, writers, [])
+            return save_location, video_file_name, final_config
 
     # Wait for the specified duration
-    finished = False
     try:
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         # how long to record
         datetime_prev = datetime.now()
-        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        time_to_wait = recording_duration_s + 10
+        endtime = datetime_prev + timedelta(seconds=time_to_wait)
         while datetime.now() < endtime:
 
-            # Check for the arduino to say we're done
-            msg = arduino.readline().decode("utf-8").strip("\r\n")
-            if len(msg) > 0:
-                print(msg)
-                # TODO: save trigger data
-            if msg == "Finished":
-                print("Finished recieved from arduino")
-                finished = True
+            if final_config["globals"]["arduino_required"]:
+                # Check for the arduino to say we're done
+                msg = arduino.readline().decode("utf-8").strip("\r\n")
+                if len(msg) > 0:
+                    print(msg)
+                    # TODO: save trigger data
+                if msg == "Finished":
+                    print("Finished recieved from arduino")
+                    break
+            elif not any([acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]):
+                print("All acquisition loops have stopped")
                 break
 
             # Update pbar
@@ -555,25 +623,14 @@ def refactor_acquire_video(
                 pbar.update((datetime.now() - datetime_prev).seconds)
                 datetime_prev = datetime.now()
 
-        # If Python finishes first, wait a moment for the arduino to finish
-        if not finished:
-            try:
-                confirmation = wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Finished", seconds_to_wait=10
-                )
-            except ValueError as e:
-                print(e)
-
-    except (KeyboardInterrupt) as e:
-        pass
-
     finally:
         # End the processes and close the arduino regardless
         # of whether there was an error or not
         pbar.update((datetime.now() - datetime_prev).seconds)
         pbar.close()
         print("Ending processes, this may take a moment...")
-        arduino.close()
+        if final_config["globals"]["arduino_required"]:
+            arduino.close()
         end_processes(acquisition_loops, writers, None, writer_timeout=300)
         print("Done.")
 

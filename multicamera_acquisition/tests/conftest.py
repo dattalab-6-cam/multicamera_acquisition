@@ -16,5 +16,17 @@ def pytest_addoption(parser):
     parser.addoption(
         "--trigger_type",
         action="store",
-        default="continuous",
+        default="no_trigger",
+    )
+
+    parser.addoption(
+        "--writer_type",
+        action="store",
+        default="nvc",
+    )
+
+    parser.addoption(
+        "--fps",
+        action="store",
+        default=30,
     )
