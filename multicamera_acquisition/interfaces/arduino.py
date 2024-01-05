@@ -65,7 +65,7 @@ def generate_output_schedule(config, n_azures=2):
     def _expand_arr(x, y):
         return [_x for _x in x for _ in range(y)]
     
-    n_top_pins = len(config['arduino']['top_light_pins']) + len(config['arduino']['top_camera_pins'])
+    n_top_pins = len(config['arduino']['top_camera_pins']) + len(config['arduino']['top_light_pins'])
     toptimes_expanded = _expand_arr(toptimes, n_top_pins)
     
     n_bottom_pins = len(config['arduino']['bottom_camera_pins']) + len(config['arduino']['bottom_light_pins'])
