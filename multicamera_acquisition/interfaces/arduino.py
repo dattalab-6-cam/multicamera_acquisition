@@ -90,7 +90,10 @@ def generate_output_schedule(config, n_azures=2):
     pins = top_pins+bottom_pins
     states = topstates_expanded+bottomstates_expanded
 
-    # for pin in config['arduino']['']
+    for pin, azure_time in zip(config['arduino']['azure_pins'], config['arduino']['azure_times']):
+        pins.append(pin)
+        times.append(azure_time)
+        states.append(1)
 
     return times, pins, states
 
