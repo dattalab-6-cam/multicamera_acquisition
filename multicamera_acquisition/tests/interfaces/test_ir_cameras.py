@@ -1,10 +1,9 @@
 
-from multicamera_acquisition.interfaces.camera_basler import (
-    BaslerCamera, EmulatedBaslerCamera, CameraError
-)
 import numpy as np
-# import os
 import pytest
+
+from multicamera_acquisition.interfaces.camera_basler import (
+    BaslerCamera, CameraError, EmulatedBaslerCamera)
 
 
 @pytest.fixture(scope="session")
@@ -18,7 +17,7 @@ def camera_type(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
-    return pytestconfig.getoption("camera_type", default="basler_emulated")
+    return pytestconfig.getoption("camera_type")  # default emulated, see conftest.py
 
 
 @pytest.fixture(scope="function")
@@ -42,7 +41,7 @@ def fps(pytestconfig):
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
         >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
     """
-    return pytestconfig.getoption("fps", default=30)
+    return int(pytestconfig.getoption("fps"))
 
 
 @pytest.fixture(scope="function")
@@ -60,7 +59,7 @@ def camera(camera_type, fps):
 
 
 class Test_Camera_InitAndStart():
-    """Test the basler camera subclas
+    """Test the ability of the camera to initialize and start without a trigger.
     """
 
     def test_start(self, camera):
@@ -68,19 +67,43 @@ class Test_Camera_InitAndStart():
         camera.stop()
 
     def test_grab_one(self, camera):
-        camera.set_trigger_mode("continuous")  # allows cam to caquire without hardware triggers
+        camera.set_trigger_mode("no_trigger")  # allows real cameras to caquire without hardware triggers (emulated ones already do)
         camera.start()
         img = camera.get_array(timeout=1000)
         assert isinstance(img, np.ndarray)
         camera.stop()
 
 
+class Test_OpenMultipleCameras():
+    """Test how we open multiple cameras so they don't interfere
+    """
+    def test_two_cameras(self, fps, camera_type):
+
+        if camera_type == 'basler_camera':
+            CamClass = BaslerCamera
+        elif camera_type == 'basler_emulated':
+            CamClass = EmulatedBaslerCamera
+
+        # should default to 0
+        cam1 = CamClass(id=0)
+        cam2 = CamClass(id=1)
+        cam1.init()
+        cam2.init()
+        cam1.start()
+        cam2.start()
+
+        cam1.stop()
+        cam2.stop()
+        cam1.close()
+        cam2.close()
+
+
 class Test_CameraIDMethods():
-    """Test the basler camera subclas
+    """Test passing the camera id to the camera class.
     """
     def test_default_device_index(self, fps):
         # should default to 0
-        cam = BaslerCamera(fps=fps)
+        cam = BaslerCamera()
         cam.init()
         assert cam.device_index == 0
         cam.close()
@@ -88,13 +111,38 @@ class Test_CameraIDMethods():
     @pytest.mark.parametrize("id", [0, 1])
     def test_set_device_index(self, id, camera_type):
         if camera_type == 'basler_camera':
-            cam = BaslerCamera(id=id, fps=fps)
+            cam = BaslerCamera(id=id)
         elif camera_type == 'basler_emulated':
-            cam = EmulatedBaslerCamera(id=id, fps=fps)
+            cam = EmulatedBaslerCamera(id=id)
         cam.init()
         assert cam.device_index == id
         cam.close()
 
     def test_id_errs(self):
         with pytest.raises(CameraError):
-            _ = BaslerCamera(id="abc", fps=fps)  # no cam with this sn should exist
+            _ = BaslerCamera(id="abc")  # no cam with this sn should exist
+
+
+class Test_FPSWithoutTrigger():
+    """Test that we can set the camera fps when we're in non-trigger mode.
+    """
+    @pytest.mark.parametrize("_fps", [30, 60, 90, 120])
+    def test_fps(self, _fps, camera_type):
+        if camera_type == 'basler_camera':
+            cam = BaslerCamera(id=0, fps=_fps)
+        elif camera_type == 'basler_emulated':
+            pytest.skip("Emulated camera doesn't support fps (seemingly)")
+
+        cam.init()
+        cam.set_trigger_mode("no_trigger")
+
+        # Capture two images and check that the time between them is close to the desired fps
+        cam.start()
+        img1, ts1 = cam.get_array(get_timestamp=True)
+        img2, ts2 = cam.get_array(get_timestamp=True)
+        cam.close()
+
+        # Check that the time between the two images is close to the desired fps
+        dt = (ts2 - ts1)/1e9  # convert to sec
+        empirical_fps = 1 / dt
+        assert np.isclose(empirical_fps, _fps, atol=0.1)
