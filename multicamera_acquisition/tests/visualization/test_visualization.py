@@ -30,6 +30,10 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_brand
 )
 
+from multicamera_acquisition.tests.acquisition.test_acq_video import (
+    trigger_type,
+)
+
 from multicamera_acquisition.interfaces.config import (
     partial_config_from_camera_list,
     create_full_camera_default_config,
@@ -41,7 +45,7 @@ from multicamera_acquisition.writer import (
 
 
 @pytest.fixture(scope="function")
-def multidisplay_processes(tmp_path, fps, n_test_frames):
+def multidisplay_processes(fps, n_test_frames):
     """Generate linked MultiDisplay and DummyFrames processes for testing
     """
     config = MultiDisplay.default_display_config()
@@ -57,10 +61,10 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
     return (display, dummy_frames_procs)
 
 
-def create_twocam_config(camera_brand, n_test_frames, fps):
+def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
     camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
-        {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
+        {"name": "top", "brand": camera_brand, "id": 0, "trigger_type": trigger_type},
+        {"name": "bottom", "brand": camera_brand, "id": 1, "trigger_type": trigger_type}
     ]
 
     # Parse the "camera list" into a partial config
@@ -89,7 +93,7 @@ def create_twocam_config(camera_brand, n_test_frames, fps):
 
 
 @pytest.mark.gui
-def test_MultiDisplay(multidisplay_processes, n_test_frames):
+def test_MultiDisplay(multidisplay_processes):
 
     # Get the writer and dummy frames proc
     display, dummy_frames_procs = multidisplay_processes
@@ -106,20 +110,20 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
 
 @pytest.mark.gui
-def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps):
+def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_type):
     """Run an acquisition with display enabled.
 
     Note: when using emulated cameras, display will run faster than 'real time'
     because there is no delay to emulate framerate.
     """
-    full_config = create_twocam_config(camera_brand, n_test_frames, fps)
+    full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type)
     full_config['acq_loop']['display_frames'] = True
 
     # Run the func!
     save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
-        recording_duration_s=5,
+        recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
     )
@@ -129,11 +133,12 @@ def test_image_grid(tmp_path, camera_brand, fps):
     """Run an acquisition and display its first frames in a grid
     """
 
-    full_config = create_twocam_config(camera_brand, 5, fps)
+    n_test_frames = 5
+    full_config = create_twocam_config(camera_brand, n_test_frames, fps)
     save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
-        recording_duration_s=5,
+        recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
     )
