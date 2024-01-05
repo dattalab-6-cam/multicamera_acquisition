@@ -63,14 +63,17 @@ def generate_output_schedule(config, n_azures=2):
     
     # expand toptimes to have a time for each pin
     def _expand_arr(x, y):
-        return [_x for _x in x for _ in range(len(y))]
+        return [_x for _x in x for _ in range(y)]
     
-    toptimes_expanded = _expand_arr(toptimes, config['arduino']['top_pins'])
-    bottomtimes_expanded = _expand_arr(bottomtimes, config['arduino']['bottom_pins'])
+    n_top_pins = len(config['arduino']['top_light_pins']) + len(config['arduino']['top_camera_pins'])
+    toptimes_expanded = _expand_arr(toptimes, n_top_pins)
+    
+    n_bottom_pins = len(config['arduino']['bottom_camera_pins']) + len(config['arduino']['bottom_light_pins'])
+    bottomtimes_expanded = _expand_arr(bottomtimes, n_bottom_pins)
 
     # expand pins to correpond to times
-    top_pins = config['arduino']['top_pins']*len(toptimes)
-    bottom_pins = config['arduino']['bottom_pins']*len(bottomtimes)
+    top_pins = config['arduino']['top_camera_pins']*len(toptimes) + config['arduino']['top_light_pins']*len(toptimes)
+    bottom_pins = config['arduino']['bottom_pins']*len(bottomtimes) + config['arduino']['bottom_light_pins']*len(bottomtimes)
 
     def _generate_states(times):
         return [1 if i % 2 == 0 else 0 for i in range(len(times))]
