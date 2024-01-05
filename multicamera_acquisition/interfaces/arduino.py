@@ -30,7 +30,10 @@ def validate_arduino_config(config):
     - no pins are reused for different purposes
     - XXX
     """
-    # JACK TODO: write this function
+    # get all pins into one list
+    pins = config['arduino']['input_pins']+config['arduino']['random_bit_pins']+config['arduino']['output_pins']
+    # check if lengths match after removing duplicates with set()
+    assert len(pins) == len(set(pins)), 'Pins should only be specified once, please remove duplicate pins in config'
 
 
 def generate_output_schedule(config):
@@ -54,7 +57,6 @@ def generate_output_schedule(config):
         The state (0 or 1) for each state change.
     """
     # JACK TODO: write this function, make sure to raise errors if the timing cant work out
-
     pass
 
 
@@ -384,7 +386,6 @@ class Arduino(object):
         Interrupt acquisition. Raise a RuntimeError if the arduino does not respond
         with the string "INTERRUPTED" within 2 seconds.
         """
-        # JACK TODO: write interrupt message to arduino, check for response
         # send interrupt signal
         self.serial_connection.write(b'I')
         # check for correct response
