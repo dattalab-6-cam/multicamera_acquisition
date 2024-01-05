@@ -1,28 +1,28 @@
-import multiprocessing as mp
-
-import tkinter as tk
-import PIL
-from PIL import Image, ImageTk
-import cv2
-import numpy as np
+import glob
 import logging
-import time
-import matplotlib.pyplot as plt
-import pandas as pd
+import multiprocessing as mp
+import os
 import queue as sync_queue
-from collections.abc import Iterable
-from numbers import Number
-import glob, os.path
+import time
+import tkinter as tk
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import PIL
+from PIL import ImageTk
 
 
 class MultiDisplay(mp.Process):
 
-    def __init__(self, queues, config = None):
+    def __init__(self, queues, config=None):
         super().__init__()
 
         # Store params
         self.config = config
         self.queues = queues
+        self.num_cameras = len(self.config['camera_names'])
 
         # Set up the config
         if config is None:
@@ -30,21 +30,12 @@ class MultiDisplay(mp.Process):
         else:
             self.validate_config()
 
-        # break out config into object attrs
-        self.camera_names = config['camera_names']
-        self.display_ranges = config['ranges']
-        self.num_cameras = len(self.camera_names)
-        self.downsample = config['downsample']
-        self.cameras_per_row = config['cameras_per_row']
-        self.display_size = config['size']
-
-
     def _init_layout(self):
 
         root = tk.Tk()
-        xdim = self.display_size[0] * self.cameras_per_row
-        ydim = self.display_size[1] * int(
-            np.ceil(self.num_cameras / self.cameras_per_row)
+        xdim = self.config['display_size'][0] * self.config['cameras_per_row']
+        ydim = self.config['display_size'][1] * int(
+            np.ceil(self.num_cameras / self.config['cameras_per_row'])
         )
         root.title("Camera view")  # this is the title of the window
         root.geometry(f"{xdim}x{ydim}")  # this is the size of the window
@@ -52,28 +43,27 @@ class MultiDisplay(mp.Process):
         rowi = 0
         labels = []
         # create a label to hold the image
-        for ci, camera_name in enumerate(self.camera_names):
+        for ci, camera_name in enumerate(self.config['camera_names']):
             # create the camera name label
             label_text = tk.Label(root, text=camera_name)
-            label_text.grid(row=rowi, column=ci % self.cameras_per_row, sticky="nsew")
+            label_text.grid(row=rowi, column=ci % self.config['cameras_per_row'], sticky="nsew")
 
             # create the camerea image label
             label = tk.Label(root)  # this is where the image will go
-            label.grid(row=rowi + 1, column=ci % self.cameras_per_row, sticky="nsew")
+            label.grid(row=rowi + 1, column=ci % self.config['cameras_per_row'], sticky="nsew")
 
-            if (ci + 1) % self.cameras_per_row == 0:
+            if (ci + 1) % self.config['cameras_per_row'] == 0:
                 rowi += 2
 
             labels.append(label)
 
-        for i in range(self.cameras_per_row):
+        for i in range(self.config['cameras_per_row']):
             root.grid_columnconfigure(i, weight=1)
         for i in range(rowi):
             root.grid_rowconfigure(i, weight=1)
 
         return root, labels
 
-    
     def _fetch_images(self, queue, camera_name, log_if_error):
         try:
             # Note: earlier code used queue.qsize() > 1; have not yet verified
@@ -92,25 +82,26 @@ class MultiDisplay(mp.Process):
                 )
             return [None]
         return data
-    
 
     def run(self):
-        
+
         root, labels = self._init_layout()
 
         quit = False
         while True:
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
-            for qi, (queue, camera_name) in enumerate(zip(self.queues, self.camera_names)):
-                
+            for qi, (queue, camera_name) in enumerate(zip(self.queues, self.config['camera_names'])):
+
                 data = self._fetch_images(
                     queue,
                     camera_name,
-                    log_if_error = initialized[qi])
+                    log_if_error=initialized[qi]
+                )
 
                 if len(data) == 0:
                     quit = True
+                    print("No data, quitting...")
                     break
 
                 # retrieve frame
@@ -119,17 +110,18 @@ class MultiDisplay(mp.Process):
                     initialized[qi] = True
                     frame = format_frame(
                         data[0],
-                        downsample = self.downsample,
-                        display_size = self.display_size,
-                        display_range = self.display_ranges[qi],
-                        is_depth = data[0].dtype == np.uint16 or ("lucid" in camera_name))
-                    
+                        downsample=self.config['downsample'],
+                        display_size=self.config['display_size'],
+                        display_range=self.config['display_ranges'][qi],
+                        is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name)
+                    )
+
                     # update label with new image
                     img = ImageTk.PhotoImage(frame)
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
-                    # print(f"No data: {self.camera_names[qi]}")
+                    # print(f"No data: {self.config['camera_names'][qi]}")
                     continue
 
             if quit:
@@ -138,22 +130,20 @@ class MultiDisplay(mp.Process):
             root.update()
         root.destroy()
 
-
     @staticmethod
     def default_display_config():
         return {
             'camera_names': ['top', 'bottom'],
-            'ranges': [None, None],
+            'display_ranges': [None, None],
             'downsample': 4,
             'cameras_per_row': 3,
-            'size': (300, 300),
+            'display_size': (300, 300),
         }
-    
+
     def validate_config(self):
-        
         return True
         # return config.validate_against_schema(self.config, self.get_config_schema())
-        
+
 
 def get_latest(queue, timeout=0.1):
     start_time = time.time()
@@ -200,7 +190,6 @@ def format_frame(frame, downsample, display_size, display_range, is_depth):
     return PIL.Image.fromarray(frame)
 
 
-
 def normalize_array(frame, min_value=None, max_value=None):
     if min_value is None:
         min_value = np.min(frame)
@@ -221,13 +210,13 @@ def plot_video_stats(csv_path, name):
 
     # Set up plot
     fig, axs = plt.subplots(
-        ncols = 1, 
-        nrows = 5, 
-        gridspec_kw= {'height_ratios':[1,1,1,1,1]},
-        figsize=(10,8),
+        ncols=1, 
+        nrows=5, 
+        gridspec_kw={'height_ratios': [1, 1, 1, 1, 1]},
+        figsize=(10, 8),
         sharex=True
     )
-    
+
     # Plot frame diffs (ie, check for dropped frames)
     axs[0].set_title(f"{name}: frame diff (dropped frames?)")
     axs[0].plot(np.diff(df.frame_id.values))
@@ -248,15 +237,15 @@ def plot_video_stats(csv_path, name):
     axs[3].set_title('Queue size')
 
     # Plot relative occurrence of framerates
-    axs[4].hist(1/(np.diff(df.frame_timestamp.values)* 1e-9), bins=100);
+    axs[4].hist(1 / (np.diff(df.frame_timestamp.values) * 1e-9), bins=100)
     axs[4].set_xlabel('Framerate')
     axs[4].set_ylabel('Count')
     axs[4].set_title(f"{name}: framerate histogram")
-    
+
     # Format plot
     plt.tight_layout()
     plt.show()
-    
+
     # Print some info 
     time_elapsed = (df.frame_timestamp.values[-1] - df.frame_timestamp.values[0]) * 1e-9
     avg_diffs = np.mean(diffs)
@@ -278,24 +267,27 @@ def plot_image_grid(images, display_config):
 
     cfg = display_config
     nrow = int(np.ceil(len(cfg['camera_names']) / cfg['cameras_per_row']))
-    fig, ax = plt.subplots(nrow, cfg['cameras_per_row'],
-        figsize = (2 * cfg['cameras_per_row'], 2 * nrow))
+    fig, ax = plt.subplots(
+        nrow, 
+        cfg['cameras_per_row'],
+        figsize=(2 * cfg['cameras_per_row'], 2 * nrow)
+    )
     ax = ax.ravel()
 
     # plot image for each camera in display config, formatted as in Multidisplay
-    for a, camera_name, rng in zip(ax, cfg['camera_names'], cfg['ranges']):
+    for a, camera_name, rng in zip(ax, cfg['camera_names'], cfg['display_ranges']):
         frame = images[camera_name]
         frame = format_frame(
             frame,
             cfg['downsample'],
-            cfg['size'],
+            cfg['display_size'],
             rng,
             frame.dtype == np.uint16 or ("lucid" in camera_name))
         a.imshow(frame)
         a.set_title(camera_name)
         a.set_xticks([])
         a.set_yticks([])
-    
+
     # hide unused axes
     for a in ax[len(cfg['camera_names']):]:
         a.set_axis_off()
@@ -317,14 +309,14 @@ def load_first_frames(location):
     images : dict[str, array]
         Mapping of camera name to first frame of acquired video
     """
-    
+
     images = {}
     files = list(glob.glob(str(location / "*.mp4")))
     if len(files) == 0:
         logging.log(logging.WARN, f"No recordings found at {location}")
     for f in files:
         basename = os.path.basename(f)
-        cam_name = basename.split('.')[-2]
+        cam_name = basename.split('.')[-3]
         cap = cv2.VideoCapture(f)
         if cap.isOpened():
             _, frame = cap.read()

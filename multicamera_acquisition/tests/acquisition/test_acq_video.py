@@ -163,8 +163,8 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     # Check that the video has the right number of frames
     # NB: this won't work unless we mux the videos, so this also tests the muxing.
     for camera_name in full_config["cameras"].keys():
-        assert count_frames(str(first_video_file_name)) == n_test_frames/2
-        assert count_frames(str(next_video_file_name)) == n_test_frames/2
+        assert count_frames(str(first_video_file_name)) == n_test_frames / 2
+        assert count_frames(str(next_video_file_name)) == n_test_frames / 2
 
 
 def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):

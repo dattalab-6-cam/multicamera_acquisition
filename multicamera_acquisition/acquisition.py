@@ -198,7 +198,6 @@ class AcquisitionLoop(mp.Process):
                             if current_iter % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
-
             except Exception as e:
                 # if a frame was dropped, log the lost frame and contiue
                 if type(e).__name__ == "SpinnakerException":
@@ -363,7 +362,10 @@ def refactor_acquire_video(
     save_location : Path
         The directory in which the recording was saved.
 
-    config: dict
+    video_file_name : Path
+        The path to the video file.
+
+    final_config: dict
         The final recording config used.
 
     Examples
@@ -552,7 +554,7 @@ def refactor_acquire_video(
         # create a display process which recieves frames from the acquisition loops
         disp = MultiDisplay(
             display_queues,
-            config = final_config['rt_display']
+            config=final_config['rt_display']
         )
         disp.start()
     else:

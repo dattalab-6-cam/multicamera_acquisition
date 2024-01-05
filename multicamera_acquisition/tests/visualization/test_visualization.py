@@ -18,8 +18,6 @@ from multicamera_acquisition.visualization import (
 
 from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
 
-from multicamera_acquisition.video_io_ffmpeg import count_frames
-
 from multicamera_acquisition.tests.writer.test_writers import (
     get_DummyFrames_process,
     fps,
@@ -59,16 +57,14 @@ def multidisplay_processes(tmp_path, fps, n_test_frames):
     return (display, dummy_frames_procs)
 
 
-def create_twocam_config(camera_brand, n_test_frames):
+def create_twocam_config(camera_brand, n_test_frames, fps):
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0, "short_name": "continuous"},
         {"name": "bottom", "brand": camera_brand, "id": 1, "short_name": "continuous"}
     ]
 
-    fps = 30
-
     # Parse the "camera list" into a partial config
-    partial_new_config = partial_config_from_camera_list(camera_list, fps)
+    partial_new_config = partial_config_from_camera_list(camera_list)
 
     # Add ffmpeg writers to each camera
     # TODO: allow this to be nvc dynamically for testing. 
@@ -78,7 +74,8 @@ def create_twocam_config(camera_brand, n_test_frames):
         partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
 
     # Create the full config, filling in defaults where necessary
-    full_config = create_full_camera_default_config(partial_new_config)
+    full_config = create_full_camera_default_config(partial_new_config, fps)
+    full_config["globals"] = dict(fps=fps, arduino_required=False)
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config()
@@ -96,7 +93,7 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
     # Get the writer and dummy frames proc
     display, dummy_frames_procs = multidisplay_processes
-    
+
     # Start the writer and dummy frames proc
     display.start()
     for proc in dummy_frames_procs:
@@ -109,17 +106,17 @@ def test_MultiDisplay(multidisplay_processes, n_test_frames):
 
 
 @pytest.mark.gui
-def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames):
+def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps):
     """Run an acquisition with display enabled.
 
     Note: when using emulated cameras, display will run faster than 'real time'
     because there is no delay to emulate framerate.
     """
-    full_config = create_twocam_config(camera_brand, n_test_frames)
+    full_config = create_twocam_config(camera_brand, n_test_frames, fps)
     full_config['acq_loop']['display_frames'] = True
 
     # Run the func!
-    save_loc, full_config = refactor_acquire_video(
+    save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=5,
@@ -128,12 +125,12 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames):
     )
 
 
-def test_image_grid(tmp_path, camera_brand):
+def test_image_grid(tmp_path, camera_brand, fps):
     """Run an acquisition and display its first frames in a grid
     """
 
-    full_config = create_twocam_config(camera_brand, 5)
-    save_loc, full_config = refactor_acquire_video(
+    full_config = create_twocam_config(camera_brand, 5, fps)
+    save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=5,
