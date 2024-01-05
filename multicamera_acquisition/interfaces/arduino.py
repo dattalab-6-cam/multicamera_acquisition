@@ -54,6 +54,7 @@ def generate_output_schedule(config):
         The state (0 or 1) for each state change.
     """
     # JACK TODO: write this function, make sure to raise errors if the timing cant work out
+
     pass
 
 
@@ -384,7 +385,13 @@ class Arduino(object):
         with the string "INTERRUPTED" within 2 seconds.
         """
         # JACK TODO: write interrupt message to arduino, check for response
-        pass
+        # send interrupt signal
+        self.serial_connection.write(b'I')
+        # check for correct response
+        if check_for_response(self.serial_connection, "INTERRUPTED"):
+            return
+        else:
+            raise RuntimeError('Arduino not interrupted')
 
     def check_for_input(self):
         """
