@@ -24,13 +24,12 @@ should consist of a sequence 7 lines, as follows:
     (2) integer specifying number of acquisition cycles to perform
     (3) integer specifying duration of each cycle in microseconds
     (4) comma separated list of input pins to monitor for state changes
-    (5) integer specifying number of cycles between each input pin state check
-    (6) comma separated list of output pins for the random bit sequence
-    (7) integer specifying number of cycles between each update of the random bit
-    (8) comma separated list of deterministic output state-change times in microseconds
-    (9) comma separated list of deterministic output pins corresponding to the times in (8)
-    (10) comma separated states (0 or 1) corresponding to the times in (8)
-    (11) \n (End of Text) character, aka b'\x03'
+    (5) comma separated list of output pins for the random bit sequence
+    (6) integer specifying number of cycles between each update of the random bit
+    (7) comma separated list of deterministic output state-change times in microseconds
+    (8) comma separated list of deterministic output pins corresponding to the times in (8)
+    (9) comma separated states (0 or 1) corresponding to the times in (8)
+    (10) ETX (End of Text) character, aka b'\x03'
 
 (3) After the microcontroller has seen a correctly formatted data packet, it
 will send the string "RECEIVED" over the serial connection and then immediately
@@ -40,14 +39,18 @@ begin performing the specified acquisition cycles.
 prefixed with the STX character, it will clear the serial buffer, send
 "ERROR" over the serial connection, and return to the main loop (i.e. step 1).
 
-(5) During each acquisition cycle, the microcontroller will report the state
-of the input pins over the serial connection as a byte-string in the following
-format, where each <pin> is 2 bytes (int16), each <state> is 1 byte (uint8),
+(5) During each acquisition cycle, the microcontroller will log all changes to
+the input pins and when they occurred. It will then report these over serial
+at the end of the cycle. The serial output will be a sequence of lines containing
+the pin number, the state of the pin (0 or 1), the time in microseconds when
+the state change occurred (from the start of that cycle), and the current
+acquisition cycle index. The output is formatted as follows, where <pin> is
+2 bytes (int16), <state> is 1 byte (uint8), <micros> is 4 bytes (unsigned long)
 and <cycleIndex> is 4 bytes (unsigned long):
 
-    "<STX><pin1><state1>...<pinN><stateN><cycleIndex><\n"
+    "<STX><pin><state><micros><cycleIndex>\n"
 
-(6) Once per second, the microcontroller will check for an interrupt signal,
+(6) Once per cycle, the microcontroller will check for an interrupt signal,
 which should be the single character "I". If detected, the microcontroller will
 send the string "INTERRUPTED" over the serial connection and return to the
 main loop (i.e. step 1).
@@ -57,11 +60,52 @@ cycles, it will send the string "F<\n>" over the serial connection and return to
 main loop (i.e. step 1).
 */
 
-const int SERIAL_START_DELAY = 100;      // Delay in milliseconds before starting serial communication
-const int MAX_INPUT_PINS = 18;           // Maximum number of input pins to monitor
-const int MAX_RANDOM_OUTPUT_PINS = 20;   // Maximum number of output pins for the random bit sequence
-const int MAX_STATE_CHANGES = 200;       // Maximum number of state changes to perform
-const int INTERRUPT_CHECK_PERIOD = 1000; // Period in milliseconds between checks for interrupt signal
+const int SERIAL_START_DELAY = 100;       // Delay in milliseconds before starting serial communication
+const int MAX_INPUT_PINS = 18;            // Maximum number of input pins to monitor
+const int MAX_RANDOM_OUTPUT_PINS = 20;    // Maximum number of output pins for the random bit sequence
+const int MAX_OUTPUT_STATE_CHANGES = 200; // Maximum number of state changes to perform
+const int MAX_INPUT_STATE_CHANGES = 2000; // Maximum number of input state changes to log per cycle
+
+// Global timing variables
+elapsedMicros elapsed_cycle_time;
+unsigned long cycle_index = 0;
+
+// Input pins to monitor
+int num_input_pins;
+unsigned long input_pins[MAX_INPUT_PINS];
+
+// Buffers to store changes of input pin states
+int previous_input_pin_states[MAX_INPUT_PINS];
+int input_log_buffer_index = 0;
+int16_t input_log_pins[MAX_INPUT_STATE_CHANGES];
+uint8_t input_log_states[MAX_INPUT_STATE_CHANGES];
+unsigned long input_log_times[MAX_INPUT_STATE_CHANGES];
+
+/**
+ * Interrupt service routine for input pins.
+ *
+ * This function is called whenever the state of an input pin changes. It checks
+ * which pin changed state and stores the pin number, the new state, and the
+ * current time in appropriate buffers.
+ **/
+void inputStateISR()
+{
+    for (int i = 0; i < num_input_pins; i++)
+    {
+        int current_state = digitalRead(input_pins[i]);
+        if (current_state != previous_input_pin_states[i])
+        {
+            if (input_log_buffer_index < MAX_INPUT_STATE_CHANGES)
+            {
+                input_log_pins[input_log_buffer_index] = static_cast<int16_t>(input_pins[i]);
+                input_log_states[input_log_buffer_index] = static_cast<uint8_t>(current_state);
+                input_log_times[input_log_buffer_index] = static_cast<unsigned long>(elapsed_cycle_time);
+                previous_input_pin_states[i] = current_state;
+                input_log_buffer_index++;
+            }
+        }
+    }
+}
 
 /**
  * Parses a comma-separated string into an array of unsigned long integers.
@@ -109,56 +153,12 @@ void parseLine(const char *input, unsigned long *output, int maxNumbers, int *co
 }
 
 /**
- * Reports the current state of the input pins over serial as a byte-string in
- * in the following format, where each <pin> is 2 bytes (int16), each <state> is
- * 1 byte (uint8), and <cycleIndex> is 4 bytes (unsigned long):
- *
- *    "STX<pin1><state1>...<pinN><stateN><cycleIndex>\n"
- *
- * @param input_pins An array of input pins to monitor.
- * @param num_input_pins The number of input pins to monitor.
- * @param cycle_index The current acquisition cycle index.
- **/
-void sendInputStates(unsigned long *input_pins, int num_input_pins, unsigned long cycle_index)
-{
-
-    // Calculate the total size needed for the buffer
-    // 1 for STX, 3 for each pin/state, 4 for cycle_index, 1 for \n
-    int bufferSize = (num_input_pins * 3) + 6;
-    uint8_t buffer[bufferSize];
-
-    int bufferIndex = 0;
-    buffer[bufferIndex++] = 0x02; // STX
-
-    // Fill the buffer with the input pin states
-    for (int i = 0; i < num_input_pins; i++)
-    {
-        int16_t in_pin = static_cast<int16_t>(input_pins[i]);
-        memcpy(&buffer[bufferIndex], &in_pin, 2);
-        bufferIndex += 2;
-
-        uint8_t state = digitalRead(input_pins[i]);
-        buffer[bufferIndex++] = state;
-    }
-
-    // Add the cycle index to the buffer
-    memcpy(&buffer[bufferIndex], &cycle_index, 4);
-    bufferIndex += 4;
-
-    buffer[bufferIndex++] = 0x0A; // \n
-
-    // Send the entire buffer
-    Serial.write(buffer, bufferSize);
-}
-
-/**
  * Performs the acquisition loop.
  *
  * @param num_cycles The number of acquisition cycles to perform.
  * @param cycle_duration The duration of each acquisition cycle in microseconds.
  * @param input_pins An array of input pins to monitor.
  * @param num_input_pins The number of input pins to monitor.
- * @param cycles_per_input_check The number of cycles between each input pin state check.
  * @param random_output_pins An array of output pins for the random bit sequence.
  * @param num_random_output_pins The number of output pins for the random bit sequence.
  * @param cycles_per_random_update The number of cycles between each update of the random bit.
@@ -172,7 +172,6 @@ void acquisitionLoop(
     unsigned long cycle_duration,
     unsigned long *input_pins,
     int num_input_pins,
-    int cycles_per_input_check,
     unsigned long *random_output_pins,
     int num_random_output_pins,
     int cycles_per_random_update,
@@ -185,6 +184,7 @@ void acquisitionLoop(
     for (int i = 0; i < num_input_pins; i++)
     {
         pinMode(input_pins[i], INPUT);
+        attachInterrupt(digitalPinToInterrupt(input_pins[i]), inputStateISR, CHANGE);
     }
 
     // Initialize the deterministic output pins
@@ -200,7 +200,7 @@ void acquisitionLoop(
     }
 
     // Initialize indexes
-    unsigned long cycle_index = 0;
+    cycle_index = 0;
     int step_index = 0;
 
     // initialize flags
@@ -210,8 +210,7 @@ void acquisitionLoop(
     int random_bit = 0;
 
     // Initialize timers
-    elapsedMicros elapsed_cycle_time = 0;
-    elapsedMillis elapsed_interrupt_check_time = 0;
+    elapsed_cycle_time = 0;
 
     // Perform acquisition cycles
     while (cycle_index < num_cycles)
@@ -233,10 +232,16 @@ void acquisitionLoop(
         {
 
             // Report the current state of the input pins
-            if (cycle_index % cycles_per_input_check == 0)
+            for (int i = 0; i < input_log_buffer_index; i++)
             {
-                sendInputStates(input_pins, num_input_pins, cycle_index);
+                Serial.write(0x02);                                               // STX
+                Serial.write((byte *)&input_log_pins[i], sizeof(int16_t));        // pin number
+                Serial.write(input_log_states[i]);                                // pin state
+                Serial.write((byte *)&input_log_times[i], sizeof(unsigned long)); // time in microseconds
+                Serial.write((byte *)&cycle_index, sizeof(unsigned long));        // cycle index
+                Serial.write('\n');
             }
+            input_log_buffer_index = 0;
 
             // Update the random bit
             if (cycle_index % cycles_per_random_update == 0)
@@ -249,23 +254,20 @@ void acquisitionLoop(
             }
 
             // Check for interrupt signal
-            if (elapsed_interrupt_check_time > INTERRUPT_CHECK_PERIOD)
+            if (Serial.available() > 0)
             {
-                if (Serial.available() > 0)
+                char interruptChar = Serial.read();
+                if (interruptChar == 'I')
                 {
-                    char interruptChar = Serial.read();
-                    if (interruptChar == 'I')
-                    {
-                        Serial.println("INTERRUPTED");
-                        return;
-                    }
-                    else
-                    {
-                        Serial.flush();
-                    }
+                    Serial.println("INTERRUPTED");
+                    return;
                 }
-                elapsed_interrupt_check_time = 0;
+                else
+                {
+                    Serial.flush();
+                }
             }
+
             finished_wrap_up = true;
         }
 
@@ -318,13 +320,8 @@ void loop()
             unsigned long cycle_duration = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
 
             // Read the list of input pins
-            unsigned long input_pins[MAX_INPUT_PINS];
-            int num_input_pins;
             String line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), input_pins, MAX_INPUT_PINS, &num_input_pins);
-
-            // Read the number of cycles between each input state check
-            int cycles_per_input_check = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
 
             // Read the list of random output pins
             unsigned long random_output_pins[MAX_RANDOM_OUTPUT_PINS];
@@ -336,20 +333,20 @@ void loop()
             int cycles_per_random_update = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
 
             // Read the state change times
-            unsigned long state_change_times[MAX_STATE_CHANGES];
+            unsigned long state_change_times[MAX_OUTPUT_STATE_CHANGES];
             int num_state_changes;
             line = Serial.readStringUntil('\n');
-            parseLine(line.c_str(), state_change_times, MAX_STATE_CHANGES, &num_state_changes);
+            parseLine(line.c_str(), state_change_times, MAX_OUTPUT_STATE_CHANGES, &num_state_changes);
 
             // Read the state change pins
-            unsigned long state_change_pins[MAX_STATE_CHANGES];
+            unsigned long state_change_pins[MAX_OUTPUT_STATE_CHANGES];
             line = Serial.readStringUntil('\n');
-            parseLine(line.c_str(), state_change_pins, MAX_STATE_CHANGES, nullptr);
+            parseLine(line.c_str(), state_change_pins, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
             // Read the state change states
-            unsigned long state_change_states[MAX_STATE_CHANGES];
+            unsigned long state_change_states[MAX_OUTPUT_STATE_CHANGES];
             line = Serial.readStringUntil('\n');
-            parseLine(line.c_str(), state_change_states, MAX_STATE_CHANGES, nullptr);
+            parseLine(line.c_str(), state_change_states, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
             // Read the \n character
             char lastChar = Serial.readline();
@@ -372,7 +369,6 @@ void loop()
                     cycle_duration,
                     input_pins,
                     num_input_pins,
-                    cycles_per_input_check,
                     random_output_pins,
                     num_random_output_pins,
                     cycles_per_random_update,
