@@ -10,21 +10,20 @@ import pdb
 
 
 class BaslerCamera(BaseCamera):
-
     def __init__(self, id=None, name=None, config=None, fps=None):
         """Encapsulates a connection to a Basler camera.
 
         Parameters
         ----------
         id : int or str (default: 0)
-            If an int, the index of the camera to acquire.  
+            If an int, the index of the camera to acquire.
             If a string, the serial number of the camera.
 
         name: str (default: None)
             The name of the camera in the experiment. For example, "top" or "side2".
 
         config : dict (default: None)
-            A dictionary of config params. 
+            A dictionary of config params.
             If config is None, uses the camera's default config file.
 
         fps : int (default: None)
@@ -41,18 +40,26 @@ class BaslerCamera(BaseCamera):
         if self.serial_number is not None and self.device_index is None:
             self._resolve_device_index()  # sets self.device_index based on the id the user provides
         elif self.serial_number is None and self.device_index is None:
-            raise ValueError("Camera unexpectedly has no serial number or device index.")
+            raise ValueError(
+                "Camera unexpectedly has no serial number or device index."
+            )
 
-        # Load a default config if needed
+        # Load a default config if needed (mostly for testing, least common)
         if self.config is None:
-            self.config = BaslerCamera.default_camera_config()  # If no config file is specified, use the default
+            self.config = (
+                BaslerCamera.default_camera_config()
+            )  # If no config file is specified, use the default
 
-        if (fps is not None or "fps" in self.config.keys()) and ("trigger_mode" in self.config.keys() and self.config["trigger_mode"] == "arduino"):
-            warnings.warn("Providing fps for Baslers in triggered mode is deprecated and generally not necessary.")
+        if (fps is not None or "fps" in self.config.keys()) and (
+            "trigger_mode" in self.config.keys()
+            and self.config["trigger_mode"] == "arduino"
+        ):
+            warnings.warn(
+                "Providing fps for Baslers in triggered mode is deprecated and generally not necessary."
+            )
 
     def __repr__(self):
-        """Returns a string representation of the camera object.
-        """
+        """Returns a string representation of the camera object."""
 
         # Typical python info
         address = hex(id(self))
@@ -60,48 +67,52 @@ class BaslerCamera(BaseCamera):
 
         # Add camera-specific info
         attrs_to_list = ["name", "serial_number", "device_index", "model", "running"]
-        cam_info = "Basler Camera: \n" + "\n\t".join([f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list])
+        cam_info = "Basler Camera: \n" + "\n\t".join(
+            [f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list]
+        )
 
         return basic_info + "\n" + cam_info
 
     @staticmethod
     def default_camera_config():
-        """Generate a default config for a Basler camera.
-        """
+        """Generate a default config for a Basler camera."""
         config = {
-            'roi': None,  # ie use the entire roi
-            'gain': 6,
-            'exposure': 1000,
+            "roi": None,  # ie use the entire roi
+            "gain": 6,
+            "exposure": 1000,
             "brand": "basler",
             "display": False,
             "display_range": (0, 255),
-            'trigger': {
-                'trigger_type': 'arduino',
-                'acquisition_mode': 'Continuous',
-                'trigger_source': 'Line2',
-                'trigger_selector': 'FrameStart',
-                'trigger_activation': 'RisingEdge',
-            }
+            "trigger": {
+                "trigger_type": "arduino",
+                "acquisition_mode": "Continuous",
+                "trigger_source": "Line2",
+                "trigger_selector": "FrameStart",
+                "trigger_activation": "RisingEdge",
+            },
         }
         return config
 
     @staticmethod
     def default_writer_config(fps, writer_type="ffmpeg", gpu=None):
         if writer_type == "nvc" and gpu is not None:
-            from multicamera_acquisition.writer import NVC_Writer 
+            from multicamera_acquisition.writer import NVC_Writer
+
             writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)
         elif writer_type == "ffmpeg":
-            from multicamera_acquisition.writer import FFMPEG_Writer 
-            writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir", gpu=gpu)
+            from multicamera_acquisition.writer import FFMPEG_Writer
+
+            writer_config = FFMPEG_Writer.default_writer_config(
+                fps, vid_type="ir", gpu=gpu
+            )
         return writer_config
 
     def _create_pylon_sys(self):
-        """Creates a self.system attribute with the pylon device layer (pylon.TlFactory.GetInstance())
-        """
+        """Creates a self.system attribute with the pylon device layer (pylon.TlFactory.GetInstance())"""
         self.system = pylon.TlFactory.GetInstance()
 
     def _enumerate_cameras(self, behav_on_none="raise"):
-        """ Enumerate all Basler cameras connected to the system.
+        """Enumerate all Basler cameras connected to the system.
 
         Called by self._resolve_device_index() in super().__init__().
 
@@ -117,7 +128,11 @@ class BaslerCamera(BaseCamera):
             Lists of serial numbers and models of all connected cameras.
         """
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices([di,])
+        devices = self.system.EnumerateDevices(
+            [
+                di,
+            ]
+        )
 
         # If no camera is found
         if len(devices) == 0 and behav_on_none == "raise":
@@ -149,7 +164,7 @@ class BaslerCamera(BaseCamera):
         return serial_nos, models
 
     def init(self):
-        """Initializes, opens, and configures the camera.  
+        """Initializes, opens, and configures the camera.
 
         This is automatically called if the camera is opened
         using a `with` clause.
@@ -166,7 +181,9 @@ class BaslerCamera(BaseCamera):
         if self.serial_number is None:
             self.serial_number = _sn
         else:
-            assert self.serial_number == _sn, "Unexpected camera serial number mismatch."
+            assert (
+                self.serial_number == _sn
+            ), "Unexpected camera serial number mismatch."
 
         # Record camera model name
         self.model = self.cam.GetDeviceInfo().GetModelName()
@@ -184,26 +201,35 @@ class BaslerCamera(BaseCamera):
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
         """
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices([di,])
+        devices = self.system.EnumerateDevices(
+            [
+                di,
+            ]
+        )
 
         try:
             self.cam = pylon.InstantCamera(
                 self.system.CreateDevice(devices[self.device_index])
             )
         except Exception as e:
-            raise RuntimeError(f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}")
-       
+            raise RuntimeError(
+                f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
+            )
+
     def _configure_basler(self):
-        """ Given the loaded config, set up the basler for acquisition with the config therein.
-        """
+        """Given the loaded config, set up the basler for acquisition with the config therein."""
         # Reset to default settings, for safety (i.e. if user was messing around with the camera and didn't reset the settings)
         self.cam.UserSetSelector.Value = "Default"
         self.cam.UserSetLoad.Execute()
 
-        # Check the config file for any missing or conflicting params 
-        assert hasattr(self, "config"), "Must load config file before configuring camera (see load_config())."
+        # Check the config file for any missing or conflicting params
+        assert hasattr(
+            self, "config"
+        ), "Must load config file before configuring camera (see load_config())."
         status = self.check_config()
-        if status is not None:  # TODO: actually implement telling user what was wrong with the config
+        if (
+            status is not None
+        ):  # TODO: actually implement telling user what was wrong with the config
             raise CameraError(status)
 
         # Set gain
@@ -240,18 +266,22 @@ class BaslerCamera(BaseCamera):
         elif trigger["trigger_type"] == "software":
             # TODO - implement software trigger
             # TODO - this error isn't raised in the main thread. how to propagate it?
-            raise NotImplementedError("Software trigger not implemented for Basler cameras")
+            raise NotImplementedError(
+                "Software trigger not implemented for Basler cameras"
+            )
         elif trigger["trigger_type"] == "no_trigger":
             self.set_trigger_mode("no_trigger")
         else:
             raise ValueError("Trigger must be 'arduino' or 'software'")
 
     def check_config(self):
-        """Check for some common issues with Basler configs.
-        """
+        """Check for some common issues with Basler configs."""
 
         # Ensure user doesnt request emulated cameras with arduino trigger mode
-        if self.config["trigger"]["trigger_type"] == "arduino" and self.config["brand"] == "basler_emulated":
+        if (
+            self.config["trigger"]["trigger_type"] == "arduino"
+            and self.config["brand"] == "basler_emulated"
+        ):
             raise ValueError("Cannot use arduino trigger with emulated cameras.")
 
     def set_trigger_mode(self, mode):
@@ -273,7 +303,9 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerMode.SetValue("On")
         elif mode == "no_trigger":
             if self.fps is None:
-                warnings.warn("No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps.")
+                warnings.warn(
+                    "No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps."
+                )
                 self.fps = 30
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
@@ -360,7 +392,7 @@ class BaslerCamera(BaseCamera):
 
 
 def enumerate_basler_cameras(behav_on_none="raise"):
-    """ Enumerate all Basler cameras connected to the system.
+    """Enumerate all Basler cameras connected to the system.
 
     Parameters
     ----------
@@ -404,13 +436,11 @@ def enumerate_basler_cameras(behav_on_none="raise"):
 
 
 class EmulatedBaslerCamera(BaslerCamera):
-    """Emulated basler camera for testing.
-    """
+    """Emulated basler camera for testing."""
 
     @staticmethod
     def get_emulated_filter():
-        """Returns a device filter that can be passed to pylon.TlFactory.GetInstance().EnumerateDevices().
-        """
+        """Returns a device filter that can be passed to pylon.TlFactory.GetInstance().EnumerateDevices()."""
         device_class = "BaslerCamEmu"
         di = pylon.DeviceInfo()
         di.SetDeviceClass(device_class)
@@ -425,16 +455,19 @@ class EmulatedBaslerCamera(BaslerCamera):
             self.config = config
 
     def _create_pylon_sys(self):
-        """Override the system creation to make an emulated camera
-        """
+        """Override the system creation to make an emulated camera"""
         try:
             current_num_devices = int(os.environ["PYLON_CAMEMU"])
             # Add a device if necessary
             if self.device_index >= current_num_devices:
-                current_num_devices = self.device_index + 1  # since device index is 0-indexed
+                current_num_devices = (
+                    self.device_index + 1
+                )  # since device index is 0-indexed
                 os.environ["PYLON_CAMEMU"] = str(current_num_devices)
         except KeyError:
-            current_num_devices = self.device_index + 1  # If no emulated devices exist, make one
+            current_num_devices = (
+                self.device_index + 1
+            )  # If no emulated devices exist, make one
             os.environ["PYLON_CAMEMU"] = str(current_num_devices)
 
         self.num_devices = current_num_devices
@@ -455,34 +488,34 @@ class EmulatedBaslerCamera(BaslerCamera):
         return [None] * self.num_devices, [None] * self.num_devices
 
     def _create_pylon_cam(self):
-        """Override the camera creation to make an emulated camera
-        """
+        """Override the camera creation to make an emulated camera"""
         devices = self.system.EnumerateDevices(self.device_filter)
         try:
             self.cam = pylon.InstantCamera(
                 self.system.CreateDevice(devices[self.device_index])
             )
         except Exception as e:
-            raise RuntimeError(f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}")
+            raise RuntimeError(
+                f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
+            )
         self.model_name = "Emulated"
 
     def set_trigger_mode(self, mode):
-        """Override the set trigger mode for emulated cameras, since they don't receive triggers.
-        """
+        """Override the set trigger mode for emulated cameras, since they don't receive triggers."""
         pass
 
     @staticmethod
     def default_camera_config():
         # TODO: is there a way to get this to inherit gracefully?
         config = {
-            'roi': None,  # ie use the entire roi
-            'gain': 6,
-            'exposure': 1000,
+            "roi": None,  # ie use the entire roi
+            "gain": 6,
+            "exposure": 1000,
             "brand": "basler_emulated",
             "display": False,
             "display_range": (0, 255),
-            'trigger': {
-                'trigger_type': 'no_trigger',
-            }
+            "trigger": {
+                "trigger_type": "no_trigger",
+            },
         }
         return config
