@@ -16,7 +16,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--trigger_type",
         action="store",
-        default="continuous",
+        default="no_trigger",
     )
 
     parser.addoption(

@@ -33,7 +33,7 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
 
 @pytest.fixture(scope="session")
 def trigger_type(pytestconfig):
-    return pytestconfig.getoption("trigger_type")  # default continuous (ie no trigger required), see conftest.py
+    return pytestconfig.getoption("trigger_type")  # default no_trigger (ie no trigger required), see conftest.py
 
 
 @pytest.fixture(scope="session")
@@ -48,15 +48,9 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
 
-    print(f"trigger tpye: {trigger_type}")
-
     # Set the trigger behavior
-    if trigger_type == "continuous":
-        short_name = "continuous"
-    elif trigger_type == "arduino":
-        short_name = "arduino"
     for camera in camera_list:
-        camera["short_name"] = short_name
+        camera["trigger_type"] = trigger_type
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list)
@@ -114,12 +108,8 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     ]
 
     # Set the trigger behavior
-    if trigger_type == "continuous":
-        short_name = "continuous"
-    elif trigger_type == "arduino":
-        short_name = "arduino"
     for camera in camera_list:
-        camera["short_name"] = short_name
+        camera["trigger_type"] = trigger_type
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list)
@@ -188,12 +178,8 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     ]
 
     # Set the trigger behavior
-    if trigger_type == "continuous":
-        short_name = "continuous"
-    elif trigger_type == "arduino":
-        short_name = "arduino"
     for camera in camera_list:
-        camera["short_name"] = short_name
+        camera["trigger_type"] = trigger_type
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list)
