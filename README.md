@@ -1,31 +1,51 @@
-Microprocessor controlled multi machine vision camera acquisition (Kinect, Basler, Flir) 
+Microprocessor-controlled multi-camera video acquisition (Basler, Azure Kinect) 
 ==============================
 
-Python library for parallel video acquisition. It abstracts Basler (pypylon) and flir (pyspin) libraries to allow simultaneous recording from both.
+Python library for simultaneous video acquisition with Basler cameras (pypylon) and Azure Kinect cameras (pyk4a), with Baslers up to 150 Hz. 
 
-Acquisition is done in parallel using a microcontroller (we use a teensy or arduino) which triggers frame capture. Threads exist for each camera capturing these frames and writing to a video.
+The custom library is necessary in order to interleave the Basler's frames betwee the Azure's sub-frame pulses. Acquisition is done in parallel using a microcontroller to trigger the cameras and IR lights. We use a [Teensy](https://www.pjrc.com/store/teensy41.html), with a [custom PCB](https://github.com/HMS-RIC/Datta-Open-Field-Arena) to control the lights and send triggers to the cameras, but in theory any microcontroller that can go fast enough will work. 
 
-In addition, we record input GPIOs on the arduino to sync external data sources to the video frames. 
+Separate processes exist to capture frames and write the frames to a video for each camera. In addition, we record incoming GPIOs to the microcontroller, to allow syncing with external data sources.
 
 Authors
 - Tim Sainburg
 - Caleb Weinreb
 - Jonah Pearl
-
-- test
+- Jack Lovell
+- Sherry Lin
+- Kai Fox
 
 Sources:
-    - [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) is the basis for the camera object. 
-    - [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
+- [pypylon](https://github.com/basler/pypylon) is used for Basler cameras.
+- [pyk4a](https://github.com/etiennedub/pyk4a) is used for Azure Kinect cameras.
+- NVIDIA's Video Processing Framework ([VPF](https://github.com/NVIDIA/VideoProcessingFramework/tree/master)) is used to achieve the fastest video writing speeds possible.
+- ffmpeg is used as a backup video writer.
+- [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) inspired the camera object though is no longer used.
+- [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
 
-### Installation
+## Installation
 
+The acquisition code runs anywhere you can install the required packages. As of now, that means Linux and Windows (pyk4a is broken on Macs for the moment, and the NVIDIA VPF can't be installed on Mac either).
+
+> [!NOTE]
+> The following install instructions assume you are starting on a new computer with no GPU / conda / etc. If you have any of these components installed, you can safely skip their install steps.
+
+***
 ### NVIDIA Driver
+
+#### Linux
 1. Run software updater on a fresh installation of Ubuntu 22.04.
 2. Check additional drivers to see if NVIDIA drivers are available and reboot your computer
 3. Click `Using X.OrgX ...` and run `Apply Changes` and reboot again
 
+#### Windows
+Right-click the NVIDIA logo in the bottom right task-bar thingy, and open the settings page. Look for an option to update the driver. If there isn't one, you may have to update manually by [downloading](https://www.nvidia.com/download/index.aspx) the newest driver available for your device / OS.
+
+***
+
 ### Update and install support packages
+
+#### Linux
 ```
 sudo apt install git
 sudo apt install curl
@@ -37,7 +57,15 @@ sudo apt-get update
 sudo apt-get install -y libsoundio1
 ```
 
+#### Windows
+- Install [Git for Windows](https://gitforwindows.org/)
+- Download the latest build of ffmpeg with shared libraries. For example, `ffmpeg-release-full-shared.7z` from [here](https://www.gyan.dev/ffmpeg/builds/). Unzip it, rename the resulting folder to something reasonable like `ffmpeg`, move it to a reasonable location, and add the path to the `bin` folder within ffmpeg to your Windows Path (e.g. `C:\path\to\ffmpeg\bin`) ([instructions](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14))).
+
+***
+
 ### Install Anaconda
+
+#### Linux
 ```
 curl -L https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o "$HOME/miniconda3_latest.sh"
 chmod +x $HOME/miniconda3_latest.sh
@@ -45,7 +73,17 @@ $HOME/miniconda3_latest.sh
 ```
 Restart your terminal for the changes to take effect.
 
+#### Windows
+Go to [Anaconda](https://www.anaconda.com/) and install it, following the suggested defaults.
+
+> [!TIP]
+> We suggest using [libmamba](https://www.anaconda.com/blog/a-faster-conda-for-a-growing-community) for your base solver to speed things up.
+
+***
+
 ### k4aviewer
+
+#### Linux
 ```
 sudo apt-add-repository -y -n 'deb http://archive.ubuntu.com/ubuntu focal main'
 sudo apt-add-repository -y 'deb http://archive.ubuntu.com/ubuntu focal universe'
@@ -74,7 +112,6 @@ Then update the udev rules
 wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules
 sudo mv 99-k4a.rules /etc/udev/rules.d/
 ```
-Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
 
 If you are using Ubuntu 22.04, you will need to run the following lines to ensure the drivers and packages are in the correct location. 
 ```
@@ -82,9 +119,18 @@ find / -name libstdc++.so.6 2>/dev/null
 export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
 ```
 
+#### Windows
+Install the latest version of the Azure Kinect SDK from their GitHub page: https://github.com/microsoft/Azure-Kinect-Sensor-SDK/blob/develop/docs/usage.md
 
-#### Pylon installation
-1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download `pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package`
+> [!IMPORTANT]
+> Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. If not, debug it.
+
+***
+
+### Pylon installation
+
+#### Linux
+1. Go to pylon's [installation webpage](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download `pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package`
 
 ```
 cd /to/your/donwload/dir/
@@ -102,17 +148,26 @@ export QT_DEBUG_PLUGINS=1
 /opt/pylon/bin/pylonviewer
 ```
 
-<!-- do we still want to support Flir? I am removing the spinnaker stuff for now. -->
-<!-- TODO: Decide if we need Flir, if yes, add spinnaker installation instructions -->
+#### Windows
+Install pylon 7.3.0 from their [webpage](https://www2.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=windows).
 
-##### Setting USB camera settings
+***
+
+### Setting USB camera settings
+#### Linux
 For Pypylon to record videos and transfer large amount of data (i.e. video data) over USB, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
 In pylon, this can be done with 
 ```
 sudo sh /opt/pylon/share/pylon/setup-usb.sh
-``` 
+```
 
-#### Enabling USB reset
+#### Windows
+> [!WARNING]
+> This is TBD for Windows
+
+***
+
+### Enabling USB reset
 Give the library the ability to reset the cameras programatically.
 You can do this by making a .rules file using `nano` or `vim`:
 ```
@@ -137,7 +192,15 @@ sudo apt-get install libusb-1.0-0-dev
 reboot
 ```
 
-#### Arduino IDE
+#### Windows
+> [!WARNING]
+> This is TBD for Windows, although the python library that we use claims to support Windows.
+
+***
+
+### Arduino IDE
+
+#### Linux
 1. Download the Arduino IDE AppImage from Arduino's [website](https://www.arduino.cc/en/software)
 2. (Optional) Move to a better location:
 ```
@@ -156,8 +219,12 @@ sudo apt install libfuse2
 ```
 If you want to have the IDE available in your Desktop menu then fllow the instructions at this [link](https://askubuntu.com/questions/1311600/add-an-appimage-application-to-the-top-menu-bar)
 
+#### Windows
+1. Download the Arduino IDE for Windows from Arduino's [website](https://www.arduino.cc/en/software) and install it.
 
-#### Package installation
+### Installing the `multicamera_acquisition` python package
+(This is envrionment agnostic.)
+
 ```
 conda create -n multicam python=3.10
 conda activate multicam
@@ -166,14 +233,15 @@ cd multicamera_acquisition
 pip install -e .
 ```
 
-#### Add user to dialout group to access serial ports
+### Add user to dialout group to access serial ports (Linux only)
 ```
 sudo usermod -a -G dialout <your-username>
 ```
-
+***
 <!-- TODO: Test this part, NVIDIA patch not tested on laptop-->
-#### NVIDIA GPU encoding patch (Linux)
+### NVIDIA GPU encoding patch
 
+#### Linux
 We use GPU encoding to reduce the CPU load when writing from many cameras simultaneously. For some NVIDIA GPUs encoding more than 3 video streams requires a patch, [located here](https://github.com/keylase/nvidia-patch). Generally this just means running:
 
 ```
@@ -182,10 +250,16 @@ cd nvidia-patch
 bash ./patch.sh
 ```
 
+#### Windows
+>[!WARNING]
+> This is TBD for Windows, although the python library that we use claims to support Windows.
+
+***
 <!-- TODO: Test this part, NVIDIA VPF not tested on laptop-->
-#### NVIDIA VideoProcessingFramework
+### NVIDIA VideoProcessingFramework
 We use the NVIDIA VideoProcessingFramework to encode videos using the GPU. You can find more information in the official documentation [here](https://github.com/NVIDIA/VideoProcessingFramework).
 
+#### Linux
 Follow [this guide](https://docs.nvidia.com/video-technologies/video-codec-sdk/12.0/ffmpeg-with-nvidia-gpu/index.html#compiling-for-linux) to build FFmpeg with Nvidia GPU from source.
 
 ```
@@ -214,9 +288,32 @@ pip3 install git+https://github.com/NVIDIA/VideoProcessingFramework
 pip3 install .
 ```
 
+#### Windows
+Follow the guide in the official documentation [here](https://github.com/NVIDIA/VideoProcessingFramework). We have tested install with Visual Studio 2019, and [installing CUDA Toolkit via Conda](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html#conda). This is much easier than trying to install the binaries yourself or (god forbid) compile it.
+>[!IMPORTANT]
+>The final step of the VPF install process is to "Install from the root directory of this repository indicating the location of the compiled FFMPEG in a Powershell console." After cloning the repo to a reasonable location, you will need to initiate conda in Windows Powershell before you can actually do the install correctly — otherwise you will be installing into your base environment instead of into your conda environment that we created a few steps ago. The steps to do this are as follows:
+> 1. Open an "Anaconda Powershell"
+> 2. Run `conda init powershell`
+> 3. Open a (plain) Powershell instance as an administrator
+> 4. Run the command `Set-ExecutionPolicy Bypass -Scope CurrentUser` to allow the conda script to run in Powershell
+> 5. Re-open a (plain) Powershell window and you should see conda initiated as signaled by the `(base)` on the left of the command entry line.
+> 6. Run `conda activate multicam`
+> 7. Now you can run the commands that VPF suggests:
+> ```
+> # Indicate path to your FFMPEG installation (with subfolders `bin` with DLLs, `include`, `lib`)
+> $env:SKBUILD_CONFIGURE_OPTIONS="-DTC_FFMPEG_ROOT=C:/path/to/your/ffmpeg/installation/ffmpeg/"
+> ```
+> Note that this will **only** work with forward slashes as shown (despite the fact that Windows uses backslashes).
+> ```
+> cd [to the cloned the VPF repo]
+> pip install .
+> python
+> >>> import PyNvCodec
+> ```
 
+***
 
-### Basic usage 
+## Basic usage 
 See notebooks folder for examples.
 
 
