@@ -15,13 +15,15 @@ from PIL import ImageTk
 
 
 class MultiDisplay(mp.Process):
-    def __init__(self, queues, config=None):
+    def __init__(self, queues, camera_list, display_ranges, config=None):
         super().__init__()
 
         # Store params
         self.config = config
         self.queues = queues
-        self.num_cameras = len(self.config["camera_names"])
+        self.camera_list = camera_list
+        self.display_ranges = display_ranges
+        self.num_cameras = len(camera_list)
 
         # Set up the config
         if config is None:
@@ -41,7 +43,7 @@ class MultiDisplay(mp.Process):
         rowi = 0
         labels = []
         # create a label to hold the image
-        for ci, camera_name in enumerate(self.config["camera_names"]):
+        for ci, camera_name in enumerate(self.camera_list):
             # create the camera name label
             label_text = tk.Label(root, text=camera_name)
             label_text.grid(
@@ -89,7 +91,7 @@ class MultiDisplay(mp.Process):
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
             for qi, (queue, camera_name) in enumerate(
-                zip(self.queues, self.config["camera_names"])
+                zip(self.queues, self.camera_list)
             ):
                 data = self._fetch_images(
                     queue, camera_name, log_if_error=initialized[qi]
@@ -107,7 +109,7 @@ class MultiDisplay(mp.Process):
                         data[0],
                         downsample=self.config["downsample"],
                         display_size=self.config["display_size"],
-                        display_range=self.config["display_ranges"][qi],
+                        display_range=self.display_ranges[qi],
                         is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
                     )
 
@@ -128,7 +130,6 @@ class MultiDisplay(mp.Process):
     @staticmethod
     def default_display_config():
         return {
-            "display_ranges": [None, None],
             "downsample": 4,
             "display_every_n": 1,
             "cameras_per_row": 3,
