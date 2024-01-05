@@ -82,6 +82,14 @@ class AzureCamera(BaseCamera):
         }
         return config
 
+    # TODO: check what the azure writer is
+    @staticmethod
+    def default_writer_config(fps, writer_type="ffmpeg"):
+        from multicamera_acquisition.writer import FFMPEG_Writer
+
+        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir")
+        return writer_config
+
     def init(self):
         """Initialize the camera."""
         # Create the config object
