@@ -215,13 +215,13 @@ class AcquisitionLoop(mp.Process):
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
                     if not self.stopped.is_set():
-                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']})")
+                        print(f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping.")
                         self.stopped.set()
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
         print(f"Writing empties to stop queue, {self.camera_config['name']}")
-        print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
+        # print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
@@ -439,7 +439,6 @@ def refactor_acquire_video(
 
     # Resolve camera device indices
     device_index_dict = resolve_device_indices(final_config)
-    print(device_index_dict)
 
     # Check that the config is valid
     validate_recording_config(final_config)

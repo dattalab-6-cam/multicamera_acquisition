@@ -1,10 +1,9 @@
 
-from multicamera_acquisition.interfaces.camera_basler import (
-    BaslerCamera, EmulatedBaslerCamera, CameraError
-)
 import numpy as np
-# import os
 import pytest
+
+from multicamera_acquisition.interfaces.camera_basler import (
+    BaslerCamera, CameraError, EmulatedBaslerCamera)
 
 
 @pytest.fixture(scope="session")
@@ -48,9 +47,9 @@ def fps(pytestconfig):
 @pytest.fixture(scope="function")
 def camera(camera_type, fps):
     if camera_type == 'basler_camera':
-        cam = BaslerCamera(id=0)
+        cam = BaslerCamera(id=0, fps=fps)
     elif camera_type == 'basler_emulated':
-        cam = EmulatedBaslerCamera(id=0)
+        cam = EmulatedBaslerCamera(id=0, fps=fps)
     else:
         raise ValueError("Invalid camera type")
 
@@ -68,7 +67,7 @@ class Test_Camera_InitAndStart():
         camera.stop()
 
     def test_grab_one(self, camera):
-        camera.set_trigger_mode("no_trigger")  # allows cam to caquire without hardware triggers
+        camera.set_trigger_mode("no_trigger")  # allows real cameras to caquire without hardware triggers (emulated ones already do)
         camera.start()
         img = camera.get_array(timeout=1000)
         assert isinstance(img, np.ndarray)
@@ -146,5 +145,4 @@ class Test_FPSWithoutTrigger():
         # Check that the time between the two images is close to the desired fps
         dt = (ts2 - ts1)/1e9  # convert to sec
         empirical_fps = 1 / dt
-        print(empirical_fps)
         assert np.isclose(empirical_fps, _fps, atol=0.1)

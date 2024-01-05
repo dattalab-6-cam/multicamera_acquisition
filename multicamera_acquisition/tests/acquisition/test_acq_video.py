@@ -48,8 +48,6 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         {"name": "bottom", "brand": camera_brand, "id": 1}
     ]
 
-    print(f"trigger tpye: {trigger_type}")
-
     # Set the trigger behavior
     for camera in camera_list:
         camera["trigger_type"] = trigger_type

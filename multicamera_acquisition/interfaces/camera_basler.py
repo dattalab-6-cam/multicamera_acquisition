@@ -415,7 +415,12 @@ class EmulatedBaslerCamera(BaslerCamera):
         return [di]
 
     def __init__(self, id=None, name=None, config=None, fps=None):
-        super().__init__(id=id, name=name, config=config, fps=fps)
+        super().__init__(id=id, name=name, config=None, fps=fps)
+
+        if config is None:
+            self.config = EmulatedBaslerCamera.default_camera_config()
+        else:
+            self.config = config
 
     def _create_pylon_sys(self):
         """Override the system creation to make an emulated camera
@@ -473,12 +478,7 @@ class EmulatedBaslerCamera(BaslerCamera):
             'exposure': 1000,
             "brand": "basler_emulated",
             'trigger': {
-                'trigger_type': 'arduino',
-                'acquisition_mode': 'Continuous',
-                'trigger_source': 'Line2',
-                'trigger_selector': 'FrameStart',
-                'trigger_activation': 'RisingEdge',
-                # TODO: anything dependent on fps?
+                'trigger_type': 'no_trigger',
             }
         }
         return config
