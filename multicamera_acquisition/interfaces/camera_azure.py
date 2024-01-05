@@ -77,6 +77,8 @@ class AzureCamera(BaseCamera):
             "synchronized_images_only": False,
             "sync_mode": "subordinate",
             "subordinate_delay_off_master_usec": 500,
+            "brand": "azure",
+            "display": {"display_frames": False, "display_range": (0, 255)},
         }
         return config
 
