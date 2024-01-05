@@ -80,15 +80,17 @@ def generate_output_schedule(config, n_azures=2):
     
     # generate and expand states to appropriate pins pins
     topstates = _generate_states(toptimes)
-    topstates_expanded = _expand_arr(topstates, config['arduino']['top_pins'])
+    topstates_expanded = _expand_arr(topstates, n_top_pins)
 
     bottomstates = _generate_states(bottomtimes)
-    bottomstates_expanded = _expand_arr(bottomstates, config['arduino']['bottom_pins'])
+    bottomstates_expanded = _expand_arr(bottomstates, n_bottom_pins)
 
     # concat all into final lists to return
     times = toptimes_expanded+bottomtimes_expanded
     pins = top_pins+bottom_pins
     states = topstates_expanded+bottomstates_expanded
+
+    for pin in config['arduino']['']
 
     return times, pins, states
 
