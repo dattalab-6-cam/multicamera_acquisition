@@ -1,7 +1,8 @@
 import yaml
 
 from multicamera_acquisition.config.default_display_config import default_display_config
-
+from multicamera_acquisition.interfaces.config import create_full_camera_default_config
+from multicamera_acquisiton.acquisition import default_acq_config
 import pdb
 
 
@@ -135,5 +136,19 @@ def validate_recording_config(recording_config):
     #     raise ValueError("Real-time framerate must be a factor of the capture frame rate")
 
 
-def generate_full_config():
-    pass
+def generate_full_config(camera_lists):
+    full_config = {}
+    # acq config
+    acquisition_config = default_acq_config()
+    # TODO: Add arduino config
+    # arduino_config = default_arduino_config()
+    # camera, camera writer, camera display config
+    full_camera_config = create_full_camera_default_config(camera_lists)
+    full_config["acq_loop"] = acquisition_config
+    # full_config["arduino"] = arduino_config
+    full_config["cameras"] = full_camera_config
+
+    # write to file
+    with open("full_config.yaml", "w") as f:
+        yaml.dump(full_config, f)
+    return full_config
