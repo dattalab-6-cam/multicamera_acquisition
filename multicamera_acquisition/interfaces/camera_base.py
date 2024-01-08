@@ -30,7 +30,7 @@ def get_camera(
         If a string, the serial number of the camera.
 
     config : dict (default: None)
-        A dictionary of config values.  
+        A dictionary of config values.
         If config is None, uses the camera's default config file.
 
     Returns
@@ -40,11 +40,15 @@ def get_camera(
 
     """
     if brand == "basler":
-        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
+        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+
         cam = BaslerCamera(id=id, name=name, config=config)
 
     elif brand == "basler_emulated":
-        from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
+        from multicamera_acquisition.interfaces.camera_basler import (
+            EmulatedBaslerCamera,
+        )
+
         cam = EmulatedBaslerCamera(id=id, name=name, config=config)
 
     elif brand == "azure":
@@ -59,14 +63,12 @@ def get_camera(
             serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
         )
 
-
-    elif brand == 'lucid':
+    elif brand == "lucid":
         from multicamera_acquisition.interfaces.camera_lucid import (
             LucidCamera as Camera,
         )
-        cam = Camera(
-            index=str(serial)
-        )
+
+        cam = Camera(index=str(serial))
 
     return cam
 
@@ -99,7 +101,7 @@ class BaseCamera(object):
         and it must be re-init'd.
 
     fps : int
-        The desired frame rate for the camera. Deprecated for Baslers (not required) + Azures (fixed at 30). 
+        The desired frame rate for the camera. Deprecated for Baslers (not required) + Azures (fixed at 30).
 
     cam : an abstracted Camera
         The camera object, specific to the brand.
@@ -121,11 +123,11 @@ class BaseCamera(object):
             The name of the camera in the experiment. For example, "top" or "side2".
 
         config : dict (default: None)
-            A dictionary of config values.  
+            A dictionary of config values.
             If config is None, uses the camera's default config file.
 
         fps : int (default: None)
-            The desired frame rate for the recording. 
+            The desired frame rate for the recording.
             It is preferred to set this from the config, but this is provided
             for convenience.
         """
@@ -133,7 +135,9 @@ class BaseCamera(object):
             self.serial_number = None
             self.device_index = id
             if id > 10:
-                warn("Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int.")
+                warn(
+                    "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
+                )
         elif isinstance(id, str):
             self.serial_number = id
             self.device_index = None
@@ -161,17 +165,20 @@ class BaseCamera(object):
         # If user wants a specific serial no, find the index of that camera
         if self.serial_number is not None:
             if not np.any([sn == self.serial_number for sn in camera_serials]):
-                raise CameraError(f"Camera with serial number {self.serial_number} not found.")
+                raise CameraError(
+                    f"Camera with serial number {self.serial_number} not found."
+                )
             device_index = camera_serials.index(self.serial_number)
             self.device_index = device_index
         else:
-            raise CameraError("Must specify either serial number or index of camera to connect to.")
+            raise CameraError(
+                "Must specify either serial number or index of camera to connect to."
+            )
 
         self.model_name = model_names[device_index]
 
     def check_config(self, config=None):
-        """Check if the camera configuration is valid.
-        """
+        """Check if the camera configuration is valid."""
         pass  # defined in each camera subclass
 
     def init(self):
@@ -233,4 +240,3 @@ class BaseCamera(object):
     def document(self):
         """Creates a MarkDown documentation string for the camera."""
         # generate a markdown doc from the camera attributes
-        
