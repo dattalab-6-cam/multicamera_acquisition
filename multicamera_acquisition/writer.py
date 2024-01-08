@@ -1,4 +1,3 @@
-
 import csv
 import logging
 import multiprocessing as mp
@@ -52,7 +51,6 @@ NVIDIA_SETTINGS = """
 
 
 class BaseWriter(mp.Process):
-
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
         super().__init__()
 
@@ -65,7 +63,7 @@ class BaseWriter(mp.Process):
         # File naming stuff
         # File name format is {prefix}.{start_timestamp}.{camera_name}.{serial_num}.{first_frame_number}.{extension}
         # and metadata is {full_filename.stem}.metadata.csv.
-        
+
         # We want the stem to be everything up to the first frame number,
         # so that we can start new videos with the same stem + new frame number.
         self.orig_stem = ".".join(self.video_file_name.stem.split(".")[:-1])
@@ -95,14 +93,11 @@ class BaseWriter(mp.Process):
         pass
 
     def run(self):
-
         # Get CSV writer for metadata file
         self.initialize_metadata()
-        
 
         # Loop until we get a stop signal
         while True:
-
             # Get data from the queue
             data = self.queue.get()
 
@@ -135,7 +130,6 @@ class BaseWriter(mp.Process):
                 print(f"current fr: {current_frame}")
                 raise
 
-
             # Reset the pipe if needed (after self._reset_writer())
             if self.pipe is None:
                 data_shape = img.shape
@@ -151,14 +145,17 @@ class BaseWriter(mp.Process):
             if self.frame_id >= self.config["max_video_frames"]:
                 self._reset_writers()
 
-        logging.log(logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})")
+        logging.log(
+            logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})"
+        )
         self.close_video()
 
-        logging.log(logging.DEBUG, f"Writer run finished ({self.config['camera_name']})")
+        logging.log(
+            logging.DEBUG, f"Writer run finished ({self.config['camera_name']})"
+        )
         self.finish()
 
     def _reset_writers(self):
-
         # Reset the video writer
         self.close_video()
         self.video_file_name = (
@@ -189,39 +186,39 @@ class BaseWriter(mp.Process):
 
 
 # TODO: deal with ffmpeg warning:
-    # "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
+# "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class NVC_Writer(BaseWriter):
-
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
-
         # protect import statement
         # import PyNvCodec as nvc
 
-        super().__init__(queue=queue, video_file_name=video_file_name, metadata_file_name=metadata_file_name, config=config)
+        super().__init__(
+            queue=queue,
+            video_file_name=video_file_name,
+            metadata_file_name=metadata_file_name,
+            config=config,
+        )
 
         # VPF-specific stuff
         self.encFrame = np.ndarray(shape=(0), dtype=np.uint8)
         self.encFile = None
-        self.img_dims = None  
-        self.nv12_placeholder = None  # placeholder for nv12 image 
+        self.img_dims = None
+        self.nv12_placeholder = None  # placeholder for nv12 image
         self.frames_flushed = 0
 
     @staticmethod
     def default_writer_config(fps, gpu=0):
-        """Generate a valid config for an NVC Writer.
-        """
+        """Generate a valid config for an NVC Writer."""
         if gpu is None:
             raise ValueError("GPU must be specified for NVC writer")
         config = {
-
             # pipeline params
-            'fps': fps,
+            "fps": fps,
             "type": "nvc",
-            'max_video_frames': 60 * 60 * fps * 24,  # one day
+            "max_video_frames": 60 * 60 * fps * 24,  # one day
             "auto_remux_videos": True,
-
             # encoder params
-            'pixel_format': 'gray8',
+            "pixel_format": "gray8",
             "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
             "codec": "h264",  # h264, hevc
             "profile": "high",  # high or baseline (?)
@@ -229,7 +226,6 @@ class NVC_Writer(BaseWriter):
             "tuning_info": "ultra_low_latency",
             "fmt": "YUV420",
             "gpu": gpu,
-
             # additional params from CW
             "idrperiod": "256",
             "gop": "30",
@@ -238,10 +234,13 @@ class NVC_Writer(BaseWriter):
         return config
 
     def validate_config(self):
-
         # Check pixel format (only gray8 supported by VPF)
-        assert "pixel_format" in self.config, "VPF requires pixel_format to be specified"
-        assert self.config["pixel_format"] == "gray8", "VPF only supports gray8 pixel format"
+        assert (
+            "pixel_format" in self.config
+        ), "VPF requires pixel_format to be specified"
+        assert (
+            self.config["pixel_format"] == "gray8"
+        ), "VPF only supports gray8 pixel format"
 
     def _get_new_pipe(self, data_shape):
         import PyNvCodec as nvc
@@ -259,7 +258,7 @@ class NVC_Writer(BaseWriter):
             "fmt": self.config["fmt"],
             # "lookahead": "1", # how far to look ahead (more is slower but better quality)
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
-            "gop": self.config["gop"], # larger = faster
+            "gop": self.config["gop"],  # larger = faster
         }
         logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
         self.pipe = nvc.PyNvEncoder(
@@ -272,7 +271,6 @@ class NVC_Writer(BaseWriter):
         logging.log(logging.DEBUG, "Pipe created")
 
     def append(self, data):
-
         # Cast to uint8
         data = data.astype(np.uint8)
 
@@ -286,9 +284,7 @@ class NVC_Writer(BaseWriter):
             nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
 
         try:
-            success = self.pipe.EncodeSingleFrame(
-                nv12_array, self.encFrame, sync=False
-            )
+            success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
         except Exception as e:
             success = False
             logging.log(logging.DEBUG, f"failed to create frame: {e}")
@@ -298,7 +294,6 @@ class NVC_Writer(BaseWriter):
             self.encFile.write(encByteArray)
 
     def close_video(self):
-
         # Flush the PyNvCodec encoder
         if self.pipe is not None:
             self.flush_enc_stream()
@@ -316,7 +311,6 @@ class NVC_Writer(BaseWriter):
             self._mux_video(self.video_file_name)
 
     def flush_enc_stream(self):
-
         # Encoder is asynchronous, so we need to flush it
         while True:
             success = self.pipe.FlushSinglePacket(self.encFrame)
@@ -328,7 +322,6 @@ class NVC_Writer(BaseWriter):
                 break
 
     def _mux_video(self, video_file_name):
-
         # Create a muxer process
         success_event = mp.Event()
         muxer = VideoMuxer(video_file_name, success_event)
@@ -375,7 +368,9 @@ class VideoMuxer(mp.Process):
             self.skip = True
 
         if not self.video_file_name.exists():
-            warnings.warn(f"VideoMuxer target file {self.video_file_name} does not exist")
+            warnings.warn(
+                f"VideoMuxer target file {self.video_file_name} does not exist"
+            )
             self.skip = True
 
     def run(self):
@@ -391,22 +386,24 @@ class VideoMuxer(mp.Process):
             return
 
         # ffmpeg can't operate in place, so we need to make a tmp file name for the muxed video
-        # and then delete the origin + rename the muxed one 
-        tmp_file_name = self.video_file_name.parent / f"{self.video_file_name.stem}.muxed.mp4"
+        # and then delete the origin + rename the muxed one
+        tmp_file_name = (
+            self.video_file_name.parent / f"{self.video_file_name.stem}.muxed.mp4"
+        )
 
         # Generate an ffmpeg subprocess command to mux the video
         command = [
             "ffmpeg",
-            '-y',
-            '-loglevel', 
-            'error',  # suppress ffmpeg output
+            "-y",
+            "-loglevel",
+            "error",  # suppress ffmpeg output
             "-i",
             str(self.video_file_name),
             "-c:v",
             "copy",
             "-f",
             "mp4",
-            str(tmp_file_name)
+            str(tmp_file_name),
         ]
 
         # Run the muxing once the video is ready (ie released by the writer)
@@ -422,10 +419,14 @@ class VideoMuxer(mp.Process):
         self.success.set()
 
 
-
 class FFMPEG_Writer(BaseWriter):
     def __init__(self, queue, video_file_name, metadata_file_name, config=None):
-        super().__init__(queue=queue, video_file_name=video_file_name, metadata_file_name=metadata_file_name, config=config)
+        super().__init__(
+            queue=queue,
+            video_file_name=video_file_name,
+            metadata_file_name=metadata_file_name,
+            config=config,
+        )
 
         # FFMPEG-specific stuff
         pass
@@ -435,10 +436,9 @@ class FFMPEG_Writer(BaseWriter):
 
     def validate_config(self):
         # Check pixel format
-        assert "pixel_format" in self.config, "pixel_format msut be specified"    
+        assert "pixel_format" in self.config, "pixel_format msut be specified"
 
     def append(self, data):
-
         # Convert to the correct data format
         if self.config["pixel_format"] == "gray8":
             data = data.astype(np.uint8)
@@ -449,7 +449,6 @@ class FFMPEG_Writer(BaseWriter):
         self.pipe.stdin.write(data.tobytes())
 
     def _get_new_pipe(self, data_shape):
-
         # Generate the ffmpeg command
         command = FFMPEG_Writer.create_ffmpeg_pipe_command(
             self.video_file_name,
@@ -489,40 +488,38 @@ class FFMPEG_Writer(BaseWriter):
         Frame size tbd on the fly.
         """
         config = {
-            'fps': fps,
-            'max_video_frames': 60 * 60 * fps * 24,  # one day
-            'quality': 15,
-            'loglevel': 'error',
-            "type": "ffmpeg"
+            "fps": fps,
+            "max_video_frames": 60 * 60 * fps * 24,  # one day
+            "quality": 15,
+            "loglevel": "error",
+            "type": "ffmpeg",
         }
 
         if vid_type == "ir":
-
             # Use uint8 for ir vids
-            config['pixel_format'] = 'gray8'
+            config["pixel_format"] = "gray8"
 
             # Use a pixel format that is readable by most players
-            config['output_px_format'] = 'yuv420p'  # Output pixel format
+            config["output_px_format"] = "yuv420p"  # Output pixel format
 
             # Set codec and preset depending on whether we have a gpu
             if gpu is not None:
-                config['video_codec'] = 'h264_nvenc'
-                config['gpu'] = gpu
-                config['preset'] = 'p1'  # p1 - p7, p1 is fastest, p7 is slowest
+                config["video_codec"] = "h264_nvenc"
+                config["gpu"] = gpu
+                config["preset"] = "p1"  # p1 - p7, p1 is fastest, p7 is slowest
             else:
-                config['video_codec'] = 'libx264'
-                config['preset'] = 'ultrafast'
+                config["video_codec"] = "libx264"
+                config["preset"] = "ultrafast"
                 config["gpu"] = None
 
             config["depth"] = False
 
         elif vid_type == "depth":
-
             # Use uint16 for depth vids
-            config['pixel_format'] = 'grey16'
-            config['video_codec'] = 'ffv1'  # lossless depth    
-            config['depth'] = True
-            config['gpu'] = None
+            config["pixel_format"] = "grey16"
+            config["video_codec"] = "ffv1"  # lossless depth
+            config["depth"] = True
+            config["gpu"] = None
 
         return config
 
@@ -629,18 +626,15 @@ class FFMPEG_Writer(BaseWriter):
 
 
 def get_writer(
-    queue,
-    video_file_name,
-    metadata_file_name,
-    writer_type="nvc",
-    config=None
+    queue, video_file_name, metadata_file_name, writer_type="nvc", config=None
 ):
-    """Get a Writer object.
-    """
+    """Get a Writer object."""
     if writer_type == "nvc":
         writer = NVC_Writer(queue, video_file_name, metadata_file_name, config=config)
     elif writer_type == "ffmpeg":
-        writer = FFMPEG_Writer(queue, video_file_name, metadata_file_name, config=config)
+        writer = FFMPEG_Writer(
+            queue, video_file_name, metadata_file_name, config=config
+        )
     else:
         raise ValueError(f"Unrecognized writer type: {writer_type}")
     return writer
