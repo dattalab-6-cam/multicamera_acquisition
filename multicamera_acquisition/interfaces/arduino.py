@@ -31,9 +31,15 @@ def validate_arduino_config(config):
     - XXX
     """
     # get all pins into one list
-    pins = config['arduino']['input_pins']+config['arduino']['random_pins']+config['arduino']['output_pins']
+    pins = (
+        config["arduino"]["input_pins"]
+        + config["arduino"]["random_pins"]
+        + config["arduino"]["output_pins"]
+    )
     # check if lengths match after removing duplicates with set()
-    assert len(pins) == len(set(pins)), 'Pins should only be specified once, please remove duplicate pins in config'
+    assert len(pins) == len(
+        set(pins)
+    ), "Pins should only be specified once, please remove duplicate pins in config"
 
 
 def generate_output_schedule(config, n_azures=2):
@@ -58,26 +64,36 @@ def generate_output_schedule(config, n_azures=2):
     """
 
     # JACK TODO: write this function, make sure to raise errors if the timing cant work out
-    toptimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type='top')
-    bottomtimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type='bottom')
-    
+    toptimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type="top")
+    bottomtimes = generate_basler_frametimes(
+        config, n_azures=n_azures, camera_type="bottom"
+    )
+
     # expand toptimes to have a time for each pin
     def _expand_arr(x, y):
         return [_x for _x in x for _ in range(y)]
-    
-    n_top_pins = len(config['arduino']['top_camera_pins']) + len(config['arduino']['top_light_pins'])
+
+    n_top_pins = len(config["arduino"]["top_camera_pins"]) + len(
+        config["arduino"]["top_light_pins"]
+    )
     toptimes_expanded = _expand_arr(toptimes, n_top_pins)
-    
-    n_bottom_pins = len(config['arduino']['bottom_camera_pins']) + len(config['arduino']['bottom_light_pins'])
+
+    n_bottom_pins = len(config["arduino"]["bottom_camera_pins"]) + len(
+        config["arduino"]["bottom_light_pins"]
+    )
     bottomtimes_expanded = _expand_arr(bottomtimes, n_bottom_pins)
 
     # expand pins to correpond to times
-    top_pins = config['arduino']['top_camera_pins']*len(toptimes) + config['arduino']['top_light_pins']*len(toptimes)
-    bottom_pins = config['arduino']['bottom_camera_pins']*len(bottomtimes) + config['arduino']['bottom_light_pins']*len(bottomtimes)
+    top_pins = config["arduino"]["top_camera_pins"] * len(toptimes) + config["arduino"][
+        "top_light_pins"
+    ] * len(toptimes)
+    bottom_pins = config["arduino"]["bottom_camera_pins"] * len(bottomtimes) + config[
+        "arduino"
+    ]["bottom_light_pins"] * len(bottomtimes)
 
     def _generate_states(times):
         return [1 if i % 2 == 0 else 0 for i in range(len(times))]
-    
+
     # generate and expand states to appropriate pins pins
     topstates = _generate_states(toptimes)
     topstates_expanded = _expand_arr(topstates, n_top_pins)
@@ -86,12 +102,14 @@ def generate_output_schedule(config, n_azures=2):
     bottomstates_expanded = _expand_arr(bottomstates, n_bottom_pins)
 
     # concat all into final lists to return
-    times = toptimes_expanded+bottomtimes_expanded
-    pins = top_pins+bottom_pins
-    states = topstates_expanded+bottomstates_expanded
+    times = toptimes_expanded + bottomtimes_expanded
+    pins = top_pins + bottom_pins
+    states = topstates_expanded + bottomstates_expanded
 
     # add azure times/pins
-    for pin, azure_time in zip(config['arduino']['azure_pins'], config['arduino']['azure_times']):
+    for pin, azure_time in zip(
+        config["arduino"]["azure_pins"], config["arduino"]["azure_times"]
+    ):
         pins.append(pin)
         times.append(azure_time)
         states.append(1)
@@ -162,7 +180,8 @@ def find_serial_ports():
             pass
     return result
 
-def generate_basler_frametimes(config, n_azures=2, camera_type='top'):
+
+def generate_basler_frametimes(config, n_azures=2, camera_type="top"):
     """Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
 
     Parameters
@@ -178,7 +197,7 @@ def generate_basler_frametimes(config, n_azures=2, camera_type='top'):
                     Amount to offset basler from Azure
                 azure_offset: int
                     Amount to offset Azures from eachother
-                acq_cycle_dur : int 
+                acq_cycle_dur : int
                     Duration of acq cycle (shouldn't really change beyond 33,333)
                 azure_pulse_dur: int
                     Duration of azure ir pulse
@@ -194,38 +213,44 @@ def generate_basler_frametimes(config, n_azures=2, camera_type='top'):
     """
 
     valid_fps = [30, 60, 90, 120, 150]
-    assert config['fps'] in valid_fps, ValueError(f'fps not in {valid_fps}')
+    assert config["fps"] in valid_fps, ValueError(f"fps not in {valid_fps}")
 
     # convert to microseconds
-    interframe_interval = (1/config['fps'])*1e6
+    interframe_interval = (1 / config["fps"]) * 1e6
 
     # get nframes per cycle
-    nframes = np.ceil(config['acq_cycle_dur'] / interframe_interval).astype(int)
-    if camera_type =='top':
+    nframes = np.ceil(config["acq_cycle_dur"] / interframe_interval).astype(int)
+    if camera_type == "top":
         _offset = 0
-    elif camera_type == 'bottom':
-        _offset = config['bottom_offset']
+    elif camera_type == "bottom":
+        _offset = config["bottom_offset"]
     else:
-        raise ValueError('camera must be one of the following: top, bottom')
+        raise ValueError("camera must be one of the following: top, bottom")
     times = []
 
     # get times
     for n in range(nframes):
-        t = (interframe_interval * n) + (n_azures * config['azure_pulse_dur']) + config['azure_offset'] + config['basler_offset']
+        t = (
+            (interframe_interval * n)
+            + (n_azures * config["azure_pulse_dur"])
+            + config["azure_offset"]
+            + config["basler_offset"]
+        )
         t += _offset
-        end = t+config['exposure_time']
+        end = t + config["exposure_time"]
         times.append(int(t))
         times.append(int(end))
 
     # edge case to deal with second frame interfering with azure
-    if config['fps'] in (120, 150):
+    if config["fps"] in (120, 150):
         times[1] += 510
 
     # edge case to deal with last frame interfering with azure
-    if config['fps'] == 150 and camera_type =='bottom':
+    if config["fps"] == 150 and camera_type == "bottom":
         times[-1] -= 330
 
     return times
+
 
 def generate_azure_pulse_inds(config, n_azures=2):
     """Generate Azure pulse times and handle offsets for triggering.
@@ -241,7 +266,7 @@ def generate_azure_pulse_inds(config, n_azures=2):
                     Duration of period between end of one ir pulse and start of another
                 trigger_offset : bool
                     Whether to offset azure times based on arduino trigger
-                acq_cycle_dur : int 
+                acq_cycle_dur : int
                     Duration of acq cycle (shouldn't really change beyond 33,333)
 
     n_azures : int, optional
@@ -252,7 +277,7 @@ def generate_azure_pulse_inds(config, n_azures=2):
     list
         A list of tuples representing start and end times of Azure camera pulses.
     """
-    
+
     # never changes
     n_pulses = 9
 
@@ -260,14 +285,16 @@ def generate_azure_pulse_inds(config, n_azures=2):
     azure_pulse_times = []
     x0 = 0
     for n in range(n_pulses):
-        x1 = x0 + (n_azures * config['azure_pulse_dur'])
+        x1 = x0 + (n_azures * config["azure_pulse_dur"])
         azure_pulse_times.append((x0, x1))
-        x0=(config['azure_pulse_dur'] * n_azures + config['azure_idle_time'])*(n+1)
+        x0 = (config["azure_pulse_dur"] * n_azures + config["azure_idle_time"]) * (
+            n + 1
+        )
 
-    if config['trigger_offset']:
-        # get offsets to deal with cases 
+    if config["trigger_offset"]:
+        # get offsets to deal with cases
         post_offset = azure_pulse_times[3][0]
-        pre_offset = config['acq_cycle_dur'] - post_offset
+        pre_offset = config["acq_cycle_dur"] - post_offset
         # number of pulses precreding arduino trigger
         pre_trigger = 3
 
@@ -288,7 +315,8 @@ def generate_azure_pulse_inds(config, n_azures=2):
 
     return azure_pulse_times
 
-def viz_triggers(config, camera_type='top', n_pulses=2, n_azures=2):
+
+def viz_triggers(config, camera_type="top", n_pulses=2, n_azures=2):
     """Visualize the synchronization triggers for Azure and Basler cameras.
 
     Parameters
@@ -298,7 +326,7 @@ def viz_triggers(config, camera_type='top', n_pulses=2, n_azures=2):
             Config dict MUST contain
                 trigger_viz_figsize : tuple[int, int]
                     Size of figure for visualization
-                acq_cycle_dur : int 
+                acq_cycle_dur : int
                     Duration of acq cycle (shouldn't really change beyond 33,333)
     camera_type : str, optional
         Type of the camera to visualize triggers for; either 'top' or 'bottom' (default is 'top').
@@ -315,22 +343,25 @@ def viz_triggers(config, camera_type='top', n_pulses=2, n_azures=2):
     basler_times = generate_basler_frametimes(camera_type=camera_type, n_azures=2)
 
     # plotting
-    fig = plt.figure(figsize=config['trigger_viz_figsize'])
+    fig = plt.figure(figsize=config["trigger_viz_figsize"])
     ax = plt.gca()
     ax.set_ylim(0, 2)
-    ax.set_xlim((0, config['acq_cycle_dur']))
+    ax.set_xlim((0, config["acq_cycle_dur"]))
 
     for n in range(n_pulses):
         x0, x1 = azure_times[n]
-        ax.axvline(x0, ymax=1/2)
-        ax.axvline(x1, ymax=1/2)
-        ax.axhline(1.0, xmin=(x0/config['acq_cycle_dur']), xmax=x1/config['acq_cycle_dur'])
+        ax.axvline(x0, ymax=1 / 2)
+        ax.axvline(x1, ymax=1 / 2)
+        ax.axhline(
+            1.0, xmin=(x0 / config["acq_cycle_dur"]), xmax=x1 / config["acq_cycle_dur"]
+        )
 
     for t in basler_times:
-        plt.axvline(t, ymax=1/2, color='red')
+        plt.axvline(t, ymax=1 / 2, color="red")
     plt.show()
 
     return fig, ax
+
 
 class Arduino(object):
     """
@@ -416,27 +447,26 @@ class Arduino(object):
         # JACK TODO: send instructions to arduino\
 
         # acq duration based off azure framerate of 30 hz
-        cycle_dur = int((1/azure_fps)*1e6)
+        cycle_dur = int((1 / azure_fps) * 1e6)
         # n cycles between each input pin state check
-        input_check_interval = self.config['arduino']['input_check_interval']
+        input_check_interval = self.config["arduino"]["input_check_interval"]
         # n cycles between each random bit update
-        random_flip_interval = self.config['arduino']['random_flip_interval']
+        random_flip_interval = self.config["arduino"]["random_flip_interval"]
         # get output pin times, pin numbers, and states
         times, outpins, states = generate_output_schedule(self.config)
 
         sequence = (
-            b'\x02' +
-            f'{num_cycles}\n'.encode(),
-            f'{cycle_dur}\n'.encode(),
-            (','.join(map(str, self.config['arduino']['input_pins'])) + '\n').encode(),
-            f",{input_check_interval},".encode() +
-            (','.join(map(str, self.config['arduino']['random_pins'])) + '\n').encode(),
-            f",{random_flip_interval},".encode() +
-            ','.join(map(str, times)).encode(),
-            (','.join(map(str, outpins)) + '\n').encode(),
-            ','.join(map(str, states)).encode() +
-            b'\x03'
-            )
+            b"\x02" + f"{num_cycles}\n".encode(),
+            f"{cycle_dur}\n".encode(),
+            (",".join(map(str, self.config["arduino"]["input_pins"])) + "\n").encode(),
+            f",{input_check_interval},".encode()
+            + (
+                ",".join(map(str, self.config["arduino"]["random_pins"])) + "\n"
+            ).encode(),
+            f",{random_flip_interval},".encode() + ",".join(map(str, times)).encode(),
+            (",".join(map(str, outpins)) + "\n").encode(),
+            ",".join(map(str, states)).encode() + b"\x03",
+        )
         for seq in sequence:
             self.serial_connection.write(seq)
 
@@ -452,10 +482,14 @@ class Arduino(object):
         Interrupt acquisition. Raise a RuntimeError if the arduino does not respond
         with the string "INTERRUPTED" within 2 seconds.
         """
+        # flush
+        self.serial_connection.flushInput()
         # send interrupt signal
-        self.serial_connection.write(b'I')
+        self.serial_connection.write(b"I")
         # check for correct response
-        acquisition_interrupted = check_for_response(self.serial_connection, "INTERRUPTED")
+        acquisition_interrupted = check_for_response(
+            self.serial_connection, "INTERRUPTED"
+        )
         if not acquisition_interrupted:
             raise RuntimeError(
                 "Could not interrupt acquisition! Arduino did not recieve interrupt signal."
@@ -464,7 +498,7 @@ class Arduino(object):
     def check_for_input(self):
         """
         Check for input from the arduino. Two kinds of input are possible:
-        - The character "F<ETX>" indicates that the arduino has finished the acquisition loop.
+        - The character "F<\n>" indicates that the arduino has finished the acquisition loop.
         - A triggerdata message, which reports the state of the arduino's input pins and
           has the format "<STX><pin1><state1>...<pinN><stateN><cycleIndex><ETX>"
 
@@ -474,11 +508,13 @@ class Arduino(object):
             True if the arduino has finished the acquisition loop, False otherwise.
         """
         if self.serial_connection.in_waiting > 0:
-            msg = read_until_byte(self.serial_connection, b"\x03")
+            # msg = read_until_byte(self.serial_connection, b"\x03")
+            msg = self.serial_connection.readline()
             if msg == b"F\x03":
-                return True
-            elif msg[0] == "\x02":
-                # JACK TODO: parse triggerdata message, write to file
+                # parse bytes
+                # elif msg[0] == "\x02":
+                #     # JACK TODO: parse triggerdata message, write to file
+
                 pass
             else:
                 raise RuntimeError(f"Unexpected message from arduino: {msg}")
