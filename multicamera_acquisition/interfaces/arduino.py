@@ -24,7 +24,7 @@ def packIntAsLong(value):
     return struct.pack("i", value)
 
 
-def validate_arduino_config(config):
+def validate_arduino_config(config, schedule):
     """
     Validate the configuration dictionary for the Arduino interface. Checks that
     - no pins are reused for different purposes
@@ -32,17 +32,25 @@ def validate_arduino_config(config):
     """
     # get all pins into one list
     pins = (
-        config["arduino"]["input_pins"]
-        + config["arduino"]["random_pins"]
-        + config["arduino"]["output_pins"]
+        config["azure_pins"]
+        + config["top_camera_pins"]
+        + config["bottom_camera_pins"]
+        + config["input_pins"]
+        + config["random_pins"]
+        + config["top_light_pins"]
+        + config["bottom_light_pins"]
     )
     # check if lengths match after removing duplicates with set()
     assert len(pins) == len(
         set(pins)
     ), "Pins should only be specified once, please remove duplicate pins in config"
 
+    # output pins are allowed to have duplicates
+    assert len(set(pins).intersection(output_pins)) == 0, "Output pins intersect "
+    # .intersection(outpunt_pins) == 0
 
-def generate_output_schedule(config, n_azures=2):
+
+def generate_output_schedule(config, n_azures=2, return_as_dict=False):
     """
     Generate a sequence of state changes for the output pins of the arduino.
     These changes will be performed during each acquisition cycle and will be used
@@ -73,23 +81,18 @@ def generate_output_schedule(config, n_azures=2):
     def _expand_arr(x, y):
         return [_x for _x in x for _ in range(y)]
 
-    n_top_pins = len(config["arduino"]["top_camera_pins"]) + len(
-        config["arduino"]["top_light_pins"]
-    )
+    n_top_pins = len(config["top_camera_pins"]) + len(config["top_light_pins"])
     toptimes_expanded = _expand_arr(toptimes, n_top_pins)
 
-    n_bottom_pins = len(config["arduino"]["bottom_camera_pins"]) + len(
-        config["arduino"]["bottom_light_pins"]
-    )
+    n_bottom_pins = len(config["bottom_camera_pins"]) + len(config["bottom_light_pins"])
     bottomtimes_expanded = _expand_arr(bottomtimes, n_bottom_pins)
 
     # expand pins to correpond to times
-    top_pins = config["arduino"]["top_camera_pins"] * len(toptimes) + config["arduino"][
-        "top_light_pins"
-    ] * len(toptimes)
-    bottom_pins = config["arduino"]["bottom_camera_pins"] * len(bottomtimes) + config[
-        "arduino"
-    ]["bottom_light_pins"] * len(bottomtimes)
+    top_pins = (config["top_camera_pins"] + config["top_light_pins"]) * len(toptimes)
+
+    bottom_pins = (config["bottom_camera_pins"] + config["bottom_light_pins"]) * len(
+        bottomtimes
+    )
 
     def _generate_states(times):
         return [1 if i % 2 == 0 else 0 for i in range(len(times))]
@@ -107,14 +110,46 @@ def generate_output_schedule(config, n_azures=2):
     states = topstates_expanded + bottomstates_expanded
 
     # add azure times/pins
-    for pin, azure_time in zip(
-        config["arduino"]["azure_pins"], config["arduino"]["azure_times"]
+    for pin in config["azure_pins"]:
+        # pulse azure on
+        pins.append(pin)
+        times.append(0)
+        states.append(1)
+        # pulse azure off
+        pins.append(pin)
+        times.append(config["azure_pulse_width"])
+        states.append(0)
+
+    # could nice to have fake azure pins
+    # reweite in numpy
+    # eg np.arange(len(times)) % 2
+    # 17 % 5
+
+    # add custom output pins and times
+    for pin, time, state in zip(
+        config["custom_output_pins"],
+        config["custom_output_times"],
+        config["custom_output_states"],
     ):
         pins.append(pin)
-        times.append(azure_time)
-        states.append(1)
+        times.append(time)
+        states.append(state)
 
-    return times, pins, states
+    # assert custom output doesnt share outputs
+
+    # return times, pins, states
+    if return_as_dict:
+        results = {
+            "toptimes": toptimes_expanded,
+            "bottomtimes": bottomtimes_expanded,
+            "top_pins": top_pins,
+            "bottom_pins": bottom_pins,
+            "topstates": topstates_expanded,
+            "bottomstates": bottomstates_expanded,
+        }
+        return results
+    else:
+        return times, pins, states
 
 
 def check_for_response(serial_connection, expected_response):
@@ -181,7 +216,9 @@ def find_serial_ports():
     return result
 
 
-def generate_basler_frametimes(config, n_azures=2, camera_type="top"):
+def generate_basler_frametimes(
+    config, fps=120, exposure_time=950, n_azures=2, camera_type="top"
+):
     """Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
 
     Parameters
@@ -213,10 +250,10 @@ def generate_basler_frametimes(config, n_azures=2, camera_type="top"):
     """
 
     valid_fps = [30, 60, 90, 120, 150]
-    assert config["fps"] in valid_fps, ValueError(f"fps not in {valid_fps}")
+    assert fps in valid_fps, ValueError(f"fps not in {valid_fps}")
 
     # convert to microseconds
-    interframe_interval = (1 / config["fps"]) * 1e6
+    interframe_interval = (1 / fps) * 1e6
 
     # get nframes per cycle
     nframes = np.ceil(config["acq_cycle_dur"] / interframe_interval).astype(int)
@@ -237,17 +274,18 @@ def generate_basler_frametimes(config, n_azures=2, camera_type="top"):
             + config["basler_offset"]
         )
         t += _offset
-        end = t + config["exposure_time"]
+        end = t + exposure_time
         times.append(int(t))
         times.append(int(end))
 
-    # edge case to deal with second frame interfering with azure
-    if config["fps"] in (120, 150):
-        times[1] += 510
+    # # edge case to deal with second frame interfering with azure
+    if fps in (120, 150):
+        times[2] += 510
+        times[3] += 510
 
     # edge case to deal with last frame interfering with azure
-    if config["fps"] == 150 and camera_type == "bottom":
-        times[-1] -= 330
+    if fps == 150 and camera_type == "bottom":
+        times[-2] -= 330
 
     return times
 
@@ -373,31 +411,42 @@ class Arduino(object):
     - output_schedule: Sequence of state changes per acquisition cycle as a tuple (times, pins, states).
     """
 
-    def __init__(self, basename, config):
+    def __init__(self, basename, config=None):
         """
         Save attributes, creates a triggerdata file, determines the schedule of output state changes
         that the arduino should perform during each acquisition cycle, and validates the config.
         """
         # save attributes
-        self.config = config
+        if config is not None:
+            self.config = config
+        else:
+            self.config = self.default_arduino_config()
+
         self.serial_connection = None
 
         # create triggerdata file
-        input_pins = self.config["trigger_data_input_pins"]
-        if len(input_pins) > 0:
-            header = "time," + ",".join([f"pin_{pin}" for pin in input_pins]) + "\n"
+        # input_pins = self.config["trigger_data_input_pins"]
+        output_pins = (
+            self.config["bottom_camera_pins"]
+            + self.config["top_camera_pins"]
+            + self.config["azure_pins"]
+        )
+
+        if len(output_pins) > 0:
+            header = "time," + ",".join([f"pin_{pin}" for pin in output_pins]) + "\n"
             self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
             self.trigger_data_file.write(header)
 
-        # validate the schedule and config
-        validate_arduino_config(config, self.output_schedule)
-
         # determine schedule of output state changes
-        self.output_schedule = generate_output_schedule(config)
+        self.output_schedule = generate_output_schedule(self.config)
+
+        # validate the schedule and config
+        validate_arduino_config(self.config, self.output_schedule)
 
         # vizualize the schedule if requested
-        if config["arduino"]["plot_trigger_schedule"]:
-            self.viz_triggers()
+        if self.config["plot_trigger_schedule"]:
+            # self.viz_triggers()
+            print("Trigger VIZ")
 
     def open_serial_connection(self):
         """
@@ -405,7 +454,7 @@ class Arduino(object):
         it exists, otherwise find the port automatically. After the connection is established, check for
         a READY message from the arduino. If the message is not received, raise a RuntimeError.
         """
-        if self.config["arduino"]["port"] is None:
+        if self.config["port"] is None:
             ports = find_serial_ports()
             if len(ports) == 0:
                 raise RuntimeError("No serial ports found!")
@@ -416,7 +465,7 @@ class Arduino(object):
                     if found_ready_arduino:
                         break
         else:
-            port = self.config["arduino"]["port"]
+            port = self.config["port"]
             with serial.Serial(port=port, timeout=0.1) as serial_connection:
                 found_ready_arduino = check_for_response(serial_connection, "READY")
 
@@ -449,20 +498,18 @@ class Arduino(object):
         # acq duration based off azure framerate of 30 hz
         cycle_dur = int((1 / azure_fps) * 1e6)
         # n cycles between each input pin state check
-        input_check_interval = self.config["arduino"]["input_check_interval"]
+        input_check_interval = self.config["input_check_interval"]
         # n cycles between each random bit update
-        random_flip_interval = self.config["arduino"]["random_flip_interval"]
+        random_flip_interval = self.config["random_flip_interval"]
         # get output pin times, pin numbers, and states
         times, outpins, states = generate_output_schedule(self.config)
 
         sequence = (
             b"\x02" + f"{num_cycles}\n".encode(),
             f"{cycle_dur}\n".encode(),
-            (",".join(map(str, self.config["arduino"]["input_pins"])) + "\n").encode(),
+            (",".join(map(str, self.config["input_pins"])) + "\n").encode(),
             f",{input_check_interval},".encode()
-            + (
-                ",".join(map(str, self.config["arduino"]["random_pins"])) + "\n"
-            ).encode(),
+            + (",".join(map(str, self.config["random_pins"])) + "\n").encode(),
             f",{random_flip_interval},".encode() + ",".join(map(str, times)).encode(),
             (",".join(map(str, outpins)) + "\n").encode(),
             ",".join(map(str, states)).encode() + b"\x03",
@@ -507,15 +554,46 @@ class Arduino(object):
         finished : bool
             True if the arduino has finished the acquisition loop, False otherwise.
         """
-        if self.serial_connection.in_waiting > 0:
-            # msg = read_until_byte(self.serial_connection, b"\x03")
-            msg = self.serial_connection.readline()
-            if msg == b"F\x03":
-                # parse bytes
-                # elif msg[0] == "\x02":
-                #     # JACK TODO: parse triggerdata message, write to file
+        # if self.serial_connection.in_waiting > 0:
+        #     # msg = read_until_byte(self.serial_connection, b"\x03")
+        #     msg = self.serial_connection.readline()
+        #     # if msg == b"F\x03":
+        #     # parse bytes
+        #     # elif msg[0] == "\x02":
+        #     #     # JACK TODO: parse triggerdata message, write to file
+        #     if msg is not None:
+        #         num_pins = self.config["n_pins"]
+        #         fmt = "<" + "hB" * num_pins + "LL"
 
-                pass
-            else:
-                raise RuntimeError(f"Unexpected message from arduino: {msg}")
+        #     else:
+        #         raise RuntimeError(f"Unexpected message from arduino: {msg}")
         return False
+
+    @staticmethod
+    def default_arduino_config():
+        return {
+            "azure_pins": ["0"],
+            "top_camera_pins": ["1", "3", "5", "7", "9"],
+            "bottom_camera_pins": ["11"],
+            "input_pins": ["10"],
+            "top_light_pins": ["38", "39", "40", "41", "14", "15"],
+            "bottom_light_pins": ["16", "17", "20", "21", "22", "23"],
+            "random_pins": ["600"],
+            "custom_output_pins": None,
+            "custom_output_times": None,
+            "custom_output_states": None,
+            "azure_pulse_width": 100,
+            "azure_times": [0, 160],
+            "acq_cycle_dur": 33333,
+            "bottom_offset": 1750,
+            "azure_pulse_dur": 160,
+            "azure_idle_time": 1250,
+            "azure_offset": 10,
+            "basler_offset": 10,
+            "trigger_offset": True,
+            "trigger_viz_figsize": (7.5, 3),
+            "plot_trigger_schedule": True,
+            "port": "007",
+            "input_check_interval": 1000,
+            "random_flip_interval": 1000,
+        }
