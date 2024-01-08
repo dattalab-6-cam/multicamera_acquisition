@@ -38,14 +38,12 @@ def most_recent_subdirectory(dataset_loc):
     if not isinstance(dataset_loc, Path):
         dataset_loc = Path(dataset_loc)
     subdir_list = list((dataset_loc).iterdir())
-    directory_dates = [
-        datetime.strptime(i.name, "%Y%m%d_%H%M%S") for i in subdir_list
-    ]
+    directory_dates = [datetime.strptime(i.name, "%Y%m%d_%H%M%S") for i in subdir_list]
     return subdir_list[np.argsort(directory_dates)[-1]]
 
 
 def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
-    """Create a directory for saving the recording, optionally further 
+    """Create a directory for saving the recording, optionally further
     nested in a subdir named with the date and time.
 
     Parameters
@@ -65,9 +63,13 @@ def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
 
     # Check if the directory already exists
     if save_location.exists() and not overwrite:
-        raise ValueError(f"Save location {save_location} already exists, if you want to overwrite set overwrite to True!")
+        raise ValueError(
+            f"Save location {save_location} already exists, if you want to overwrite set overwrite to True!"
+        )
     elif save_location.exists() and overwrite and not append_datetime:
-        print(f"Files in save location {save_location} will be overwritten, are you sure?")
+        print(
+            f"Files in save location {save_location} will be overwritten, are you sure?"
+        )
         input("Press Enter to continue...")
         shutil.rmtree(save_location)
 
@@ -78,15 +80,17 @@ def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
     if not save_location.exists():
         raise ValueError(f"Failed to create save location {save_location}!")
     else:
-        print(f'Created save location {save_location}')
+        print(f"Created save location {save_location}")
 
     return save_location
 
 
-def prepare_base_filename(file_prefix=None, append_datetime=True, append_camera_serial=False):
+def prepare_base_filename(
+    file_prefix=None, append_datetime=True, append_camera_serial=False
+):
     """
-    The default file name is save_location / {timestamp}.{camera_name}.{first_frame_number}.mp4, 
-    where timestamp is formatted like 20240103_135203 (“%Y%m%d_%H%M%S”), and first_frame_number is 0 for the first video 
+    The default file name is save_location / {timestamp}.{camera_name}.{first_frame_number}.mp4,
+    where timestamp is formatted like 20240103_135203 (“%Y%m%d_%H%M%S”), and first_frame_number is 0 for the first video
     and (max_frames_per_vid *i) for each subsequent i-th video.
 
     The timestamped directories are formatted the same.
@@ -95,8 +99,8 @@ def prepare_base_filename(file_prefix=None, append_datetime=True, append_camera_
     -- It is possible to include a custom prefix
     The order of precedence is: prefix.timestamp.camera_name.serial_number.first_frame_num.mp4
 
-    Multiple files from the same recording are initially saved into the same save_location, with separate videos + metadata + triggerdata. 
-    The timestamp for each new file is still the same as the first video. 
+    Multiple files from the same recording are initially saved into the same save_location, with separate videos + metadata + triggerdata.
+    The timestamp for each new file is still the same as the first video.
     It is then up to the user if they want to create further nested directory structure for processing where each file set (video / metadata file / etc) is in its own subdir.
     """
 

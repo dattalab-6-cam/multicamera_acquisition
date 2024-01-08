@@ -1,24 +1,27 @@
 import yaml
 
-from multicamera_acquisition.config.default_display_config import \
-    default_display_config
+from multicamera_acquisition.config.default_display_config import default_display_config
 
 import pdb
 
 
 def recursive_update(old_dict, updates):
-    """ Recursively update a dictionary with another dictionary.
+    """Recursively update a dictionary with another dictionary.
 
     Parameters
     ----------
     old_dict : dict
         The dictionary to be updated.
-    updates : dict  
+    updates : dict
         The dictionary containing the updates.
 
     """
     for key, value in updates.items():
-        if key in old_dict and isinstance(old_dict[key], dict) and isinstance(value, dict):
+        if (
+            key in old_dict
+            and isinstance(old_dict[key], dict)
+            and isinstance(value, dict)
+        ):
             # If both config and updates have this key as a dictionary, recurse
             recursive_update(old_dict[key], value)
         else:
@@ -27,7 +30,7 @@ def recursive_update(old_dict, updates):
 
 
 def dict_update_with_precedence(*args):
-    """ Update a series of dictionaries, in decreasing order of precedence.
+    """Update a series of dictionaries, in decreasing order of precedence.
 
     Parameters
     ----------
@@ -77,16 +80,14 @@ def add_rt_display_params_to_config(recording_config, display_params=None):
 
 
 def load_config(config_filepath):
-    """Load a recording config from a file.
-    """
+    """Load a recording config from a file."""
     with open(config_filepath, "r") as f:
         recording_config = yaml.load(f, Loader=yaml.FullLoader)
     return recording_config
 
 
 def save_config(config_filepath, recording_config):
-    """Save a recording config to a file.
-    """
+    """Save a recording config to a file."""
     with open(config_filepath, "w") as f:
         yaml.dump(recording_config, f)
     return
@@ -95,7 +96,7 @@ def save_config(config_filepath, recording_config):
 def validate_recording_config(recording_config):
     """Validate a recording config dict.
 
-    This function checks that the recording config dict is valid, 
+    This function checks that the recording config dict is valid,
     and raises an error if it is not.
     """
 
@@ -109,13 +110,21 @@ def validate_recording_config(recording_config):
 
     # Ensure that all cameras are recognized brands
     for camera_name in recording_config["cameras"].keys():
-        if recording_config["cameras"][camera_name]["brand"] not in ["basler", "basler_emulated", "azure"]:
-            raise ValueError(f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}")
+        if recording_config["cameras"][camera_name]["brand"] not in [
+            "basler",
+            "basler_emulated",
+            "azure",
+        ]:
+            raise ValueError(
+                f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"
+            )
 
     # Warn user that fps for baslers / azures is deprecated
     for camera_name in recording_config["cameras"].keys():
         if "fps" in recording_config["cameras"][camera_name].keys():
-            print("WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported).")
+            print(
+                "WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported)."
+            )
 
     # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
     if recording_config["globals"]["fps"] % 30 != 0:
