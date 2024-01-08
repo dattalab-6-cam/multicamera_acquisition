@@ -46,98 +46,68 @@ def validate_arduino_config(config, schedule):
     ), "Pins should only be specified once, please remove duplicate pins in config"
 
     # output pins are allowed to have duplicates
-    assert len(set(pins).intersection(output_pins)) == 0, "Output pins intersect "
+    assert (
+        len(set(pins).intersection(config["custom_output_pins"])) == 0
+    ), "Output pins intersect "
     # .intersection(outpunt_pins) == 0
 
 
 def generate_output_schedule(config, n_azures=2, return_as_dict=False):
-    """
-    Generate a sequence of state changes for the output pins of the arduino.
-    These changes will be performed during each acquisition cycle and will be used
-    to trigger cameras and lights.
-
-    Parameters:
-    ----------
-    config : dict
-        Configuration dictionary.
-
-    Returns:
-    --------
-    times : list
-        The time in microseconds at which each state change should occur.
-    pins : list
-        The output pin for each state change.
-    states : list
-        The state (0 or 1) for each state change.
-    """
-
-    # JACK TODO: write this function, make sure to raise errors if the timing cant work out
+    # generate basler frametimes
     toptimes = generate_basler_frametimes(config, n_azures=n_azures, camera_type="top")
     bottomtimes = generate_basler_frametimes(
         config, n_azures=n_azures, camera_type="bottom"
     )
 
-    # expand toptimes to have a time for each pin
-    def _expand_arr(x, y):
-        return [_x for _x in x for _ in range(y)]
+    # helper function to generate arrays of states based on times
+    def generate_states(times):
+        return np.where(np.arange(len(times)) % 2 == 0, 1, 0)
 
+    # get number of pins corresponding to top cameras/lights and expand times accordingly
     n_top_pins = len(config["top_camera_pins"]) + len(config["top_light_pins"])
-    toptimes_expanded = _expand_arr(toptimes, n_top_pins)
+    toptimes_expanded = np.repeat(toptimes, n_top_pins)
 
+    # expand bottom times as well
     n_bottom_pins = len(config["bottom_camera_pins"]) + len(config["bottom_light_pins"])
-    bottomtimes_expanded = _expand_arr(bottomtimes, n_bottom_pins)
+    bottomtimes_expanded = np.repeat(bottomtimes, n_bottom_pins)
 
-    # expand pins to correpond to times
-    top_pins = (config["top_camera_pins"] + config["top_light_pins"]) * len(toptimes)
-
-    bottom_pins = (config["bottom_camera_pins"] + config["bottom_light_pins"]) * len(
-        bottomtimes
+    # expand pins as well
+    top_pins = np.tile(
+        config["top_camera_pins"] + config["top_light_pins"], len(toptimes)
+    )
+    bottom_pins = np.tile(
+        config["bottom_camera_pins"] + config["bottom_light_pins"], len(bottomtimes)
     )
 
-    def _generate_states(times):
-        return [1 if i % 2 == 0 else 0 for i in range(len(times))]
+    # now generate and expand states
+    topstates = generate_states(toptimes)
+    topstates_expanded = np.repeat(topstates, n_top_pins)
 
-    # generate and expand states to appropriate pins pins
-    topstates = _generate_states(toptimes)
-    topstates_expanded = _expand_arr(topstates, n_top_pins)
+    bottomstates = generate_states(bottomtimes)
+    bottomstates_expanded = np.repeat(bottomstates, n_bottom_pins)
 
-    bottomstates = _generate_states(bottomtimes)
-    bottomstates_expanded = _expand_arr(bottomstates, n_bottom_pins)
+    # concatenate everything
+    times = np.concatenate((toptimes_expanded, bottomtimes_expanded))
+    pins = np.concatenate((top_pins, bottom_pins))
+    states = np.concatenate((topstates_expanded, bottomstates_expanded))
 
-    # concat all into final lists to return
-    times = toptimes_expanded + bottomtimes_expanded
-    pins = top_pins + bottom_pins
-    states = topstates_expanded + bottomstates_expanded
-
-    # add azure times/pins
+    # append azure times
+    azure_times = np.zeros(len(config["azure_pins"]) * 2, dtype=int)
+    azure_states = np.repeat([1, 0], len(config["azure_pins"]))
     for pin in config["azure_pins"]:
-        # pulse azure on
-        pins.append(pin)
-        times.append(0)
-        states.append(1)
-        # pulse azure off
-        pins.append(pin)
-        times.append(config["azure_pulse_width"])
-        states.append(0)
+        pins = np.append(pins, [pin, pin])
+        times = np.append(times, azure_times + config["azure_pulse_width"])
+        states = np.append(states, azure_states)
 
-    # could nice to have fake azure pins
-    # reweite in numpy
-    # eg np.arange(len(times)) % 2
-    # 17 % 5
+    # add custom output pins
+    custom_output_pins = np.array(config["custom_output_pins"])
+    custom_output_times = np.array(config["custom_output_times"])
+    custom_output_states = np.array(config["custom_output_states"])
 
-    # add custom output pins and times
-    for pin, time, state in zip(
-        config["custom_output_pins"],
-        config["custom_output_times"],
-        config["custom_output_states"],
-    ):
-        pins.append(pin)
-        times.append(time)
-        states.append(state)
+    pins = np.append(pins, custom_output_pins)
+    times = np.append(times, custom_output_times)
+    states = np.append(states, custom_output_states)
 
-    # assert custom output doesnt share outputs
-
-    # return times, pins, states
     if return_as_dict:
         results = {
             "toptimes": toptimes_expanded,
@@ -146,6 +116,12 @@ def generate_output_schedule(config, n_azures=2, return_as_dict=False):
             "bottom_pins": bottom_pins,
             "topstates": topstates_expanded,
             "bottomstates": bottomstates_expanded,
+            "azure_times": azure_times,
+            "azure_pins": config["azure_pins"],
+            "azure_states": azure_states,
+            "custom_output_pins": custom_output_pins,
+            "custom_output_times": custom_output_times,
+            "custom_output_states": custom_output_states,
         }
         return results
     else:
@@ -579,9 +555,9 @@ class Arduino(object):
             "top_light_pins": ["38", "39", "40", "41", "14", "15"],
             "bottom_light_pins": ["16", "17", "20", "21", "22", "23"],
             "random_pins": ["600"],
-            "custom_output_pins": None,
-            "custom_output_times": None,
-            "custom_output_states": None,
+            "custom_output_pins": [],
+            "custom_output_times": [],
+            "custom_output_states": [],
             "azure_pulse_width": 100,
             "azure_times": [0, 160],
             "acq_cycle_dur": 33333,
