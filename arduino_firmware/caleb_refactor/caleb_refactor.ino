@@ -29,7 +29,7 @@ should consist of a sequence 7 lines, as follows:
     (7) comma separated list of deterministic output state-change times in microseconds
     (8) comma separated list of deterministic output pins corresponding to the times in (8)
     (9) comma separated states (0 or 1) corresponding to the times in (8)
-    (10) ETX (End of Text) character, aka b'\x03'
+    (10) \n (New Line) character, aka b'\0x0a'
 
 (3) After the microcontroller has seen a correctly formatted data packet, it
 will send the string "RECEIVED" over the serial connection and then immediately
