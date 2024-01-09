@@ -104,9 +104,9 @@ def generate_output_schedule(config, n_azures=2, return_as_dict=False):
     custom_output_times = np.array(config["custom_output_times"])
     custom_output_states = np.array(config["custom_output_states"])
 
-    pins = np.append(pins, custom_output_pins)
-    times = np.append(times, custom_output_times)
-    states = np.append(states, custom_output_states)
+    pins = np.append(pins, custom_output_pins).astype(int)
+    times = np.append(times, custom_output_times).astype(int)
+    states = np.append(states, custom_output_states).astype(int)
 
     if return_as_dict:
         results = {
@@ -132,8 +132,9 @@ def check_for_response(serial_connection, expected_response):
     """
     Check if the arduino sends an expected response within 2 seconds.
     """
-    for i in range(20):  # connection has 0.1 second timeout
+    for _ in range(20):  # connection has 0.1 second timeout
         msg = serial_connection.readline().decode("utf-8").strip("\r\n")
+        print(f"Received message: {msg}")
         if msg == expected_response:
             return True
     return False
@@ -466,7 +467,8 @@ class Arduino(object):
         arduino does not respond with the string "RECEIVED" within 2 seconds.
         """
         # flush input buffer to get rid of READY messages
-        self.serial_connection.flushInput()
+        self.serial_connection.reset_input_buffer()
+        # self.serial_connection.flush()
 
         # send instructions to arduino
         # JACK TODO: send instructions to arduino\
@@ -481,15 +483,18 @@ class Arduino(object):
         times, outpins, states = generate_output_schedule(self.config)
 
         sequence = (
-            b"\x02" + f"{num_cycles}\n".encode(),
+            b"\x02",
+            f"{num_cycles}\n".encode(),
             f"{cycle_dur}\n".encode(),
             (",".join(map(str, self.config["input_pins"])) + "\n").encode(),
             f",{input_check_interval},".encode()
             + (",".join(map(str, self.config["random_pins"])) + "\n").encode(),
             f",{random_flip_interval},".encode() + ",".join(map(str, times)).encode(),
             (",".join(map(str, outpins)) + "\n").encode(),
-            ",".join(map(str, states)).encode() + b"\x03",
+            ",".join(map(str, states)).encode(),
+            b"\n",
         )
+        # wrtie sequence to arduino
         for seq in sequence:
             self.serial_connection.write(seq)
 
@@ -506,7 +511,7 @@ class Arduino(object):
         with the string "INTERRUPTED" within 2 seconds.
         """
         # flush
-        self.serial_connection.flushInput()
+        self.serial_connection.reset_input_buffer()
         # send interrupt signal
         self.serial_connection.write(b"I")
         # check for correct response
@@ -569,7 +574,7 @@ class Arduino(object):
             "trigger_offset": True,
             "trigger_viz_figsize": (7.5, 3),
             "plot_trigger_schedule": True,
-            "port": "007",
+            "port": None,
             "input_check_interval": 1000,
             "random_flip_interval": 1000,
         }
