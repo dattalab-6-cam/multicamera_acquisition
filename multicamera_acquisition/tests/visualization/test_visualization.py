@@ -80,12 +80,6 @@ def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
         ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps).copy()
         ffmpeg_writer_config["camera_name"] = camera_name
         partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
-        print(partial_new_config["cameras"]["top"]["writer"]["camera_name"])
-        print(camera_name)
-        print(partial_new_config["cameras"][camera_name]["writer"]["camera_name"])
-    print()
-    print(partial_new_config["cameras"]["top"]["writer"]["camera_name"])
-    print(partial_new_config["cameras"]["bottom"]["writer"]["camera_name"])
 
     # Create the full config, filling in defaults where necessary
     full_config = create_full_camera_default_config(partial_new_config, fps)
@@ -151,11 +145,9 @@ def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
     # Set display config as desired for the test
     for camera in full_config["cameras"].values():
         camera["display"]["display_frames"] = True
-        camera["display"]["display_range"] = (0, 100)
-        camera["display"]["display_range"] = (220, 255)
-
-
-    print(full_config)
+    camera_names = list(full_config["cameras"].keys())
+    full_config["cameras"][camera_names[0]]["display"]["display_range"] = (0, 100)
+    full_config["cameras"][camera_names[1]]["display"]["display_range"] = (220, 255)
 
     # Run the func!
     save_loc, vid_file_name, full_config = refactor_acquire_video(

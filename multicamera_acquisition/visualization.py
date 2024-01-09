@@ -105,9 +105,6 @@ class MultiDisplay(mp.Process):
                 # retrieve frame
                 if data[0] is not None:
                     initialized[qi] = True
-                    print(f"Data min val: {np.min(data[0])}")
-                    print(f"Data max val: {np.max(data[0])}")
-                    print(f"Display rng: {self.display_ranges[qi]}")
                     frame = format_frame(
                         data[0],
                         downsample=self.config["downsample"],
@@ -115,8 +112,6 @@ class MultiDisplay(mp.Process):
                         display_range=self.display_ranges[qi],
                         is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
                     )
-                    print(f"New data min val: {np.min(data[0])}")
-                    print(f"New data max val: {np.max(data[0])}")
 
                     # update label with new image
                     img = ImageTk.PhotoImage(frame)
@@ -172,18 +167,18 @@ def format_frame(frame, downsample, display_size, display_range, is_depth):
     frame = frame[::downsample, ::downsample]
     frame = cv2.resize(frame, display_size)
 
+    # normalize in range
+    if display_range is not None:
+        frame = normalize_array(
+            frame,
+            min_value=display_range[0],
+            max_value=display_range[1],
+        ).astype(np.uint8)
+    else:
+        frame = normalize_array(frame).astype(np.uint8)
+
     # int16 should be azure data
     if is_depth:
-        # normalize in range
-        if display_range is not None:
-            frame = normalize_array(
-                frame,
-                min_value=display_range[0],
-                max_value=display_range[1],
-            ).astype(np.uint8)
-        else:
-            frame = normalize_array(frame).astype(np.uint8)
-
         # Convert frame to turbo/jet colormap
         frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
 
@@ -194,7 +189,7 @@ def normalize_array(frame, min_value=None, max_value=None):
     if min_value is None:
         min_value = np.min(frame)
         max_value = np.max(frame)
-    frame[frame > max_value] = min_value
+    frame[frame > max_value] = max_value
     frame[frame < min_value] = min_value
     # frame = np.clip(frame, min_value, max_value)  # Ensure values are in the range [min_value, max_value]
     frame = (
