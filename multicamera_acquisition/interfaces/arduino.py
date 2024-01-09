@@ -10,22 +10,7 @@ import matplotlib.pyplot as plt
 from toolz import sliding_window
 
 
-def packIntAsLong(value):
-    """Packs a python 4 byte integer to an arduino long
-
-    Parameters
-    ----------
-    value : int
-        A 4 byte integer
-    Returns
-    -------
-    packed : bytes
-        A 4 byte long
-    """
-    return struct.pack("i", value)
-
-
-def validate_arduino_config(config, schedule):
+def validate_arduino_config(config):
     """
     Validate the configuration dictionary for the Arduino interface. Checks that
     - no pins are reused for different purposes
@@ -140,29 +125,6 @@ def check_for_response(serial_connection, expected_response):
             print(f"Recieved message: {msg}")
             return True
     return False
-
-
-def read_until_byte(serial_connection, byte, limit=1000):
-    """
-    Read from the serial connection until the specified byte is received.
-
-    Parameters:
-    -----------
-    serial_connection : serial.Serial
-        The serial connection to read from.
-
-    byte : bytes
-        The byte to read until.
-
-    limit : int
-        The maximum number of bytes to read before giving up.
-    """
-    msg = b""
-    for i in range(limit):
-        msg += serial_connection.read()
-        if msg[-1] == byte:
-            break
-    return msg
 
 
 def find_serial_ports():
@@ -578,7 +540,6 @@ class Arduino(object):
         msg = self.serial_connection.readline()
         print(msg)
         if self.serial_connection.in_waiting > 0:
-            #     # msg = read_until_byte(self.serial_connection, b"\x03")
             msg = self.serial_connection.readline()
             print(msg)
         #     # if msg == b"F\x03":

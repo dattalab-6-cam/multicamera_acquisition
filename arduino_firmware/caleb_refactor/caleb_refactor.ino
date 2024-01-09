@@ -18,7 +18,7 @@ The control flow is as follows.
 string "READY" over the serial connection once per second.
 
 2) The microcontroller will wait for instructions from the python script, which
-should consist of a sequence 7 lines, as follows:
+should consist of a sequence 10 lines, as follows:
 
     (1) STX (Start of Text) character, aka b'\x02'
     (2) integer specifying number of acquisition cycles to perform
