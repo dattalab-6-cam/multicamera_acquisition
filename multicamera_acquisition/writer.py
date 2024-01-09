@@ -7,51 +7,32 @@ import warnings
 import os
 from pathlib import Path
 
-
 import numpy as np
-
-# for reference only
-NVIDIA_SETTINGS = """
-    make_pair("codec", "video codec: {'codec' : 'h264'}"),
-    make_pair("preset", "nvenc preset: {'preset' : 'P4'}"),
-    make_pair("tuning_info",
-            "how to tune nvenc: {'tuning_info' : 'high_quality'}"),
-    make_pair("profile", "h.264 profile: {'profile' : 'high'}"),
-    make_pair("max_res", "max resolution: {'max_res' : '3840x2160'}"),
-    make_pair("s", "video frame size: {'s' : '1920x1080'}"),
-    make_pair("fps", "video fps: {'fps' : '30'}"),
-    make_pair("bf", "number of b frames: {'bf' : '3'}"),
-    make_pair("gop", "gop size: {'gop' : '30'}"),
-    make_pair("bitrate", "bitrate: {'bitrate' : '10M'}"),
-    make_pair("multipass", "multi-pass encoding: {'multipass' : 'fullres'}"),
-    make_pair("ldkfs", "low-delay key frame: {'ldkfs' : ''}"),
-    make_pair("maxbitrate", "max bitrate: {'maxbitrate' : '20M'}"),
-    make_pair("vbvbufsize", "vbv buffer size: {'vbvbufsize' : '10M'}"),
-    make_pair("vbvinit", "init vbv buffer size: {'vbvinit' : '10M'}"),
-    make_pair("cq", "cq parameter: {'cq' : ''}"),
-    make_pair("rc", "rc mode: {'rc' : 'cbr'}"),
-    make_pair("initqp", "initial qp parameter value: {'initqp' : '32'}"),
-    make_pair("qmin", "minimum qp: {'qmin' : '28'}"),
-    make_pair("qmax", "maximum qp: {'qmax' : '36'}"),
-    make_pair("constqp", "const qp mode: {'constqp' : ''}"),
-    make_pair("temporalaq",
-            "temporal adaptive quantization: {'temporalaq' : ''}"),
-    make_pair("lookahead", "look ahead encoding: {'lookahead' : '8'}"),
-    make_pair("aq", "adaptive quantization: {'aq' : ''}"),
-    make_pair("fmt", "pixel format: {'fmt' : 'YUV444'}"),
-    make_pair("idrperiod", "distance between I frames: {'idrperiod' : '256'}"),
-    make_pair("numrefl0",
-            "number of ref frames in l0 list: {'numrefl0' : '4'}"),
-    make_pair("numrefl1",
-            "number of ref frames in l1 list: {'numrefl1' : '4'}"),
-    make_pair("repeatspspps",
-            "enable writing of Sequence and Picture parameter for every IDR "
-            "frame: {'repeatspspps' : '0'}")};
-"""
 
 
 class BaseWriter(mp.Process):
-    def __init__(self, queue, video_file_name, metadata_file_name, config=None):
+    def __init__(self, queue, video_file_name, metadata_file_name, config=None, fps=None):
+        """An abstract parent class to write videos from a queue.
+
+        Parameters
+        ----------
+        queue : multiprocessing.Queue
+            A multiprocessing queue from which to read frames.
+
+        video_file_name : str or Path
+            The name of the video file to write.
+
+        metadata_file_name : str or Path
+            The name of the metadata file to write.
+
+        config : dict
+            A dictionary of configuration parameters for the writer.
+            If None, a default config will be used.
+            As of now, should contain fps.  #TODO: make fps a passable kwarg that can come from a global config param like for the cameras
+
+        fps : int
+            The frames per second of the video.
+        """
         super().__init__()
 
         # Store params
@@ -68,9 +49,13 @@ class BaseWriter(mp.Process):
         # so that we can start new videos with the same stem + new frame number.
         self.orig_stem = ".".join(self.video_file_name.stem.split(".")[:-1])
 
+        # Check user has passed at least an fps
+        if config is None and fps is None:
+            raise ValueError("At least fps must be specified, even if config is None.")
+
         # Set up the config
         if config is None:
-            self.config = self.default_writer_config()
+            self.config = self.default_writer_config(fps).copy()
         else:
             self.validate_config()
 
@@ -630,7 +615,9 @@ def get_writer(
 ):
     """Get a Writer object."""
     if writer_type == "nvc":
-        writer = NVC_Writer(queue, video_file_name, metadata_file_name, config=config)
+        writer = NVC_Writer(
+            queue, video_file_name, metadata_file_name, config=config
+        )
     elif writer_type == "ffmpeg":
         writer = FFMPEG_Writer(
             queue, video_file_name, metadata_file_name, config=config

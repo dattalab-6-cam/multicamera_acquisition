@@ -1,33 +1,34 @@
 import itertools
+import yaml
 
-from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 from multicamera_acquisition.interfaces.camera_basler import (
     BaslerCamera,
     EmulatedBaslerCamera,
 )
-from multicamera_acquisition.config.config import dict_update_with_precedence
+from multicamera_acquisition.config_utils import dict_update_with_precedence
 
 # Per-camera allowed parameter names
 ALL_CAM_PARAMS = [
     "name",
-    "brand",
     "id",
-    "exposure_time",
-    "display",
+    "roi",
     "gain",
+    "exposure",
+    "brand",
     "fps",
 ]
 
+# Not exhaustive, but any lower-level ffmpeg or nvc params
+# shouldn't be passed in this way.
 ALL_WRITER_PARAMS = [
     "gpu",
-    "quality",
 ]
 
 ALL_DISPLAY_PARAMS = [
+    "downsample",  # ie spatial downsample
+    "display_every_n",  # ie temporal downsample
     "display_range",  # (min, max) for display colormap
-    # TODO: in some places display is expected to be a bool, others it's a dict
-    # "display_fps",  #TODO: these are global display params, not per camera
-    # "display_window_name",
+    "display_size",  # int
 ]
 
 ALL_TRIGGER_PARAMS = [
@@ -70,9 +71,9 @@ def partial_config_from_camera_list(camera_list):
                 If int, the camera's device ID. If str, the camera's serial number.
 
         Other optional parameters include:
-            exposure_time : int
+            exposure : int
                 The exposure time for the camera, in microseconds.
-            display : bool
+            display_frames : bool
                 Whether to display the camera's feed in real-time.
             gain: int
                 The gain for the camera, in (units?). (TODO: valid ranges?)
@@ -155,18 +156,19 @@ def create_full_camera_default_config(partial_config, fps):
 
         # Find the correct defaults (both camera and writer configs)
         if cam_config["brand"] == "basler":
-            default_cam_conf = BaslerCamera.default_camera_config()
-            default_writer_conf = BaslerCamera.default_writer_config(fps)
+            default_cam_conf = BaslerCamera.default_camera_config().copy()
+            default_writer_conf = BaslerCamera.default_writer_config(fps).copy()
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "basler_emulated":
-            default_cam_conf = EmulatedBaslerCamera.default_camera_config()
-            default_writer_conf = EmulatedBaslerCamera.default_writer_config(fps)
+            default_cam_conf = EmulatedBaslerCamera.default_camera_config().copy()
+            default_writer_conf = EmulatedBaslerCamera.default_writer_config(fps).copy()
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "azure":
-            default_cam_conf = AzureCamera.default_camera_config()
+            from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+            default_cam_conf = AzureCamera.default_camera_config().copy()
             default_writer_conf = AzureCamera.default_writer_config(
                 30
-            )  # TODO: un-hardcode this even tho it wont change
+            ).copy()  # TODO: un-hardcode this even tho it wont change
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         else:
             raise NotImplementedError
@@ -179,8 +181,8 @@ def create_full_camera_default_config(partial_config, fps):
         )
 
         # Set display to false if not already specified
-        if "display" not in cam_config:
-            cam_config["display"] = False
+        if "display_frames" not in cam_config["display"]:
+            cam_config["display"]["display_frames"] = False
 
         # Save this camera's config in the recording config
         full_recording_config["cameras"][camera_name] = cam_config

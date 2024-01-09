@@ -1,9 +1,76 @@
 import yaml
-
-from multicamera_acquisition.config.default_display_config import default_display_config
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config
-from multicamera_acquisiton.acquisition import default_acq_config
 import pdb
+
+
+def load_config(config_filepath):
+    """Load a recording config from a file."""
+    with open(config_filepath, "r") as f:
+        recording_config = yaml.load(f, Loader=yaml.FullLoader)
+    return recording_config
+
+
+def save_config(config_filepath, recording_config):
+    """Save a recording config to a file."""
+    with open(config_filepath, "w") as f:
+        yaml.dump(recording_config, f)
+    return
+
+
+def validate_recording_config(recording_config):
+    """Validate a recording config dict.
+
+    This function checks that the recording config dict is valid,
+    and raises an error if it is not.
+    """
+
+    # Ensure that the recording config is a dict
+    if not isinstance(recording_config, dict):
+        raise TypeError("Recording config must be a dict")
+
+    # Ensure that the recording config has a "cameras" key
+    if "cameras" not in recording_config.keys():
+        raise ValueError("Recording config must have a 'cameras' key")
+
+    # Ensure that all cameras are recognized brands
+    for camera_name in recording_config["cameras"].keys():
+        if recording_config["cameras"][camera_name]["brand"] not in [
+            "basler",
+            "basler_emulated",
+            "azure",
+        ]:
+            raise ValueError(
+                f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"
+            )
+
+    # Warn user that fps for baslers / azures is deprecated
+    for camera_name in recording_config["cameras"].keys():
+        if "fps" in recording_config["cameras"][camera_name].keys():
+            print(
+                "WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported)."
+            )
+
+    # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
+    if recording_config["globals"]["fps"] % 30 != 0:
+        raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
+
+
+    ### FPS checks ###
+    # Warn user if writers don't have fps params
+    for camera_name in recording_config["cameras"].keys():
+        ir_fpses = []
+        if "fps" not in recording_config["cameras"][camera_name]["writer"].keys():
+            raise ValueError(f"No fps specified for writer {camera_name}.")
+        elif recording_config["cameras"][camera_name]["brand"] not in ["azure", "lucid"]:
+            ir_fpses.append(recording_config["cameras"][camera_name]["writer"]["fps"])
+
+    # Warn user if writer fps don't all match, except for azure cameras
+    if len(set(ir_fpses)) > 1:
+        raise ValueError("All Basler camera fps must match.")
+
+    # Warn user if global fps does not match fps in individual writers
+    if recording_config["globals"]["fps"] != ir_fpses[0]:
+        raise ValueError("Global fps must match fps in individual writers.")
 
 
 def recursive_update(old_dict, updates):
@@ -61,94 +128,3 @@ def dict_update_with_precedence(*args):
         recursive_update(final_config, config_dict)
 
     return final_config
-
-
-def add_rt_display_params_to_config(recording_config, display_params=None):
-    """Add display params to a recording config.
-
-    If display_params is None, the default display params will be used.
-    Otherwise, the default display params will be overwritten with any
-    user-provided display params.
-    """
-    recording_config["rt_display_params"] = default_display_config()
-    if display_params is not None:
-        for key in display_params.keys():
-            if key in ALL_DISPLAY_PARAMS:
-                recording_config["rt_display_params"][key] = display_params[key]
-            else:
-                raise ValueError(f"Unrecognized display param: {key}")
-    return recording_config
-
-
-def load_config(config_filepath):
-    """Load a recording config from a file."""
-    with open(config_filepath, "r") as f:
-        recording_config = yaml.load(f, Loader=yaml.FullLoader)
-    return recording_config
-
-
-def save_config(config_filepath, recording_config):
-    """Save a recording config to a file."""
-    with open(config_filepath, "w") as f:
-        yaml.dump(recording_config, f)
-    return
-
-
-def validate_recording_config(recording_config):
-    """Validate a recording config dict.
-
-    This function checks that the recording config dict is valid,
-    and raises an error if it is not.
-    """
-
-    # Ensure that the recording config is a dict
-    if not isinstance(recording_config, dict):
-        raise TypeError("Recording config must be a dict")
-
-    # Ensure that the recording config has a "cameras" key
-    if "cameras" not in recording_config.keys():
-        raise ValueError("Recording config must have a 'cameras' key")
-
-    # Ensure that all cameras are recognized brands
-    for camera_name in recording_config["cameras"].keys():
-        if recording_config["cameras"][camera_name]["brand"] not in [
-            "basler",
-            "basler_emulated",
-            "azure",
-        ]:
-            raise ValueError(
-                f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"
-            )
-
-    # Warn user that fps for baslers / azures is deprecated
-    for camera_name in recording_config["cameras"].keys():
-        if "fps" in recording_config["cameras"][camera_name].keys():
-            print(
-                "WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported)."
-            )
-
-    # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
-    if recording_config["globals"]["fps"] % 30 != 0:
-        raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
-
-    # Ensure that the requested frame rate is a multiple of the display frame rate
-    # if fps % recording_config["rt_display_params"]["display_fps"] != 0:
-    #     raise ValueError("Real-time framerate must be a factor of the capture frame rate")
-
-
-def generate_full_config(camera_lists):
-    full_config = {}
-    # acq config
-    acquisition_config = default_acq_config()
-    # TODO: Add arduino config
-    # arduino_config = default_arduino_config()
-    # camera, camera writer, camera display config
-    full_camera_config = create_full_camera_default_config(camera_lists)
-    full_config["acq_loop"] = acquisition_config
-    # full_config["arduino"] = arduino_config
-    full_config["cameras"] = full_camera_config
-
-    # write to file
-    with open("full_config.yaml", "w") as f:
-        yaml.dump(full_config, f)
-    return full_config

@@ -52,7 +52,7 @@ def nvc_writer_processes(tmp_path, fps, n_test_frames):
     """Generate linked NVC_Writer and DummyFrames processes for testing
     """
     from multicamera_acquisition.writer import NVC_Writer
-    config = NVC_Writer.default_writer_config(fps)
+    config = NVC_Writer.default_writer_config(fps).copy()
     config["camera_name"] = "test"
     queue = mp.Queue()
     dummy_frames_proc = get_DummyFrames_process(fps, queue, n_test_frames)
@@ -101,7 +101,7 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
 def ffmpeg_writer_processes(tmp_path, fps, n_test_frames):
     """Generate linked FFMPEG_Writer and DummyFrames processes for testing
     """
-    config = FFMPEG_Writer.default_writer_config(fps)
+    config = FFMPEG_Writer.default_writer_config(fps).copy()
     config["camera_name"] = "test"  
     config["loglevel"] = "debug"
     queue = mp.Queue()

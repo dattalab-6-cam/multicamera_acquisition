@@ -10,6 +10,8 @@ import pytest
 import matplotlib.pyplot as plt
 import sys
 
+import pdb
+
 from multicamera_acquisition.visualization import (
     MultiDisplay,
     load_first_frames,
@@ -48,14 +50,16 @@ from multicamera_acquisition.writer import (
 def multidisplay_processes(fps, n_test_frames):
     """Generate linked MultiDisplay and DummyFrames processes for testing
     """
-    config = MultiDisplay.default_display_config()
-    queues = [mp.Queue() for c in config['camera_names']]
+    config = MultiDisplay.default_MultiDisplay_config().copy()
+    queues = [mp.Queue() for _ in range(2)]
     dummy_frames_procs = [
         get_DummyFrames_process(fps, queue, n_test_frames)
         for queue in queues
     ]
     display = MultiDisplay(
         queues,
+        ["left", "right"],
+        [(0, 255), (0, 255)],
         config=config,
     )
     return (display, dummy_frames_procs)
@@ -72,21 +76,27 @@ def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
 
     # Add ffmpeg writers to each camera
     # TODO: allow this to be nvc dynamically for testing. 
-    ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps)
     for camera_name in partial_new_config["cameras"].keys():
+        ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps).copy()
         ffmpeg_writer_config["camera_name"] = camera_name
         partial_new_config["cameras"][camera_name]["writer"] = ffmpeg_writer_config
+        print(partial_new_config["cameras"]["top"]["writer"]["camera_name"])
+        print(camera_name)
+        print(partial_new_config["cameras"][camera_name]["writer"]["camera_name"])
+    print()
+    print(partial_new_config["cameras"]["top"]["writer"]["camera_name"])
+    print(partial_new_config["cameras"]["bottom"]["writer"]["camera_name"])
 
     # Create the full config, filling in defaults where necessary
     full_config = create_full_camera_default_config(partial_new_config, fps)
     full_config["globals"] = dict(fps=fps, arduino_required=False)
 
     # Set up the acquisition loop part of the config
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
-    display_config = MultiDisplay.default_display_config()
+    display_config = MultiDisplay.default_MultiDisplay_config().copy()
     full_config["rt_display"] = display_config
 
     return full_config
@@ -117,7 +127,35 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_ty
     because there is no delay to emulate framerate.
     """
     full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type)
-    full_config['acq_loop']['display_frames'] = True
+
+    # Set cameras to be displayed
+    for camera in full_config["cameras"].values():
+        camera["display"]["display_frames"] = True
+
+    # Run the func!
+    save_loc, vid_file_name, full_config = refactor_acquire_video(
+        tmp_path,
+        full_config,
+        recording_duration_s=(n_test_frames / fps),
+        append_datetime=True,
+        overwrite=False,
+    )
+
+
+@pytest.mark.gui
+def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
+    """Test the display range functionality of MultiDisplay
+    """
+    full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type="no_trigger")
+
+    # Set display config as desired for the test
+    for camera in full_config["cameras"].values():
+        camera["display"]["display_frames"] = True
+        camera["display"]["display_range"] = (0, 100)
+        camera["display"]["display_range"] = (220, 255)
+
+
+    print(full_config)
 
     # Run the func!
     save_loc, vid_file_name, full_config = refactor_acquire_video(
@@ -135,6 +173,7 @@ def test_image_grid(tmp_path, camera_brand, fps):
 
     n_test_frames = 5
     full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type="no_trigger")
+    
     save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
@@ -142,6 +181,12 @@ def test_image_grid(tmp_path, camera_brand, fps):
         append_datetime=True,
         overwrite=False,
     )
+    print(full_config)
     first_frames = load_first_frames(save_loc)
-    fig, ax = plot_image_grid(first_frames, full_config['rt_display'])
+    fig, ax = plot_image_grid(
+        images=first_frames, 
+        display_config=full_config['rt_display'], 
+        camera_names=list(full_config['cameras'].keys()),
+        display_ranges=[cam["display"]["display_range"] for cam in full_config["cameras"].values() if cam["display"]["display_frames"]]
+    )
     plt.show()

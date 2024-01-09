@@ -5,6 +5,7 @@ import time
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+import pdb
 
 import numpy as np
 import serial
@@ -13,27 +14,21 @@ from tqdm import tqdm
 from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
 from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
 from multicamera_acquisition.writer import get_writer
-from multicamera_acquisition.config.config import (
+from multicamera_acquisition.config import (
     load_config,
     save_config,
     validate_recording_config,
-    add_rt_display_params_to_config,
-)
-from multicamera_acquisition.interfaces.config import (
-    create_full_camera_default_config,
-    partial_config_from_camera_list,
+    create_full_camera_default_config
 )
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 
-# from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+
 from multicamera_acquisition.interfaces.arduino import (
     find_serial_ports,
     packIntAsLong,
     wait_for_serial_confirmation,
 )
-
-# from multicamera_acquisition.visualization import MultiDisplay
 
 
 class AcquisitionLoop(mp.Process):
@@ -89,7 +84,7 @@ class AcquisitionLoop(mp.Process):
 
         # Get config
         if acq_loop_config is None:
-            self.acq_config = self.default_acq_loop_config()
+            self.acq_config = self.default_acq_loop_config().copy()
         else:
             self.acq_config = acq_loop_config
 
@@ -107,7 +102,6 @@ class AcquisitionLoop(mp.Process):
         """Get the default config for the acquisition loop."""
         return {
             "frame_timeout": 1000,
-            "display_frames": False,
             "display_every_n": 1,
             "dropped_frame_warnings": False,
             "max_frames_to_acqure": None,
@@ -133,10 +127,6 @@ class AcquisitionLoop(mp.Process):
         """Acquire frames. This is run when mp.Process.start() is called."""
 
         # Get the Camera object instance
-        # TODO: resolve device indices in one go before starting any cameras,
-        # that way all six cameras don't have to iterate through all six of each other!
-        # Then just add the device index to the config and allow the cameras to directly
-        # receive a device index.
         cam = get_camera(
             brand=self.camera_config["brand"],
             id=self.camera_device_index,
@@ -192,7 +182,7 @@ class AcquisitionLoop(mp.Process):
                         self.write_queue_depth.put(
                             tuple([depth, camera_timestamp, current_iter])
                         )
-                        if self.acq_config["display_frames"]:
+                        if self.camera_config["display"]["display_frames"]:
                             if current_iter % self.display_every_n == 0:
                                 self.display_queue.put(
                                     tuple([depth, camera_timestamp, current_iter])
@@ -200,7 +190,7 @@ class AcquisitionLoop(mp.Process):
                     else:
                         data = data + tuple([current_iter])
                         self.write_queue.put(data)
-                        if self.acq_config["display_frames"]:
+                        if self.camera_config["display"]["display_frames"]:
                             if current_iter % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
@@ -244,6 +234,23 @@ class AcquisitionLoop(mp.Process):
         cam.close()
 
         logging.debug(f"Acquisition run finished, {self.camera_config['name']}")
+
+
+def generate_full_config(camera_lists):
+    full_config = {}
+    acquisition_config = AcquisitionLoop.default_acq_loop_config().copy()
+    # TODO: Add arduino config
+    # arduino_config = default_arduino_config().copy()
+    # camera, camera writer, camera display config
+    full_camera_config = create_full_camera_default_config(camera_lists)
+    full_config["acq_loop"] = acquisition_config
+    # full_config["arduino"] = arduino_config
+    full_config["cameras"] = full_camera_config
+
+    # write to file
+    with open("full_config.yaml", "w") as f:
+        yaml.dump(full_config, f)
+    return full_config
 
 
 def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
@@ -411,8 +418,10 @@ def refactor_acquire_video(
                 brand: basler
                 id: "12345678"  # ie the serial number, as a string
                 gain: 6
-                exposure_time: 1000
-                display: True
+                exposure: 1000
+                display: 
+                    display_frames: True
+                    display_range: (0, 255)
                 roi: null  # or an roi to crop the image
                 trigger:
                     trigger_type: no_trigger  # convenience attr for no-trigger acquisition
@@ -428,7 +437,6 @@ def refactor_acquire_video(
                     tuning_info: ultra_low_latency
         acq_loop:
             frame_timeout: 1000
-            display_frames: False
             display_every_n: 4
             dropped_frame_warnings: False
             max_frames_to_acqure: null
@@ -488,16 +496,19 @@ def refactor_acquire_video(
             print(f"Using port {port} for arduino.")
         arduino = serial.Serial(port=port, timeout=1)  # TODO: un-hardcode the timeout
 
-    # Delay recording to allow serial connection to connect
-    sleep_duration = 2
-    time.sleep(sleep_duration)
+        # Delay recording to allow serial connection to connect
+        sleep_duration = 2
+        time.sleep(sleep_duration)
 
     # TODO: triggerdata file
 
     # Create the various processes
+    # TODO: refactor these into one "running processes" dict or sth like that
     writers = []
     acquisition_loops = []
     display_queues = []
+    camera_list = []
+    display_ranges = []
 
     for camera_name, camera_dict in final_config["cameras"].items():
         # Create a writer queue
@@ -544,15 +555,13 @@ def refactor_acquire_video(
             write_queue_depth = None
 
         # Setup display queue for camera if requested
-        display_queue = None
-        camera_list = []
-        # display range list
-        display_ranges = []
         if camera_dict["display"]["display_frames"] is True:
             display_queue = mp.Queue()
             display_queues.append(display_queue)
             camera_list.append(camera_name)
             display_ranges.append(camera_dict["display"]["display_range"])
+        else:
+            display_queue = None
 
         # Create an acquisition loop process
         acquisition_loop = AcquisitionLoop(

@@ -48,7 +48,7 @@ class AzureCamera(BaseCamera):
         # (NB: we must configure the Azure *before* opening it, contrary to the other cameras [or so it seems from our existing code])
         # If no config file is specified, use the default (mostly for testing, least common)
         if self.config is None:
-            self.config = AzureCamera.default_camera_config()
+            self.config = AzureCamera.default_camera_config().copy()
 
         # TODO: add a check that the config is valid
 

@@ -27,7 +27,8 @@ class BaslerCamera(BaseCamera):
             If config is None, uses the camera's default config file.
 
         fps : int (default: None)
-            Current deprecated for Basler cameras.  Baslers are enabled for their max fps by default.
+            Current deprecated for Basler cameras in triggered mode. (Baslers are enabled for their max fps by default.)
+            If performing non-triggered acquisition, the desired fps for the camera.
         """
 
         # Init the parent class
@@ -47,7 +48,7 @@ class BaslerCamera(BaseCamera):
         # Load a default config if needed (mostly for testing, least common)
         if self.config is None:
             self.config = (
-                BaslerCamera.default_camera_config()
+                BaslerCamera.default_camera_config().copy()
             )  # If no config file is specified, use the default
 
         if (fps is not None or "fps" in self.config.keys()) and (
@@ -100,13 +101,13 @@ class BaslerCamera(BaseCamera):
         if writer_type == "nvc" and gpu is not None:
             from multicamera_acquisition.writer import NVC_Writer
 
-            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)
+            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu).copy()
         elif writer_type == "ffmpeg":
             from multicamera_acquisition.writer import FFMPEG_Writer
 
             writer_config = FFMPEG_Writer.default_writer_config(
                 fps, vid_type="ir", gpu=gpu
-            )
+            ).copy()
         return writer_config
 
     def _create_pylon_sys(self):
@@ -452,7 +453,7 @@ class EmulatedBaslerCamera(BaslerCamera):
         super().__init__(id=id, name=name, config=None, fps=fps)
 
         if config is None:
-            self.config = EmulatedBaslerCamera.default_camera_config()
+            self.config = EmulatedBaslerCamera.default_camera_config().copy()
         else:
             self.config = config
 

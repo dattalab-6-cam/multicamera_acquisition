@@ -27,7 +27,7 @@ class MultiDisplay(mp.Process):
 
         # Set up the config
         if config is None:
-            self.config = self.default_display_config()
+            self.config = self.default_MultiDisplay_config().copy()
         else:
             self.validate_config()
 
@@ -105,6 +105,9 @@ class MultiDisplay(mp.Process):
                 # retrieve frame
                 if data[0] is not None:
                     initialized[qi] = True
+                    print(f"Data min val: {np.min(data[0])}")
+                    print(f"Data max val: {np.max(data[0])}")
+                    print(f"Display rng: {self.display_ranges[qi]}")
                     frame = format_frame(
                         data[0],
                         downsample=self.config["downsample"],
@@ -112,6 +115,8 @@ class MultiDisplay(mp.Process):
                         display_range=self.display_ranges[qi],
                         is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
                     )
+                    print(f"New data min val: {np.min(data[0])}")
+                    print(f"New data max val: {np.max(data[0])}")
 
                     # update label with new image
                     img = ImageTk.PhotoImage(frame)
@@ -128,12 +133,12 @@ class MultiDisplay(mp.Process):
         root.destroy()
 
     @staticmethod
-    def default_display_config():
+    def default_MultiDisplay_config():
         return {
             "downsample": 4,
             "display_every_n": 1,
             "cameras_per_row": 3,
-            "display_size": (300, 300),
+            "display_size": (300, 300),  # TODO: allow this to be per-camera
         }
 
     def validate_config(self):
@@ -252,7 +257,7 @@ def plot_video_stats(csv_path, name):
     return
 
 
-def plot_image_grid(images, display_config):
+def plot_image_grid(images, display_config, camera_names, display_ranges):
     """
     Parameters
     ----------
@@ -260,17 +265,21 @@ def plot_image_grid(images, display_config):
         Mapping from camera names to images from that camera
     display_config : dict
         Config dictionary for a MultiDisplay
+    camera_names : list
+        List of camera names to plot
+    display_ranges : list
+        List of display ranges for each camera (ie 0-255 for uint8, 0-65535 for uint16)
     """
 
     cfg = display_config
-    nrow = int(np.ceil(len(cfg["camera_names"]) / cfg["cameras_per_row"]))
+    nrow = int(np.ceil(len(camera_names) / cfg["cameras_per_row"]))
     fig, ax = plt.subplots(
         nrow, cfg["cameras_per_row"], figsize=(2 * cfg["cameras_per_row"], 2 * nrow)
     )
     ax = ax.ravel()
 
     # plot image for each camera in display config, formatted as in Multidisplay
-    for a, camera_name, rng in zip(ax, cfg["camera_names"], cfg["display_ranges"]):
+    for a, camera_name, rng in zip(ax, camera_names, display_ranges):
         frame = images[camera_name]
         frame = format_frame(
             frame,
@@ -285,7 +294,7 @@ def plot_image_grid(images, display_config):
         a.set_yticks([])
 
     # hide unused axes
-    for a in ax[len(cfg["camera_names"]) :]:
+    for a in ax[len(camera_names) :]:
         a.set_axis_off()
 
     fig.tight_layout()
