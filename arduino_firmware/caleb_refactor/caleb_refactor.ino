@@ -309,6 +309,7 @@ void loop()
         if (firstChar != '\x02')
         {
             Serial.flush();
+            Serial.println(firstChar);
             Serial.println("ERROR");
         }
         // If the first character is the STX character, then parse the data
@@ -348,12 +349,12 @@ void loop()
             line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), state_change_states, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
-            // Read the \n character
-            char lastChar = Serial.readline();
+            // read last char
+            line = Serial.readStringUntil('\n');
 
             // If the last character is not the \n character, clear the serial
             // buffer, send an error message, and return to the main loop
-            if (lastChar != '\n')
+            if(line.length() != 0)
             {
                 Serial.flush();
                 Serial.println("ERROR");

@@ -130,12 +130,12 @@ def generate_output_schedule(config, n_azures=2, return_as_dict=False):
 
 def check_for_response(serial_connection, expected_response):
     """
-    Check if the arduino sends an expected response within 2 seconds.
+    Check if the arduino sends an expected response within 5 seconds.
     """
-    for _ in range(20):  # connection has 0.1 second timeout
+    for _ in range(50):  # connection has 0.1 second timeout
         msg = serial_connection.readline().decode("utf-8").strip("\r\n")
-        print(f"Received message: {msg}")
         if msg == expected_response:
+            print(f"Recieved message: {msg}")
             return True
     return False
 
@@ -491,7 +491,7 @@ class Arduino(object):
             + (",".join(map(str, self.config["random_pins"])) + "\n").encode(),
             f",{random_flip_interval},".encode() + ",".join(map(str, times)).encode(),
             (",".join(map(str, outpins)) + "\n").encode(),
-            ",".join(map(str, states)).encode(),
+            (",".join(map(str, states)) + "\n").encode(),
             b"\n",
         )
         # wrtie sequence to arduino
