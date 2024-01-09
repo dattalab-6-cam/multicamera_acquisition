@@ -7,6 +7,7 @@ import glob
 import serial
 import logging
 import matplotlib.pyplot as plt
+from toolz import sliding_window
 
 
 def packIntAsLong(value):
@@ -134,6 +135,7 @@ def check_for_response(serial_connection, expected_response):
     """
     for _ in range(50):  # connection has 0.1 second timeout
         msg = serial_connection.readline().decode("utf-8").strip("\r\n")
+        print(f"Recieved message: {msg}")
         if msg == expected_response:
             print(f"Recieved message: {msg}")
             return True
@@ -331,7 +333,7 @@ def generate_azure_pulse_inds(config, n_azures=2):
     return azure_pulse_times
 
 
-def viz_triggers(config, camera_type="top", n_pulses=2, n_azures=2):
+def viz_triggers(config, fps=120, exposure_time=950, n_azures=2):
     """Visualize the synchronization triggers for Azure and Basler cameras.
 
     Parameters
@@ -354,25 +356,63 @@ def viz_triggers(config, camera_type="top", n_pulses=2, n_azures=2):
         A tuple containing the generated figure and axes objects.
     """
 
-    azure_times = generate_azure_pulse_inds(n_azures=n_azures)
-    basler_times = generate_basler_frametimes(camera_type=camera_type, n_azures=2)
+    azure_times = generate_azure_pulse_inds(config, n_azures=n_azures)
 
-    # plotting
     fig = plt.figure(figsize=config["trigger_viz_figsize"])
     ax = plt.gca()
     ax.set_ylim(0, 2)
     ax.set_xlim((0, config["acq_cycle_dur"]))
+    ax.set_yticks([])
+    ax.set_xlabel("Time (microseconds)")
 
-    for n in range(n_pulses):
-        x0, x1 = azure_times[n]
-        ax.axvline(x0, ymax=1 / 2)
-        ax.axvline(x1, ymax=1 / 2)
-        ax.axhline(
-            1.0, xmin=(x0 / config["acq_cycle_dur"]), xmax=x1 / config["acq_cycle_dur"]
-        )
+    def _plot_pulses(times, color="blue", label=None):
+        # plotting
+        for n in range(len(times)):
+            x0, x1 = times[n]
+            plt.axvline(x0, ymax=1 / 2, color=color)
+            plt.axvline(x1, ymax=1 / 2, color=color)
+            if n == 0 and label is not None:
+                handle = plt.axhline(
+                    1.0,
+                    xmin=x0 / config["acq_cycle_dur"],
+                    xmax=x1 / config["acq_cycle_dur"],
+                    color=color,
+                    label=label,
+                )
+            else:
+                plt.axhline(
+                    1.0,
+                    xmin=x0 / config["acq_cycle_dur"],
+                    xmax=x1 / config["acq_cycle_dur"],
+                    color=color,
+                )
+        return handle
 
-    for t in basler_times:
-        plt.axvline(t, ymax=1 / 2, color="red")
+    azure_handle = _plot_pulses(azure_times, color="blue", label="azure")
+
+    toptimes = generate_basler_frametimes(
+        config,
+        camera_type="top",
+        n_azures=n_azures,
+        fps=fps,
+        exposure_time=exposure_time,
+    )
+    # get tuples of basler times
+    toptimes = list(zip(toptimes[::2], toptimes[1::2]))
+    top_handle = _plot_pulses(toptimes, color="red", label="top")
+
+    bottomtimes = generate_basler_frametimes(
+        config,
+        camera_type="bottom",
+        n_azures=n_azures,
+        fps=fps,
+        exposure_time=exposure_time,
+    )
+    bottomtimes = list(zip(bottomtimes[::2], bottomtimes[1::2]))
+    bottom_handle = _plot_pulses(bottomtimes, color="green", label="bottom")
+
+    ax.legend(handles=[azure_handle, top_handle, bottom_handle])
+
     plt.show()
 
     return fig, ax
@@ -459,7 +499,7 @@ class Arduino(object):
         Close the serial connection and the triggerdata file.
         """
         self.serial_connection.close()
-        self.trigger_data_file.close()
+        # self.trigger_data_file.close()
 
     def start_acquisition(self, num_cycles, azure_fps=30):
         """
@@ -535,9 +575,12 @@ class Arduino(object):
         finished : bool
             True if the arduino has finished the acquisition loop, False otherwise.
         """
-        # if self.serial_connection.in_waiting > 0:
-        #     # msg = read_until_byte(self.serial_connection, b"\x03")
-        #     msg = self.serial_connection.readline()
+        msg = self.serial_connection.readline()
+        print(msg)
+        if self.serial_connection.in_waiting > 0:
+            #     # msg = read_until_byte(self.serial_connection, b"\x03")
+            msg = self.serial_connection.readline()
+            print(msg)
         #     # if msg == b"F\x03":
         #     # parse bytes
         #     # elif msg[0] == "\x02":
@@ -572,7 +615,7 @@ class Arduino(object):
             "azure_offset": 10,
             "basler_offset": 10,
             "trigger_offset": True,
-            "trigger_viz_figsize": (7.5, 3),
+            "trigger_viz_figsize": (10.5, 6),
             "plot_trigger_schedule": True,
             "port": None,
             "input_check_interval": 1000,
