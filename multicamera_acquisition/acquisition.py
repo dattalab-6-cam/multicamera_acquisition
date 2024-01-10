@@ -484,7 +484,7 @@ def refactor_acquire_video(
 
     # Tell microcontroller to start the acquisition loop
     try:
-        microcontroller.start_acquisition()
+        microcontroller.start_acquisition(recording_duration_s)
     except:
         # kill everything if we can't get confirmation that microcontroller started
         end_processes(acquisition_loops, writers, [])

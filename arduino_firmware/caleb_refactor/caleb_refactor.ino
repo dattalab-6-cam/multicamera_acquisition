@@ -18,7 +18,7 @@ The control flow is as follows.
 string "READY" over the serial connection once per second.
 
 2) The microcontroller will wait for instructions from the python script, which
-should consist of a sequence 10 lines, as follows:
+should consist of a sequence 10 lines (each ending with "\n"), as follows:
 
     (1) STX (Start of Text) character, aka b'\x02'
     (2) integer specifying number of acquisition cycles to perform
@@ -56,7 +56,7 @@ send the string "INTERRUPTED" over the serial connection and return to the
 main loop (i.e. step 1).
 
 (7) When the microcontroller has completed the specified number of acquisition
-cycles, it will send the string "F<\n>" over the serial connection and return to the
+cycles, it will send the string "F\n" over the serial connection and return to the
 main loop (i.e. step 1).
 */
 
@@ -259,12 +259,8 @@ void acquisitionLoop(
                 char interruptChar = Serial.read();
                 if (interruptChar == 'I')
                 {
-                    Serial.println("INTERRUPTED");
+                    Serial.write("INTERRUPTED\n");
                     return;
-                }
-                else
-                {
-                    Serial.flush();
                 }
             }
 
@@ -281,7 +277,7 @@ void acquisitionLoop(
         }
     }
     // Send the finish message
-    Serial.write("F");
+    Serial.write("F\n");
 }
 
 void setup()
@@ -295,7 +291,7 @@ void loop()
 {
 
     // Tell python that the microcontroller is ready to receive data
-    Serial.println("READY");
+    Serial.write("READY\n");
     delay(1000);
 
     // Wait for python to send instructions
@@ -309,13 +305,13 @@ void loop()
         if (firstChar != '\x02')
         {
             Serial.flush();
-            Serial.println("ERROR");
+            Serial.write("ERROR\n");
         }
         // If the first character is the STX character, then parse the data
         // packet and begin acquisition
         else
         {
-            Serial.read();
+            Serial.read(); // Read the \n character
 
             // Read the number of cycles and the cycle duration
             unsigned long num_cycles = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
@@ -350,22 +346,18 @@ void loop()
             line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), state_change_states, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
-            // Read the \n character
-            char lastChar = Serial.readline();
+            // Read the last character
+            char lastChar = Serial.readline()[0];
 
-            // If the last character is not the \n character, clear the serial
-            // buffer, send an error message, and return to the main loop
-            if (lastChar != '\n')
+            // If the last character is not ETX, send an error message, and return to the main loop
+            if (lastChar != '\x03')
             {
-                Serial.flush();
-                Serial.println("ERROR");
+                Serial.write("ERROR\n");
             }
-
-            // If the last character is the \n character, then send the
-            // "RECEIVED" message and begin acquisition
+            // Otherwise send "RECEIVED" message and begin acquisition
             else
             {
-                Serial.println("RECEIVED");
+                Serial.write("RECEIVED\n");
                 acquisitionLoop(
                     num_cycles,
                     cycle_duration,
@@ -381,5 +373,4 @@ void loop()
             }
         }
     }
-    Serial.flush();
 }

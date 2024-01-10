@@ -47,15 +47,20 @@ class AzureCamera(BaseCamera):
         # Load the config
         # (NB: we must configure the Azure *before* opening it, contrary to the other cameras [or so it seems from our existing code])
         if self.config_file is None:
-            self.config = default_azure_config()  # If no config file is specified, use the default
+            self.config = (
+                default_azure_config()
+            )  # If no config file is specified, use the default
             # TODO: save the default config to a file once we know where acquisition is happening.
         else:
-            self.load_config(check_if_valid=False)  # could set check to be true by efault? unsure.
-        self._load_config(check_if_valid=True)  # this is the only chance we'll have to check if it's valid, so do it here
+            self.load_config(
+                check_if_valid=False
+            )  # could set check to be true by efault? unsure.
+        self._load_config(
+            check_if_valid=True
+        )  # this is the only chance we'll have to check if it's valid, so do it here
 
     def init(self):
-        """Initialize the camera.
-        """
+        """Initialize the camera."""
         # Create the config object
         camera_config = self._get_azure_config()
 
@@ -65,8 +70,7 @@ class AzureCamera(BaseCamera):
         # self.timeout_warning_flag = False  # unused?
 
     def _get_azure_config(self):
-        """Create a PyK4a config object using the config dict.
-        """
+        """Create a PyK4a config object using the config dict."""
         config = self.config
 
         # Set depth sensor acq mode
@@ -79,14 +83,23 @@ class AzureCamera(BaseCamera):
         if config["sync_mode"] == "subordinate":
             cr = ColorResolution.OFF
             wsm = WiredSyncMode.SUBORDINATE
-            subordinate_delay_off_master_usec = config["subordinate_delay_off_master_usec"]
+            subordinate_delay_off_master_usec = config[
+                "subordinate_delay_off_master_usec"
+            ]
+            assert (
+                config["subordinate_delay_off_master_usec"] % 160 == 0
+            ), "subordinate_delay_off_master_usec must be a multiple of 160"
 
         elif config["sync_mode"] == "master":
-            wsm = WiredSyncMode.SUBORDINATE  # if you set this to master, it won't listen for triggers. For us "master" means first subordinate to receive a trigger.
+            wsm = (
+                WiredSyncMode.SUBORDINATE
+            )  # if you set this to master, it won't listen for triggers. For us "master" means first subordinate to receive a trigger.
             cr = ColorResolution.RES_720P
             subordinate_delay_off_master_usec = 0
         else:
-            raise ValueError(f"Invalid sync_mode: {config['sync_mode']} (must be 'subordinate' or 'master')")
+            raise ValueError(
+                f"Invalid sync_mode: {config['sync_mode']} (must be 'subordinate' or 'master')"
+            )
 
         camera_config = Config(
             color_resolution=cr,
