@@ -13,25 +13,16 @@ from multicamera_acquisition.writer import FFMPEG_Writer
 
 from multicamera_acquisition.video_utils import count_frames
 
-
-@pytest.fixture(scope="session")
-def fps(pytestconfig):
-    """A session-wide fixture to return the desired fps.
-
-    See test_cameras.py::camera for possible camera options.
-
-    Example usage:
-        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_emulated
-        >>> pytest ./path/to/test_camera_basler.py --camera_type basler_camera
-    """
-    return pytestconfig.getoption("fps", default=30)
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
+    fps,
+)
 
 
 @pytest.fixture(scope="session")
 def n_test_frames(pytestconfig):
     """A session-wide fixture to return the desired number of test frames per movie.
     """
-    return pytestconfig.getoption("n_test_frames", default=200)
+    return int(pytestconfig.getoption("n_test_frames"))
 
 
 def dummy_frames_func(fps, queue, n_test_frames):
@@ -61,7 +52,7 @@ def nvc_writer_processes(tmp_path, fps, n_test_frames):
     """Generate linked NVC_Writer and DummyFrames processes for testing
     """
     from multicamera_acquisition.writer import NVC_Writer
-    config = NVC_Writer.default_writer_config(fps)
+    config = NVC_Writer.default_writer_config(fps).copy()
     config["camera_name"] = "test"
     queue = mp.Queue()
     dummy_frames_proc = get_DummyFrames_process(fps, queue, n_test_frames)
@@ -75,6 +66,13 @@ def nvc_writer_processes(tmp_path, fps, n_test_frames):
 
 
 def test_NVC_writer(nvc_writer_processes, n_test_frames):
+
+    # Make sure NVC is installed, else report test not run
+    try:
+        import PyNvCodec as nvc
+    except ImportError:
+        pytest.skip("PyNvCodec not installed, skipping NVC_Writer test")
+
 
     # Get the writer and dummy frames proc
     writer, dummy_frames_proc = nvc_writer_processes
@@ -103,7 +101,7 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
 def ffmpeg_writer_processes(tmp_path, fps, n_test_frames):
     """Generate linked FFMPEG_Writer and DummyFrames processes for testing
     """
-    config = FFMPEG_Writer.default_writer_config(fps)
+    config = FFMPEG_Writer.default_writer_config(fps).copy()
     config["camera_name"] = "test"  
     config["loglevel"] = "debug"
     queue = mp.Queue()

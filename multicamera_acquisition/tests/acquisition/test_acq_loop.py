@@ -22,22 +22,19 @@ from multicamera_acquisition.interfaces.camera_basler import (
 
 from multicamera_acquisition.video_utils import count_frames
 
-
-@pytest.fixture(scope="session")
-def writer_type(pytestconfig):
-    """A session-wide fixture to return the Writer type
-    from the command line option.
-    """
-    return pytestconfig.getoption("writer_type", default="ffmpeg")
+from multicamera_acquisition.tests.acquisition.test_acq_video import (
+    writer_type,
+)
 
 
 def test_acq_loop_init(fps):
     loop = AcquisitionLoop(
-        mp.Queue(),
-        mp.Queue(),
-        camera_config=BaslerCamera.default_camera_config(fps),
+        write_queue=mp.Queue(),
+        display_queue=mp.Queue(),
+        fps=fps,
+        camera_device_index=None,
+        camera_config=BaslerCamera.default_camera_config().copy(),
     )
-    assert loop.camera_config["fps"] == fps
     assert isinstance(loop.await_process, mp.synchronize.Event)
     assert isinstance(loop.await_main_thread, mp.synchronize.Event)
     assert loop.acq_config["frame_timeout"] == 1000
@@ -46,6 +43,12 @@ def test_acq_loop_init(fps):
 def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     """Test the whole darn thing!
     """
+
+    if writer_type == "nvc":
+        try:
+            import PyNvCodec as nvc
+        except ImportError:
+            pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
 
     print(camera_type)
     # Get the Camera config
@@ -59,10 +62,10 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera as Camera
     else:
         raise NotImplementedError
-    camera_config = Camera.default_camera_config(fps)
+    camera_config = Camera.default_camera_config().copy()
     camera_config["name"] = "test"
     camera_config["id"] = id
-    camera_config["trigger"] = {"short_name": "continuous"}  # overwrite defaults to allow cam to run without triggers
+    camera_config["trigger"] = {"trigger_type": "no_trigger"}  # overwrite defaults to allow cam to run without triggers
 
     # Create the Writer process
     if writer_type == "nvc":
@@ -70,7 +73,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     elif writer_type == "ffmpeg":
         from multicamera_acquisition.writer import FFMPEG_Writer as Writer
     write_queue = mp.Queue()
-    writer_config = Writer.default_writer_config(fps)
+    writer_config = Writer.default_writer_config(fps).copy()
     writer_config["camera_name"] = "test"
     writer = Writer(
         write_queue,
@@ -80,11 +83,13 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     )
 
     # Create the AcquisitionLoop process
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = int(n_test_frames)
     acq_loop = AcquisitionLoop(
-        write_queue,
-        None,
+        write_queue=write_queue,
+        display_queue=None,
+        fps=fps,
+        camera_device_index=None,
         camera_config=camera_config,
         acq_loop_config=acq_config,
     )
@@ -107,4 +112,4 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     if writer_type == "ffmpeg":
         assert count_frames(str(writer.video_file_name)) == n_test_frames
     elif writer_type == "nvc":
-        assert count_frames(str(writer.video_file_name).replace(".mp4", ".muxed.mp4")) == n_test_frames
+        assert count_frames(str(writer.video_file_name)) == n_test_frames

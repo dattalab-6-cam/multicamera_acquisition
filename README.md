@@ -1,189 +1,47 @@
-Microprocessor controlled multi machine vision camera acquisition (Kinect, Basler, Flir) 
+Microprocessor-controlled multi-camera video acquisition (Basler, Azure Kinect) 
 ==============================
 
-Python library for parallel video acquisition. It abstracts Basler (pypylon) and flir (pyspin) libraries to allow simultaneous recording from both.
+Python library for simultaneous video acquisition with Basler cameras (pypylon) and Azure Kinect cameras (pyk4a), with Baslers up to 150 Hz. 
 
-Acquisition is done in parallel using a microcontroller (we use a teensy or arduino) which triggers frame capture. Threads exist for each camera capturing these frames and writing to a video.
+The custom library is necessary in order to interleave the Basler's frames betwee the Azure's sub-frame pulses. Acquisition is done in parallel using a microcontroller to trigger the cameras and IR lights. We use a [Teensy](https://www.pjrc.com/store/teensy41.html), with a [custom PCB](https://github.com/HMS-RIC/Datta-Open-Field-Arena) to control the lights and send triggers to the cameras, but in theory any microcontroller that can go fast enough will work. 
 
+<<<<<<< HEAD
 In addition, we record input GPIOs on the microcontroller to sync external data sources to the video frames. 
+=======
+Separate processes exist to capture frames and write the frames to a video for each camera. In addition, we record incoming GPIOs to the microcontroller, to allow syncing with external data sources.
+>>>>>>> origin/versey-sherry-refactor_config
 
 Authors
 - Tim Sainburg
 - Caleb Weinreb
 - Jonah Pearl
-
-- test
+- Jack Lovell
+- Sherry Lin
+- Kai Fox
 
 Sources:
-    - [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) is the basis for the camera object. 
-    - [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
+- [pypylon](https://github.com/basler/pypylon) is used for Basler cameras.
+- [pyk4a](https://github.com/etiennedub/pyk4a) is used for Azure Kinect cameras.
+- NVIDIA's Video Processing Framework ([VPF](https://github.com/NVIDIA/VideoProcessingFramework/tree/master)) is used to achieve the fastest video writing speeds possible.
+- ffmpeg is used as a backup video writer.
+- [simple_pyspin](https://github.com/klecknerlab/simple_pyspin/) inspired the camera object though is no longer used.
+- [Jarvis Motion Capture](https://github.com/JARVIS-MoCap) is mocap software for flir cameras. We used their synchronization as motivation for this library. 
 
-### Installation
+## Installation
 
-### NVIDIA Driver
-1. Run software updater on a fresh installation of Ubuntu
-2. Check additional drivers to see if NVIDIA drivers are available and reboot your computer
-3. Click `Using X.OrgX ...` and run `Apply Changes` and reboot again
+The acquisition code runs anywhere you can install the required packages. As of now, that means Linux and Windows (pyk4a is broken on Macs for the moment, and the NVIDIA VPF can't be installed on Mac either).
 
-### k4aviewer
+Briefly, you will need to install the following to run this code:
+- A high-end consumer GPU (e.g. GeForce 4080) with CUDA Toolkit
+- Standard software like Git, Anaconda / miniconda, ffmpeg, Arduino, and, optionally, NVIDIA's Video Processing Framework to get the highest possible framerates.
+- A few specific sets of software like Pylon, the Azure Kinect SDK, their Python API's, 
+- This repo!
 
-```
-sudo apt-add-repository -y -n 'deb http://archive.ubuntu.com/ubuntu focal main'
-sudo apt-add-repository -y 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-get install -y libsoundio1
-sudo apt-add-repository -r -y -n 'deb http://archive.ubuntu.com/ubuntu focal universe'
-sudo apt-add-repository -r -y 'deb http://archive.ubuntu.com/ubuntu focal main'
+Head on over to the [installation instructions](./docs/INSTALL.md) for a detailed explanation of how to get this code up and running.
 
-curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3/libk4a1.3_1.3.0_amd64.deb > /tmp/libk4a1.3_1.3.0_amd64.deb
-echo 'libk4a1.3 libk4a1.3/accepted-eula-hash string 0f5d5c5de396e4fee4c0753a21fee0c1ed726cf0316204edda484f08cb266d76' | sudo debconf-set-selections
-sudo dpkg -i /tmp/libk4a1.3_1.3.0_amd64.deb
+## Basic usage 
+See notebooks folder for examples.
 
-curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4a1.3-dev/libk4a1.3-dev_1.3.0_amd64.deb > /tmp/libk4a1.3-dev_1.3.0_amd64.deb
-sudo dpkg -i /tmp/libk4a1.3-dev_1.3.0_amd64.deb
-
-curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0/libk4abt1.0_1.0.0_amd64.deb > /tmp/libk4abt1.0_1.0.0_amd64.deb
-echo 'libk4abt1.0	libk4abt1.0/accepted-eula-hash	string	03a13b63730639eeb6626d24fd45cf25131ee8e8e0df3f1b63f552269b176e38' | sudo debconf-set-selections
-sudo dpkg -i /tmp/libk4abt1.0_1.0.0_amd64.deb
-
-curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/libk/libk4abt1.0-dev/libk4abt1.0-dev_1.0.0_amd64.deb > /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
-sudo dpkg -i /tmp/libk4abt1.0-dev_1.0.0_amd64.deb
-
-curl -sSL https://packages.microsoft.com/ubuntu/18.04/prod/pool/main/k/k4a-tools/k4a-tools_1.3.0_amd64.deb > /tmp/k4a-tools_1.3.0_amd64.deb
-sudo dpkg -i /tmp/k4a-tools_1.3.0_amd64.deb
-```
-
-Then update the udev rules
-
-```
-wget https://raw.githubusercontent.com/microsoft/Azure-Kinect-Sensor-SDK/develop/scripts/99-k4a.rules``
-sudo mv 99-k4a.rules /etc/udev/rules.d/
-```
-Plug a Kinect Azure camera into the computer and run `k4aviewer` from the terminal to check the device is discoverable. 
-
-#### Pylon installation
-1. Go to pylon's [installation webpade](https://www.baslerweb.com/en/downloads/software-downloads/#type=pylonsoftware;version=all;os=linuxx8664bit) and download `pylon 7.3.0 Camera Software Suite Linux x86 (64 Bit) - Debian Installer Package`
-
-```
-cd /to/your/donwload/dir/
-mv pylon_7.3* /tmp && cd /tmp
-tar -xf pylon_7.3.0.27189_linux-x86_64_debs.tar.gz
-sudo apt-get install ./pylon_*.deb ./codemeter*.deb
-```
-Pylon should now be on your applications grid. If it does not launch upon clicking it, then try the following:
-```
-sudo apt-get install libxcb-xinput0
-```
-If that does not work, then run the below and use the error message to debug what possibly went wrong
-```
-export QT_DEBUG_PLUGINS=1
-/opt/pylon/bin/pylonviewer
-```
-
-##### Setting USB camera settings
-For both pylon and spinnaker, you will need to update the settings for UDEV rules (e.g. to raise the maximum USB data transfer size). 
-In pylon, this can be done with 
-```
-sudo sh /opt/pylon/share/pylon/setup-usb.sh
-```
-In spinnaker, navigate to the spinnaker download folder and run 
-```
-sudo sh configure_usbfs.sh
-```
-
-#### Enabling USB reset
-
-In addition, it is useful to give the library the ability to reset the cameras programatically. 
-You can do this by making a .rules file (e.g.`sudo nano /etc/udev/rules.d/99-basler.rules`)
-
-```
-SUBSYSTEM=="usb", ATTRS{idVendor}=="xxxx", MODE="0666"
-```
-For Basler, the ID should be `TTRS{idVendor}=="0x2676"`
-
-Then, reset udev rules.
-```
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
-
-Then, install the usb library.
-```
-sudo apt-get install libusb-1.0-0-dev
-reboot
-```
-
-#### Arduino IDE
-1. Download the Arduino IDE AppImage from Arduino's [website](https://www.arduino.cc/en/software)
-2. (Optional) Move to a better location:
-```
-mv ~/Downloads/arudino-*.Appimage /path/to/where/you/want/arduino-ide
-```
-3. Open the folder viewer where you arudino app image lives
-4. Right-click the file,
-5. Choose Properties,
-6. Select Permissions tab,
-7. Tick the Allow executing file as program box. 
-
-If double clicking the app image does not open the IDE try the following:
-```
-sudo add-apt-repository universe
-sudo apt install libfuse2
-```
-If you want to have the IDE available in your Desktop menu then fllow the instructions at this [link](https://askubuntu.com/questions/1311600/add-an-appimage-application-to-the-top-menu-bar)
-
-#### ffmpeg
-```
-sudo apt install ffmpeg
-```
-
-#### Package installation
-
-You are most likely going to want to customize this code, so just install it with `python setup.py develop` in the main directory. 
-
-```
-conda create -n multicam python=3.10
-conda activate multicam
-git clone https://github.com/timsainb/multicamera_acquisition.git
-cd multicamera_acquisition
-python setup.py develop
-conda install -c anaconda ipykernel
-python3 -m ipykernel install --user --name=multicam
-pip3 install pypylon, Pillow, matplotlib, numpy, pyusb
-pip3 install 
-sudo usermod -a -G dialout <your-username>
-```
-
-
-#### NVIDIA GPU encoding patch (Linux)
-
-We use GPU encoding to reduce the CPU load when writing from many cameras simultaneously. For some NVIDIA GPUs encoding more than 3 video streams requires a patch, [located here](https://github.com/keylase/nvidia-patch). Generally this just means running:
-
-```
-git clone https://github.com/keylase/nvidia-patch.git
-cd nvidia-patch
-bash ./patch.sh
-```
-
-
-
-### Basic usage 
-```{python}
-from multicamera_acquisition.acquisition import acquire_video
-
-camera_list = [
-    {'name': 'top', 'serial': 24535665, 'brand':'basler', 'gain': 12, 'exposure_time': 3000, 'display': False},
-    {'name': 'side1', 'serial': 24548223, 'brand':'basler', 'gain': 12, exposure_time': 3000, 'display': False},
-    {'name': 'side2', 'serial': 22181547, 'brand':'flir', 'gain': 12, exposure_time': 3000, 'display': False},
-    {'name': 'side3', 'serial': 22181612, 'brand':'flir', 'gain': 12, exposure_time': 3000, 'display': False},
-]
-
-acquire_video(
-    'your/save/location/',
-    camera_list,
-    framerate = 30,
-    recording_duration_s = 10,
-    append_datetime=True,
-)
-```
 
 ## Synchronization
 

@@ -6,8 +6,9 @@ from arena_api.buffer import BufferFactory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 import logging
-import time 
+import time
 import ctypes
+
 
 class LucidCamera(BaseCamera):
     def __init__(self, index=0, lock=True, **kwargs):
@@ -22,13 +23,15 @@ class LucidCamera(BaseCamera):
             an error.
         """
         self.serial_number = index
-        
+
         # gets the devices
         devices = find_helios_devices()
 
         n_devices = len(devices)
         # debug: print("Found %d camera(s)" % n_devices)
-        camera_serials = np.array([c.nodemap['DeviceSerialNumber'].value for c in devices])
+        camera_serials = np.array(
+            [c.nodemap["DeviceSerialNumber"].value for c in devices]
+        )
 
         if n_devices == 0:
             raise CameraError("No cameras detected.")
@@ -41,89 +44,92 @@ class LucidCamera(BaseCamera):
             raise CameraError("Index / serial number must be string")
 
         del devices
-        
+
         self.running = False
 
     def init(self):
         """Initializes the camera.  Automatically called if the camera is opened
         using a `with` clause."""
-        
+
         logging.log(logging.DEBUG, f"running init for camera {self.serial_number}")
         # Get device stream nodemap
         tl_stream_nodemap = self.cam.tl_stream_nodemap
         # Enable stream auto negotiate packet size
-        tl_stream_nodemap['StreamAutoNegotiatePacketSize'].value = True
+        tl_stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
         # Enable stream packet resend
-        tl_stream_nodemap['StreamPacketResendEnable'].value = True
-        
+        tl_stream_nodemap["StreamPacketResendEnable"].value = True
+
         # reset device nodemap
-        self.cam.nodemap['UserSetSelector'].value = 'Default'
-        self.cam.nodemap['UserSetLoad'].execute()
-        
+        self.cam.nodemap["UserSetSelector"].value = "Default"
+        self.cam.nodemap["UserSetLoad"].execute()
+
         # Store nodes' initial values
         self.nodemap = self.cam.nodemap
-            
+
         # set distance paramters
-        #self.nodemap['Scan3dDistanceUnit'].value = 'Millimeter'
-        self.nodemap['Scan3dDistanceMin'].value = 150
-        #self.nodemap['Scan3dDistanceMax'].value = 1000
-        
+        # self.nodemap['Scan3dDistanceUnit'].value = 'Millimeter'
+        self.nodemap["Scan3dDistanceMin"].value = 150
+        # self.nodemap['Scan3dDistanceMax'].value = 1000
+
         # operating mode
-        #   'Distance1250mmSingleFreq', 
+        #   'Distance1250mmSingleFreq',
         #   'Distance3000mmSingleFreq',
-        #   'Distance4000mmSingleFreq', 
-        #   'Distance5000mmMultiFreq', 
-        #   'Distance6000mmSingleFreq', 
-        #   'Distance8300mmMultiFreq', 
+        #   'Distance4000mmSingleFreq',
+        #   'Distance5000mmMultiFreq',
+        #   'Distance6000mmSingleFreq',
+        #   'Distance8300mmMultiFreq',
         #   'HighSpeedDistance625mmSingleFreq',
-        #   'HighSpeedDistance1250mmSingleFreq', 
+        #   'HighSpeedDistance1250mmSingleFreq',
         #   'HighSpeedDistance2500mmSingleFreq'
         # self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance2500mmSingleFreq'#'HighSpeedDistance625mmSingleFreq'
-        self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance1250mmSingleFreq'  # JP
+        self.nodemap[
+            "Scan3dOperatingMode"
+        ].value = "HighSpeedDistance1250mmSingleFreq"  # JP
 
         # set pixel format
         # pixel_format = PixelFormat.Coord3D_ABCY16
         pixel_format = PixelFormat.Coord3D_C16  # JP
-        self.nodemap.get_node('PixelFormat').value = pixel_format
-        
+        self.nodemap.get_node("PixelFormat").value = pixel_format
+
         # set exposure time
-        self.nodemap['ExposureTimeSelector'].value = 'Exp1000Us'
+        self.nodemap["ExposureTimeSelector"].value = "Exp1000Us"
         # set gain
-        self.nodemap['ConversionGain'].value = 'Low'
+        self.nodemap["ConversionGain"].value = "Low"
         # Enable spatial filter
-        self.nodemap['Scan3dSpatialFilterEnable'].value = True
+        self.nodemap["Scan3dSpatialFilterEnable"].value = True
         # disable confidence threshold
-        self.nodemap['Scan3dConfidenceThresholdEnable'].value = True #False
-        
+        self.nodemap["Scan3dConfidenceThresholdEnable"].value = True  # False
+
         # get coordinate scale from nodemap
         self.nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
         self.scale_z = self.nodemap["Scan3dCoordinateScale"].value
-        
-        # set trigger input
-        self.nodemap['TriggerSelector'].value = 'FrameStart'
-        self.nodemap['TriggerMode'].value = 'On' # 'On'
-        self.nodemap['TriggerSource'].value = 'Line2' # Software, Line2
-        
-        #self.nodemap['ExposureTime'].value = 995.0
-        self.nodemap['AcquisitionFrameRateEnable'].value = True
-        self.nodemap['AcquisitionFrameRate'].max = 100.0
-        
-        logging.log(logging.DEBUG, f"almost done running init for camera {self.serial_number}")
-        #print('STILL RUNNING INIT')
-        
-        # wait until trigger is armed
-        #trigger_armed = False
-        #while trigger_armed is False:
-        #    trigger_armed = bool(self.nodemap['TriggerArmed'].value)
-        
-        logging.log(logging.DEBUG, f"done running init for camera {self.serial_number}")
 
+        # set trigger input
+        self.nodemap["TriggerSelector"].value = "FrameStart"
+        self.nodemap["TriggerMode"].value = "On"  # 'On'
+        self.nodemap["TriggerSource"].value = "Line2"  # Software, Line2
+
+        # self.nodemap['ExposureTime'].value = 995.0
+        self.nodemap["AcquisitionFrameRateEnable"].value = True
+        self.nodemap["AcquisitionFrameRate"].max = 100.0
+
+        logging.log(
+            logging.DEBUG, f"almost done running init for camera {self.serial_number}"
+        )
+        # print('STILL RUNNING INIT')
+
+        # wait until trigger is armed
+        # trigger_armed = False
+        # while trigger_armed is False:
+        #    trigger_armed = bool(self.nodemap['TriggerArmed'].value)
+
+        logging.log(logging.DEBUG, f"done running init for camera {self.serial_number}")
 
     def start(self):
         "Start recording images."
-        #print('STARTING STREAM')
-        #max_recording_hours = 60
-        #max_recording_frames = max_recording_hours * 60 * 60 * 200
+        # print('STARTING STREAM')
+        # max_recording_hours = 60
+        # max_recording_frames = max_recording_hours * 60 * 60 * 200
         self.cam.start_stream(20)
         self.running = True
 
@@ -132,10 +138,10 @@ class LucidCamera(BaseCamera):
         self.running = False
         self.cam.stop_stream()
 
-        #print('DESTROYING DEVICE')
+        # print('DESTROYING DEVICE')
         # Destroy device. Optional, implied by closing of module
         system.destroy_device()
-        
+
     def close(self):
         self.stop()
         system.destroy_device()
@@ -160,9 +166,9 @@ class LucidCamera(BaseCamera):
             if timeout is None:
                 timeout = 10000
             # TODO, fix so this isn't a software trigger...
-            self.nodemap['TriggerSoftware'].execute()
-            #trigger_armed = False
-            #while trigger_armed is False:
+            self.nodemap["TriggerSoftware"].execute()
+            # trigger_armed = False
+            # while trigger_armed is False:
             #    trigger_armed = bool(self.nodemap['TriggerArmed'].value)
             buffer_3d = self.cam.get_buffer(timeout=timeout)
             # depth_image = get_depth_image(buffer_3d, self.scale_z, px_fmt="Coord3D_ABCY16")
@@ -187,18 +193,18 @@ class LucidCamera(BaseCamera):
         img : Numpy array
         tstamp : int
         """
-        #if self.cam.IsGrabbing() == False:
+        # if self.cam.IsGrabbing() == False:
         #    raise ValueError("Camera is not set up to grab frames.")
 
         img_array, tstamp = self.get_image(timeout)
-            
-        #if img.GrabSucceeded():
+
+        # if img.GrabSucceeded():
         #    img_array = img.Array.astype(np.uint8)
         #    if get_timestamp:
         #        tstamp = img.GetTimeStamp()
         #    else:
         #        tstamp = None
-        #else:
+        # else:
         #    img_array = None
         #    tstamp = None
 
@@ -235,18 +241,20 @@ def ctypes_to_numpy(ptr, shape):
     # Cast the ctypes pointer to a numpy array with the specified shape
     return np.ctypeslib.as_array(ptr, shape)
 
-def find_helios_devices(tries_max = 6, sleep_time_secs = 1):
-    '''
+
+def find_helios_devices(tries_max=6, sleep_time_secs=1):
+    """
     This function waits for the user to connect a device before raising
     an exception
-    '''
+    """
     devices_found = False
     for tries in range(tries_max):  # Wait for device for 60 seconds
         devices = system.create_device()
         if not devices:
             print(
-            f'Try {tries+1} of {tries_max}: waiting for {sleep_time_secs} '
-            f'secs for a device to be connected!')
+                f"Try {tries+1} of {tries_max}: waiting for {sleep_time_secs} "
+                f"secs for a device to be connected!"
+            )
             time.sleep(sleep_time_secs)
             tries += 1
         else:
@@ -254,26 +262,27 @@ def find_helios_devices(tries_max = 6, sleep_time_secs = 1):
             devices_found = True
             break
     if not devices_found:
-        raise Exception(f'No device found! Please connect a device and run '
-                        f'the example again.')
-    
+        raise Exception(
+            f"No device found! Please connect a device and run " f"the example again."
+        )
+
     # remove any non Helios devices
     for di, device in enumerate(devices):
         try:
-            device.nodemap['Scan3dOperatingMode']
+            device.nodemap["Scan3dOperatingMode"]
         except:
             # remove device by index
             devices.pop(di)
-            
+
     if len(devices) == 0:
-        raise Exception(f'No Helios device found! Please connect a device and run '
-                        f'the example again.')
+        raise Exception(
+            f"No Helios device found! Please connect a device and run "
+            f"the example again."
+        )
     return devices
 
 
 def get_depth_image(buffer_3d, scale_z, px_fmt="Coord3D_ABCY16"):
-
-
     if px_fmt == "Coord3D_ABCY16":
         # 3D buffer info -------------------------------------------------
 
