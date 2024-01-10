@@ -215,7 +215,6 @@ void acquisitionLoop(
     // Perform acquisition cycles
     while (cycle_index < num_cycles)
     {
-
         // Perform next state change
         if (step_index < num_state_changes)
         {
@@ -292,7 +291,7 @@ void loop()
 
     // Tell python that the microcontroller is ready to receive data
     Serial.write("READY\n");
-    delay(100);
+    delay(1000);
 
     // Wait for python to send instructions
     if (Serial.available() > 0)

@@ -562,7 +562,6 @@ class Microcontroller(object):
                 raise RuntimeError("No serial ports found!")
 
             for port in ports:
-                print(port)
                 with serial.Serial(port=port, timeout=0.1) as serial_connection:
                     found_ready_microcontroller = check_for_response(
                         serial_connection, "READY", port
@@ -577,7 +576,7 @@ class Microcontroller(object):
 
         if found_ready_microcontroller:
             self.serial_connection = serial.Serial(port=port, timeout=0.1)
-            logging.info(f"Fount ready microcontroller on port: {port}")
+            logging.info(f"Found ready microcontroller on port: {port}")
         else:
             raise RuntimeError(
                 "Could not find ready microcontroller! Try restarting the microcontroller."
@@ -595,11 +594,9 @@ class Microcontroller(object):
         Start acquisition by sending instructions to the microcontroller. Raise a RuntimeError if the
         microcontroller does not respond with the string "RECEIVED" within 2 seconds.
         """
-        # flush input buffer to get rid of READY messages
-        self.serial_connection.reset_input_buffer()
 
         # calculate number of acquisition cycles
-        num_cycles = int(recording_duration_s / self.cycle_duration)
+        num_cycles = int(recording_duration_s * 1e6 / self.cycle_duration)
 
         lines_to_send = (
             STX,
@@ -618,8 +615,12 @@ class Microcontroller(object):
         for line in lines_to_send:
             self.serial_connection.write(line + b"\n")
 
+        # flush input buffer to get rid of READY messages
+        self.serial_connection.reset_input_buffer()
+
         # check for response
         acquisition_started = check_for_response(self.serial_connection, "RECEIVED")
+
         if not acquisition_started:
             raise RuntimeError(
                 "Could not start acquisition! microcontroller did not respond with RECEIVED."
@@ -641,6 +642,8 @@ class Microcontroller(object):
             raise RuntimeError(
                 "Could not interrupt acquisition! microcontroller did not recieve interrupt signal."
             )
+        else:
+            logging.info("Microcontroller acquisition loop interrupted.")
 
     def check_for_input(self):
         """
@@ -656,9 +659,9 @@ class Microcontroller(object):
         """
         if self.serial_connection.in_waiting > 0:
             msg = self.serial_connection.readline()
-            if msg[0] == b"F\n":
+            if msg[:1] == b"F":
                 return True
-            elif msg[0] == STX:
+            elif msg[:1] == STX:
                 data = bytes.fromhex(msg[1:-1])
                 pin, state, micros, cycleIndex = struct.unpack("<HBLI", data)
                 time = cycleIndex * self.cycle_duration + micros
