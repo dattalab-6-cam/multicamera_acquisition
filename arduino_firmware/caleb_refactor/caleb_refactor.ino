@@ -29,7 +29,7 @@ should consist of a sequence 10 lines, as follows:
     (7) comma separated list of deterministic output state-change times in microseconds
     (8) comma separated list of deterministic output pins corresponding to the times in (8)
     (9) comma separated states (0 or 1) corresponding to the times in (8)
-    (10) \n (New Line) character, aka b'\0x0a'
+    (10) ETX (End of Text) character, aka b'\x03'
 
 (3) After the microcontroller has seen a correctly formatted data packet, it
 will send the string "RECEIVED" over the serial connection and then immediately
@@ -294,7 +294,7 @@ void setup()
 void loop()
 {
 
-    // Tell python that the arduino is ready to receive data
+    // Tell python that the microcontroller is ready to receive data
     Serial.println("READY");
     delay(1000);
 
@@ -309,13 +309,14 @@ void loop()
         if (firstChar != '\x02')
         {
             Serial.flush();
-            Serial.println(firstChar);
             Serial.println("ERROR");
         }
         // If the first character is the STX character, then parse the data
         // packet and begin acquisition
         else
         {
+            Serial.read();
+
             // Read the number of cycles and the cycle duration
             unsigned long num_cycles = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
             unsigned long cycle_duration = strtoul(Serial.readStringUntil('\n').c_str(), NULL, 10);
@@ -349,12 +350,12 @@ void loop()
             line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), state_change_states, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
-            // read last char
-            line = Serial.readStringUntil('\n');
+            // Read the \n character
+            char lastChar = Serial.readline();
 
             // If the last character is not the \n character, clear the serial
             // buffer, send an error message, and return to the main loop
-            if(line.length() != 0)
+            if (lastChar != '\n')
             {
                 Serial.flush();
                 Serial.println("ERROR");

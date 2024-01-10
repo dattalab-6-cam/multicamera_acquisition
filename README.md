@@ -5,7 +5,7 @@ Python library for parallel video acquisition. It abstracts Basler (pypylon) and
 
 Acquisition is done in parallel using a microcontroller (we use a teensy or arduino) which triggers frame capture. Threads exist for each camera capturing these frames and writing to a video.
 
-In addition, we record input GPIOs on the arduino to sync external data sources to the video frames. 
+In addition, we record input GPIOs on the microcontroller to sync external data sources to the video frames. 
 
 Authors
 - Tim Sainburg
@@ -191,64 +191,11 @@ Cameras (1) need to be synchronized with other data sources and (2) need to be s
 
 ### triggerdata.csv
 
-The arduino has a set of GPIOs dedicated to pulse input (by default 4) that can recieve input from an external synchronization. Each row of the triggerdata.csv file corresponds to an input state change in the monitored GPIO channels.
+The microcontroller has a set of GPIOs dedicated to pulse input that can recieve input from an external synchronization device. Detected changes in the state of these input pins are logged in to a triggerdata.csv file that saves:
 
-The triggerdata.csv file saves:
-- **`pulse_id`**: This is the pulse frame number, according to the microcontroller. This number is computed simply by iterating over the number of frame acquisition pulses that microconstroller has sent out.
-- **`arduino_ms`**: This is the microprocessor clock in milliseconds (computed using the `millis()` function. 
-- **`flag_{n}`**: This is the state of the GPIO input when a GPIO state change has occured. 
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align:right">
-      <th></th>
-      <th>pulse_id</th>
-      <th>arduino_ms</th>
-      <th>flag_0</th>
-      <th>flag_1</th>
-      <th>flag_2</th>
-      <th>flag_3</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>110</td>
-      <td>0</td>
-      <td>0</td>
-      <td>1</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>90</td>
-      <td>1000</td>
-      <td>0</td>
-      <td>0</td>
-      <td>1</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>627</td>
-      <td>6371</td>
-      <td>1</td>
-      <td>1</td>
-      <td>0</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1165</td>
-      <td>11751</td>
-      <td>0</td>
-      <td>0</td>
-      <td>0</td>
-      <td>0</td>
-    </tr>
-  </tbody>
-</table>
+- **`time`**: Time that the pin state changed in microseconds from the beginning of acquition (in the microcontroller's clock).
+- **`pin`**: The pin that changed state.
+- **`state`**: The state that the pin changed to.
 
 
 ### {camera}.metadata.csv

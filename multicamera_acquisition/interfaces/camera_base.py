@@ -27,11 +27,11 @@ def get_camera(
         If a string, the serial number of the camera.
 
     config_file : path-like str or Path (default: None)
-        Path to config file. 
+        Path to config file.
         If config and config_file are both None, uses the camera's default config file.
 
     config : dict (default: None)
-        A dictionary of config values.  
+        A dictionary of config values.
         If config and config_file are both None, uses the camera's default config file.
 
     Returns
@@ -56,7 +56,7 @@ def get_camera(
         # cam.ExposureTime = exposure_time
 
         # # set trigger
-        # if trigger == "arduino":
+        # if trigger == "microcontroller":
         #     # TODO - many of these settings are not related to the trigger and should
         #     # be redistributed
         #     # TODO - remove hardcoding
@@ -84,12 +84,18 @@ def get_camera(
         #     raise NotImplementedError("ROI not implemented for FLIR cameras")
 
     elif brand == "basler":
-        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera 
+        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+
         cam = BaslerCamera(id=id, name=name, config_file=config_file, config=config)
 
     elif brand == "basler_emulated":
-        from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera
-        cam = EmulatedBaslerCamera(id=id, name=name, config_file=config_file, config=config)
+        from multicamera_acquisition.interfaces.camera_basler import (
+            EmulatedBaslerCamera,
+        )
+
+        cam = EmulatedBaslerCamera(
+            id=id, name=name, config_file=config_file, config=config
+        )
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
@@ -103,14 +109,12 @@ def get_camera(
             serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
         )
 
-
-    elif brand == 'lucid':
+    elif brand == "lucid":
         from multicamera_acquisition.interfaces.camera_lucid import (
             LucidCamera as Camera,
         )
-        cam = Camera(
-            index=str(serial)
-        )
+
+        cam = Camera(index=str(serial))
 
     return cam
 
@@ -165,7 +169,9 @@ class BaseCamera(object):
         attributes and methods.
     """
 
-    def __init__(self, id=0, name=None, config_file=None, config=None, lock=True, fps=None):
+    def __init__(
+        self, id=0, name=None, config_file=None, config=None, lock=True, fps=None
+    ):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
@@ -177,11 +183,11 @@ class BaseCamera(object):
             The name of the camera in the experiment. For example, "top" or "side2".
 
         config_file : path-like str or Path (default: None)
-            Path to config file. 
+            Path to config file.
             If config and config_file are both None, uses the camera's default config file.
 
         config : dict (default: None)
-            A dictionary of config values.  
+            A dictionary of config values.
             If config and config_file are both None, uses the camera's default config file.
 
         lock : bool (default: True)
@@ -190,7 +196,7 @@ class BaseCamera(object):
             (Currently only implemented for FLIR cameras)
 
         fps : int (default: None)
-            The desired frame rate for the recording. 
+            The desired frame rate for the recording.
             It is preferred to set this from the config, but this is provided
             for convenience.
         """
@@ -199,7 +205,9 @@ class BaseCamera(object):
             self.serial_number = None
             self.index = id
             if id > 10:
-                warn("Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int.")
+                warn(
+                    "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
+                )
         elif isinstance(id, str):
             self.serial_number = id
             self.index = None
@@ -219,8 +227,7 @@ class BaseCamera(object):
         self.fps = fps
 
     def _resolve_device_index(self):
-        """Given a serial number, find the index of the camera in the system.
-        """
+        """Given a serial number, find the index of the camera in the system."""
         # Get the serial numbers of all connected cameras
         camera_serials, model_names = self._enumerate_cameras()
 
@@ -232,21 +239,21 @@ class BaseCamera(object):
         elif self.index is not None:
             device_index = self.index
         else:
-            raise CameraError("Must specify either serial number or index of camera to connect to.")
+            raise CameraError(
+                "Must specify either serial number or index of camera to connect to."
+            )
 
         self.device_index = device_index
         self.model_name = model_names[device_index]
 
     def save_config(self):
-        """Save the current camera configuration to a YAML file.
-        """
-        with open(self.config_file, 'w') as f:
+        """Save the current camera configuration to a YAML file."""
+        with open(self.config_file, "w") as f:
             yaml.dump(self.config, f, default_flow_style=False)
 
     def load_config(self, check_if_valid=False):
-        """Load a camera configuration YAML file.
-        """
-        with open(self.config_file, 'r') as f:
+        """Load a camera configuration YAML file."""
+        with open(self.config_file, "r") as f:
             config = yaml.load(f)
         self.config = config
 
@@ -261,6 +268,7 @@ class BaseCamera(object):
         new_config: dict
             Dictionary of new config values
         """
+
         def recursive_update(config, updates):
             for key, value in updates.items():
                 if key in config and isinstance(config[key], dict):
@@ -277,8 +285,7 @@ class BaseCamera(object):
             self.save_config()
 
     def check_config(self, config=None):
-        """Check if the camera configuration is valid.
-        """
+        """Check if the camera configuration is valid."""
         pass  # defined in each camera subclass
 
     def init(self):
@@ -361,4 +368,3 @@ class BaseCamera(object):
     def document(self):
         """Creates a MarkDown documentation string for the camera."""
         raise NotImplementedError
-

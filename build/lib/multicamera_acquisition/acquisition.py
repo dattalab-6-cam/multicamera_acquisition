@@ -1,7 +1,7 @@
 from multicamera_acquisition.interfaces import get_camera
 from multicamera_acquisition.video_io import write_frame
 from multicamera_acquisition.paths import ensure_dir
-from multicamera_acquisition.interfaces.arduino import (
+from multicamera_acquisition.interfaces.microcontroller import (
     packIntAsLong,
     wait_for_serial_confirmation,
 )
@@ -264,7 +264,7 @@ class Writer(mp.Process):
         self.pipe = write_frame(
             self.video_file_name,
             data,
-            fps = self.fps,
+            fps=self.fps,
             pipe=self.pipe,
             pixel_format=self.pixel_format,
             **self.ffmpeg_options,
@@ -333,7 +333,7 @@ def acquire_video(
     n_input_trigger_states=4,
     max_video_frames="default",  # after this many frames, a new video file will be created
     ffmpeg_options={},
-    arduino_args=[],
+    microcontroller_args=[],
 ):
     if azure_framerate != 30:
         raise ValueError("Azure framerate must be 30")
@@ -396,7 +396,6 @@ def acquire_video(
     # ensure that a directory exists to save data in
     ensure_dir(save_location)
 
-
     triggerdata_file = save_location / "triggerdata.csv"
     if triggerdata_file.exists() and (overwrite == False):
         raise FileExistsError(f"CSV file {triggerdata_file} already exists")
@@ -417,7 +416,9 @@ def acquire_video(
         name = camera_dict["name"]
         serial_number = camera_dict["serial"]
 
-        camera_framerate = azure_framerate if camera_dict["brand"] == "azure" else framerate
+        camera_framerate = (
+            azure_framerate if camera_dict["brand"] == "azure" else framerate
+        )
 
         ffmpeg_options = {}
         for key in ["gpu", "quality"]:
@@ -445,7 +446,7 @@ def acquire_video(
             video_file_name=video_file,
             metadata_file_name=metadata_file,
             camera_serial=serial_number,
-            fps = camera_framerate,
+            fps=camera_framerate,
             camera_name=name,
             camera_brand=camera_dict["brand"],
             max_video_frames=max_video_frames,
@@ -464,7 +465,7 @@ def acquire_video(
                 metadata_file_name=metadata_file,
                 camera_serial=serial_number,
                 camera_name=name,
-                fps = camera_framerate,
+                fps=camera_framerate,
                 camera_brand=camera_dict["brand"],
                 max_video_frames=max_video_frames,
                 ffmpeg_options=ffmpeg_options,
@@ -521,20 +522,23 @@ def acquire_video(
         disp = None
 
     if verbose:
-        logging.log(logging.INFO, f"Initializing Arduino...")
+        logging.log(logging.INFO, f"Initializing microcontroller...")
 
-    # prepare communication with arduino
+    # prepare communication with microcontroller
     serial_ports = glob.glob("/dev/ttyACM*")
-    # check that there is an arduino available
+    # check that there is an microcontroller available
     if len(serial_ports) == 0:
-        raise ValueError("No serial device (i.e. Arduino) available to capture frames")
+        raise ValueError(
+            "No serial device (i.e. microcontroller) available to capture frames"
+        )
     port = glob.glob("/dev/ttyACM*")[0]
-    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
+    microcontroller = serial.Serial(port=port, timeout=serial_timeout_duration_s)
 
     # delay recording to allow serial connection to connect
     sleep_duration = 2
     logging.log(
-        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
+        logging.INFO,
+        f"Waiting {sleep_duration}s to wait for microcontroller to connect...",
     )
     time.sleep(sleep_duration)
 
@@ -542,7 +546,7 @@ def acquire_video(
     with open(triggerdata_file, "w") as triggerdata_f:
         triggerdata_writer = csv.writer(triggerdata_f)
         triggerdata_writer.writerow(
-            ["pulse_id", "arduino_ms"]
+            ["pulse_id", "microcontroller_ms"]
             + [f"flag_{i}" for i in range(n_input_trigger_states)]
         )
 
@@ -557,14 +561,14 @@ def acquire_video(
         acquisition_loop.ready.wait()
 
     if verbose:
-        logging.log(logging.INFO, f"Telling arduino to start recording")
+        logging.log(logging.INFO, f"Telling microcontroller to start recording")
 
     """ TODO 
-    We are currently hardcoding certain values in the arduino code that should instead be sent here.
+    We are currently hardcoding certain values in the microcontroller code that should instead be sent here.
     In particular, the basler framerate, the number of basler cameras, and the number of azures. 
     It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
     """
-    # Tell the arduino to start recording by sending along the recording parameters
+    # Tell the microcontroller to start recording by sending along the recording parameters
     inv_framerate = int(1e6 / framerate)
     if azure_recording:
         num_cycles = int(recording_duration_s * azure_framerate)
@@ -582,16 +586,16 @@ def acquire_video(
                 inv_framerate,
                 # num_azures,
                 # num_baslers,
-                *arduino_args,
+                *microcontroller_args,
             ),
         )
     )
-    arduino.write(msg)
+    microcontroller.write(msg)
 
     # Run acquision
     try:
         confirmation = wait_for_serial_confirmation(
-            arduino, expected_confirmation="Start", seconds_to_wait=10
+            microcontroller, expected_confirmation="Start", seconds_to_wait=10
         )
     except:
         # kill everything if we can't get confirmation
@@ -608,7 +612,7 @@ def acquire_video(
         datetime_prev = datetime.now()
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
         while datetime.now() < endtime:
-            confirmation = arduino.readline().decode("utf-8").strip("\r\n")
+            confirmation = microcontroller.readline().decode("utf-8").strip("\r\n")
             if confirmation == "Finished":
                 break
             if (datetime.now() - datetime_prev).seconds > 0:
@@ -622,8 +626,10 @@ def acquire_video(
                         triggerdata_writer = csv.writer(triggerdata_f)
                         states = confirmation[7:].split(",")[:-2]
                         frame_num = confirmation[7:].split(",")[-2]
-                        arduino_clock = confirmation[7:].split(",")[-1]
-                        triggerdata_writer.writerow([frame_num, arduino_clock] + states)
+                        microcontroller_clock = confirmation[7:].split(",")[-1]
+                        triggerdata_writer.writerow(
+                            [frame_num, microcontroller_clock] + states
+                        )
                 if verbose:
                     logging.log(logging.INFO, f"confirmation")
 
@@ -634,7 +640,9 @@ def acquire_video(
             logging.log(logging.LOG, "Waiting for finished confirmation")
             try:
                 confirmation = wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Finished", seconds_to_wait=10
+                    microcontroller,
+                    expected_confirmation="Finished",
+                    seconds_to_wait=10,
                 )
             except ValueError as e:
                 logging.log(logging.WARN, e)
@@ -646,8 +654,8 @@ def acquire_video(
         #   the proper way to do this would be to use a event.wait()
         #   for each camera, to wait until it has no more frames to grab
         #   (except in the case of azure, where it will always be able) to
-        #   grab more frames because it is not locked to the arduino pulse.
-        #   for now, I've just added a 5 second sleep after the arduino is 'finished'
+        #   grab more frames because it is not locked to the microcontroller pulse.
+        #   for now, I've just added a 5 second sleep after the microcontroller is 'finished'
         #   which should be enough time for the cameras to finish grabbing frames
         time.sleep(5)
 
@@ -655,7 +663,6 @@ def acquire_video(
     #   return the save location
     except KeyboardInterrupt as e:
         pass
-
 
     end_processes(acquisition_loops, writers, disp)
 
@@ -669,5 +676,4 @@ def acquire_video(
             video_file = save_location / f"{name}.{serial_number}.avi"
             print(f"Frames ({name}):", count_frames(video_file.as_posix()))
 
-    
     return save_location
