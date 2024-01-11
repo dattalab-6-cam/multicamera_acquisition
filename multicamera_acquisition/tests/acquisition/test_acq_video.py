@@ -72,9 +72,9 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
             import PyNvCodec as nvc
         except ImportError:
             pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
-        writer_config = NVC_Writer.default_writer_config(fps)
+        writer_config = NVC_Writer.default_writer_config(fps).copy()
     elif writer_type == "ffmpeg":
-        writer_config = FFMPEG_Writer.default_writer_config(fps)
+        writer_config = FFMPEG_Writer.default_writer_config(fps).copy()
 
     for camera_name in partial_new_config["cameras"].keys():
         writer_config["camera_name"] = camera_name
@@ -87,7 +87,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
     full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
 
     # Set up the acquisition loop part of the config
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
@@ -131,7 +131,7 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     partial_new_config = partial_config_from_camera_list(camera_list)
 
     # Add NVC writers to each camera
-    nvc_writer_config = NVC_Writer.default_writer_config(fps)
+    nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
     nvc_writer_config["auto_remux_videos"] = True  # this is the default, but just to make it explicit / in case we change the default
 
     # KEY LINE FOR THIS TEST
@@ -149,7 +149,7 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
 
     # Set up the acquisition loop part of the config
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
@@ -201,7 +201,7 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     partial_new_config = partial_config_from_camera_list(camera_list)
 
     # Add NVC writers to each camera
-    nvc_writer_config = NVC_Writer.default_writer_config(fps)
+    nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
     nvc_writer_config["auto_remux_videos"] = True  # this is the default, but just to make it explicit / in case we change the default
     for camera_name in partial_new_config["cameras"].keys():
         nvc_writer_config["camera_name"] = camera_name
@@ -214,11 +214,11 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
 
     # Set up the acquisition loop part of the config
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
-    display_config = MultiDisplay.default_display_config()
+    display_config = MultiDisplay.default_MultiDisplay_config().copy()
     full_config["rt_display"] = display_config
 
     # Run the func!

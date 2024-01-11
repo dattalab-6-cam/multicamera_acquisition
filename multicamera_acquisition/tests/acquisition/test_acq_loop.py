@@ -32,7 +32,7 @@ def test_acq_loop_init(fps):
         write_queue=mp.Queue(),
         display_queue=mp.Queue(),
         camera_device_index=None,
-        camera_config=BaslerCamera.default_camera_config(),
+        camera_config=BaslerCamera.default_camera_config().copy(),
     )
     assert isinstance(loop.await_process, mp.synchronize.Event)
     assert isinstance(loop.await_main_thread, mp.synchronize.Event)
@@ -61,7 +61,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera as Camera
     else:
         raise NotImplementedError
-    camera_config = Camera.default_camera_config()
+    camera_config = Camera.default_camera_config().copy()
     camera_config["name"] = "test"
     camera_config["id"] = id
     camera_config["trigger"] = {"trigger_type": "no_trigger"}  # overwrite defaults to allow cam to run without triggers
@@ -72,7 +72,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     elif writer_type == "ffmpeg":
         from multicamera_acquisition.writer import FFMPEG_Writer as Writer
     write_queue = mp.Queue()
-    writer_config = Writer.default_writer_config(fps)
+    writer_config = Writer.default_writer_config(fps).copy()
     writer_config["camera_name"] = "test"
     writer = Writer(
         write_queue,
@@ -82,7 +82,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     )
 
     # Create the AcquisitionLoop process
-    acq_config = AcquisitionLoop.default_acq_loop_config()
+    acq_config = AcquisitionLoop.default_acq_loop_config().copy()
     acq_config["max_frames_to_acqure"] = int(n_test_frames)
     acq_loop = AcquisitionLoop(
         write_queue=write_queue,

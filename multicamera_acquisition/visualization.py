@@ -17,19 +17,21 @@ from multicamera_acquisition.logging_utils import setup_child_logger
 
 
 class MultiDisplay(mp.Process):
-    def __init__(self, queues, config=None, logger_queue=None, logging_level=logging.DEBUG):
+    def __init__(self, queues, camera_list, display_ranges, config=None, logger_queue=None, logging_level=logging.DEBUG):
         super().__init__()
 
         # Store params
         self.config = config
         self.queues = queues
-        self.num_cameras = len(self.config["camera_names"])
         self.logger_queue = logger_queue
         self.logging_level = logging_level
+        self.camera_list = camera_list
+        self.display_ranges = display_ranges
+        self.num_cameras = len(camera_list)
 
         # Set up the config
         if config is None:
-            self.config = self.default_display_config()
+            self.config = self.default_MultiDisplay_config().copy()
         else:
             self.validate_config()
 
@@ -45,7 +47,7 @@ class MultiDisplay(mp.Process):
         rowi = 0
         labels = []
         # create a label to hold the image
-        for ci, camera_name in enumerate(self.config["camera_names"]):
+        for ci, camera_name in enumerate(self.camera_list):
             # create the camera name label
             label_text = tk.Label(root, text=camera_name)
             label_text.grid(
@@ -109,7 +111,7 @@ class MultiDisplay(mp.Process):
             # initialized checks to see if recording has started
             initialized = np.zeros(len(self.queues)).astype(bool)
             for qi, (queue, camera_name) in enumerate(
-                zip(self.queues, self.config["camera_names"])
+                zip(self.queues, self.camera_list)
             ):
                 data = self._fetch_images(
                     queue, camera_name, log_if_error=initialized[qi]
@@ -127,7 +129,7 @@ class MultiDisplay(mp.Process):
                         data[0],
                         downsample=self.config["downsample"],
                         display_size=self.config["display_size"],
-                        display_range=self.config["display_ranges"][qi],
+                        display_range=self.display_ranges[qi],
                         is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
                     )
 
@@ -146,13 +148,12 @@ class MultiDisplay(mp.Process):
         root.destroy()
 
     @staticmethod
-    def default_display_config():
+    def default_MultiDisplay_config():
         return {
-            "camera_names": ["top", "bottom"],
-            "display_ranges": [None, None],
             "downsample": 4,
+            "display_every_n": 1,
             "cameras_per_row": 3,
-            "display_size": (300, 300),
+            "display_size": (300, 300),  # TODO: allow this to be per-camera
         }
 
     def validate_config(self):
@@ -186,18 +187,18 @@ def format_frame(frame, downsample, display_size, display_range, is_depth):
     frame = frame[::downsample, ::downsample]
     frame = cv2.resize(frame, display_size)
 
+    # normalize in range
+    if display_range is not None:
+        frame = normalize_array(
+            frame,
+            min_value=display_range[0],
+            max_value=display_range[1],
+        ).astype(np.uint8)
+    else:
+        frame = normalize_array(frame).astype(np.uint8)
+
     # int16 should be azure data
     if is_depth:
-        # normalize in range
-        if display_range is not None:
-            frame = normalize_array(
-                frame,
-                min_value=display_range[0],
-                max_value=display_range[1],
-            ).astype(np.uint8)
-        else:
-            frame = normalize_array(frame).astype(np.uint8)
-
         # Convert frame to turbo/jet colormap
         frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
 
@@ -208,7 +209,7 @@ def normalize_array(frame, min_value=None, max_value=None):
     if min_value is None:
         min_value = np.min(frame)
         max_value = np.max(frame)
-    frame[frame > max_value] = min_value
+    frame[frame > max_value] = max_value
     frame[frame < min_value] = min_value
     # frame = np.clip(frame, min_value, max_value)  # Ensure values are in the range [min_value, max_value]
     frame = (
@@ -271,7 +272,7 @@ def plot_video_stats(csv_path, name):
     return
 
 
-def plot_image_grid(images, display_config):
+def plot_image_grid(images, display_config, camera_names, display_ranges):
     """
     Parameters
     ----------
@@ -279,17 +280,21 @@ def plot_image_grid(images, display_config):
         Mapping from camera names to images from that camera
     display_config : dict
         Config dictionary for a MultiDisplay
+    camera_names : list
+        List of camera names to plot
+    display_ranges : list
+        List of display ranges for each camera (ie 0-255 for uint8, 0-65535 for uint16)
     """
 
     cfg = display_config
-    nrow = int(np.ceil(len(cfg["camera_names"]) / cfg["cameras_per_row"]))
+    nrow = int(np.ceil(len(camera_names) / cfg["cameras_per_row"]))
     fig, ax = plt.subplots(
         nrow, cfg["cameras_per_row"], figsize=(2 * cfg["cameras_per_row"], 2 * nrow)
     )
     ax = ax.ravel()
 
     # plot image for each camera in display config, formatted as in Multidisplay
-    for a, camera_name, rng in zip(ax, cfg["camera_names"], cfg["display_ranges"]):
+    for a, camera_name, rng in zip(ax, camera_names, display_ranges):
         frame = images[camera_name]
         frame = format_frame(
             frame,
@@ -304,7 +309,7 @@ def plot_image_grid(images, display_config):
         a.set_yticks([])
 
     # hide unused axes
-    for a in ax[len(cfg["camera_names"]) :]:
+    for a in ax[len(camera_names) :]:
         a.set_axis_off()
 
     fig.tight_layout()

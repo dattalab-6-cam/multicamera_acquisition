@@ -35,6 +35,7 @@ class BaslerCamera(BaseCamera):
 
         fps : int (default: None)
             Current deprecated for Basler cameras.  Baslers are enabled for their max fps by default.
+            If performing non-triggered acquisition, the desired fps for the camera.
 
         logger_queue : multiprocessing.Queue (default: None)
             A queue to which the camera will write log messages.
@@ -57,10 +58,10 @@ class BaslerCamera(BaseCamera):
                 "Camera unexpectedly has no serial number or device index."
             )
 
-        # Load a default config if needed
+        # Load a default config if needed (mostly for testing, least common)
         if self.config is None:
             self.config = (
-                BaslerCamera.default_camera_config()
+                BaslerCamera.default_camera_config().copy()
             )  # If no config file is specified, use the default
 
         if (fps is not None or "fps" in self.config.keys()) and (
@@ -94,8 +95,10 @@ class BaslerCamera(BaseCamera):
             "gain": 6,
             "exposure": 1000,
             "brand": "basler",
-            "display": False,
-            "display_range": (0, 255),
+            "display": {
+                "display_frames": False,
+                "display_range": (0, 255),
+            },
             "trigger": {
                 "trigger_type": "arduino",
                 "acquisition_mode": "Continuous",
@@ -111,13 +114,13 @@ class BaslerCamera(BaseCamera):
         if writer_type == "nvc" and gpu is not None:
             from multicamera_acquisition.writer import NVC_Writer
 
-            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu)
+            writer_config = NVC_Writer.default_writer_config(fps, gpu=gpu).copy()
         elif writer_type == "ffmpeg":
             from multicamera_acquisition.writer import FFMPEG_Writer
 
             writer_config = FFMPEG_Writer.default_writer_config(
                 fps, vid_type="ir", gpu=gpu
-            )
+            ).copy()
         return writer_config
 
     def _create_pylon_sys(self):
@@ -477,7 +480,7 @@ class EmulatedBaslerCamera(BaslerCamera):
         super().__init__(id=id, name=name, config=None, fps=fps)
 
         if config is None:
-            self.config = EmulatedBaslerCamera.default_camera_config()
+            self.config = EmulatedBaslerCamera.default_camera_config().copy()
         else:
             self.config = config
 
@@ -539,8 +542,7 @@ class EmulatedBaslerCamera(BaslerCamera):
             "gain": 6,
             "exposure": 1000,
             "brand": "basler_emulated",
-            "display": False,
-            "display_range": (0, 255),
+            "display": {"display_frames": False, "display_range": (0, 255)},
             "trigger": {
                 "trigger_type": "no_trigger",
             },
