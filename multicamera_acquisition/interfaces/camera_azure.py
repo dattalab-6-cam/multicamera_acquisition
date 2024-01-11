@@ -1,11 +1,4 @@
-""" This camera object can inherit from the same genreal class as 
-basler and flir, but with some pecularities.
-- Azures should await a trigger from the microcontroller before starting
-- The camera grabs multiple images. RGB, IR, and depth.
-- ???
-
-"""
-
+import logging
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 from pyk4a import (
     PyK4A,
@@ -92,6 +85,13 @@ class AzureCamera(BaseCamera):
 
     def init(self):
         """Initialize the camera."""
+
+        # Try to find the logger
+        try:
+            self.logger = logging.getLogger(f"{self.name}_acqLoop")
+        except AttributeError:
+            self.logger = logging.getLogger()
+
         # Create the config object
         camera_config = self._get_azure_config()
 

@@ -31,7 +31,6 @@ def test_acq_loop_init(fps):
     loop = AcquisitionLoop(
         write_queue=mp.Queue(),
         display_queue=mp.Queue(),
-        fps=fps,
         camera_device_index=None,
         camera_config=BaslerCamera.default_camera_config().copy(),
     )
@@ -88,7 +87,6 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
     acq_loop = AcquisitionLoop(
         write_queue=write_queue,
         display_queue=None,
-        fps=fps,
         camera_device_index=None,
         camera_config=camera_config,
         acq_loop_config=acq_config,

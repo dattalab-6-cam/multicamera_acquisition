@@ -1,5 +1,7 @@
 import csv
 import logging
+from logging import StreamHandler
+from logging.handlers import QueueListener
 import multiprocessing as mp
 import time
 import warnings
@@ -22,6 +24,7 @@ from multicamera_acquisition.config import (
 )
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
+from multicamera_acquisition.logging_utils import setup_child_logger
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 
 
@@ -34,11 +37,13 @@ class AcquisitionLoop(mp.Process):
         self,
         write_queue,
         display_queue,
-        fps,
         camera_device_index,
+        camera_config,
         write_queue_depth=None,
-        camera_config=None,
         acq_loop_config=None,
+        logger_queue=None,
+        logging_level=logging.DEBUG,
+        process_name=None,
     ):
         """
         Parameters
@@ -49,32 +54,41 @@ class AcquisitionLoop(mp.Process):
         display_queue : multiprocessing.Queue
             A queue from which frames will be read for display.
 
-        fps : int
-            The frames per second to acquire. Currently unused?
-
         camera_device_index : int
             The device index of the camera to acquire from.
+
+        camera_config : dict
+            A config dict for the Camera.
 
         write_queue_depth : multiprocessing.Queue (default: None)
             A queue to which depth frames will be written (azure only).
 
-        camera_config : dict (default: None)
-            A config dict for the Camera.
-            If None, an error will be raised.
-
         acq_loop_config : dict (default: None)
             A config dict for the AcquisitionLoop.
             If None, the default config will be used.
+
+        logger_queue : multiprocessing.Queue (default: None)
+            A queue to which the logger will write messages.
+            If None, the root logger will be used.
+
+        logging_level : int (default: logging.DEBUG)
+            The logging level to use for the logger.
+
+        process_name : str (default: None)
+            The name of the process.
         """
-        super().__init__()
+
+        # Save the process name for logging purposes
+        super().__init__(name=process_name)
 
         # Save values
         self.write_queue = write_queue
         self.display_queue = display_queue
         self.write_queue_depth = write_queue_depth
         self.camera_config = camera_config
-        self.fps = fps
         self.camera_device_index = camera_device_index
+        self.logger_queue = logger_queue
+        self.logging_level = logging_level
 
         # Get config
         if acq_loop_config is None:
@@ -120,6 +134,20 @@ class AcquisitionLoop(mp.Process):
     def run(self):
         """Acquire frames. This is run when mp.Process.start() is called."""
 
+        # Set up logging
+        if self.logger_queue is None:
+            # Just use the root logger
+            self.logger = logging.getLogger()
+        elif isinstance(self.logger_queue, mp.queues.Queue):
+            # Create a logger for this process 
+            # (it will automatically include the process name in the log output)
+            logger = setup_child_logger(self.logger_queue, level=self.logging_level)
+            self.logger = logger
+        else:
+            raise ValueError(
+                "logger_queue must be a multiprocessing.Queue or None."
+            )
+
         # Get the Camera object instance
         cam = get_camera(
             brand=self.camera_config["brand"],
@@ -129,6 +157,7 @@ class AcquisitionLoop(mp.Process):
         )
 
         # Actually open / initialize the connection to the camera
+        self.logger.debug(f"About to initialize camera {self.camera_config['name']}")
         cam.init()
 
         # Report that the process has initialized the camera
@@ -193,30 +222,30 @@ class AcquisitionLoop(mp.Process):
                 if type(e).__name__ == "SpinnakerException":
                     pass
                 elif type(e).__name__ == "TimeoutException":
-                    # print(f"{cam.name} cam:{e}")
-                    print(
+                    self.logger.warn(
                         f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
                     )
                     pass
                 else:
                     raise e
                 if self.acq_config["dropped_frame_warnings"]:
-                    warnings.warn(
+                    self.logger.warn(
                         f"Dropped frame after receiving {n_frames_received} on {current_iter} iters: \n{type(e).__name__}"
                     )
             current_iter += 1
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
                     if not self.stopped.is_set():
-                        print(
+                        self.logger.debug(
                             f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping."
                         )
                         self.stopped.set()
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
-        print(f"Writing empties to stop queue, {self.camera_config['name']}")
-        # print(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
+        self.logger.debug(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
+        self.logger.debug(f"Writing empties to stop queue, {self.camera_config['name']}")
+
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
@@ -224,10 +253,10 @@ class AcquisitionLoop(mp.Process):
             self.display_queue.put(tuple())
 
         # Close the camera
-        logging.log(logging.INFO, f"Closing camera {self.camera_config['name']}")
+        self.logger.debug(f"Closing camera {self.camera_config['name']}")
         cam.close()
 
-        logging.debug(f"Acquisition run finished, {self.camera_config['name']}")
+        self.logger.debug("Camera closed")
 
 
 def generate_full_config(camera_lists):
@@ -251,11 +280,13 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     processes, escalating to terminate() if necessary.
     """
 
+    # Get the main logger
+    logger = logging.getLogger("main_acq_logger")
+
     # End acquisition loop processes
     for acquisition_loop in acquisition_loops:
         if acquisition_loop.is_alive():
-            logging.log(
-                logging.DEBUG,
+            logger.debug(
                 f"stopping acquisition loop ({acquisition_loop.camera_config['name']})",
             )
 
@@ -263,8 +294,7 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             acquisition_loop.stop()
 
             # Wait for the process to finish
-            logging.log(
-                logging.DEBUG,
+            logger.debug(
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
             acquisition_loop.join(timeout=1)
@@ -272,16 +302,14 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             # If still alive, terminate it
             if acquisition_loop.is_alive():
                 # debug: notify user we had to terminate the acq loop
-                logging.debug("Terminating acquisition loop (join timed out)")
+                logger.warning("Terminating acquisition loop (join timed out)")
                 acquisition_loop.terminate()
 
     # End writer processes
     for writer in writers:
         if writer.is_alive():
             writer.join(timeout=writer_timeout)
-
-    # Debug: printer the writer's exitcode
-    logging.debug(f"Writer exitcode: {writer.exitcode}")
+    logger.debug(f"Writer exitcode: {writer.exitcode}")
 
     # End display processes
     if disp is not None:
@@ -343,6 +371,7 @@ def refactor_acquire_video(
     append_camera_serial=False,
     file_prefix=None,
     overwrite=False,
+    logging_level=logging.INFO,
 ):
     """Acquire video from multiple, synchronized cameras.
 
@@ -368,6 +397,9 @@ def refactor_acquire_video(
 
     overwrite : bool (default: False)
         Whether to overwrite the save location if it already exists.
+
+    logging_level : int (default: logging.INFO)
+        The logging level to use for the logger.
 
     Returns
     -------
@@ -438,10 +470,31 @@ def refactor_acquire_video(
             range: [0, 1000]
     """
 
+    # Set up the main logger for this process
+    logger = logging.getLogger("main_acq_logger")
+    logger.setLevel(logging_level)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.debug("Set up main logger.")
+
+    # TODO: could set up a second logger for arduino messages
+
+    # Set up the mp logger to log across processes
+    logger_queue = mp.Queue()
+    queue_listener = QueueListener(logger_queue, StreamHandler())
+    queue_listener.start()
+    logger.debug("Started mp logging.")
+
     # Create the recording directory
     save_location = prepare_rec_dir(
         save_location, append_datetime=append_datetime, overwrite=overwrite
     )
+    logger.debug(f"Have good save location {save_location}")
+
     base_filename = prepare_base_filename(
         file_prefix=file_prefix,
         append_datetime=append_datetime,
@@ -467,12 +520,17 @@ def refactor_acquire_video(
     config_filepath = save_location / "recording_config.yaml"
     save_config(config_filepath, final_config)
 
-    # Connect to the microcontroller (or other microcontroller)
-    microcontroller = Microcontroller(save_location / base_filename, final_config)
-    microcontroller.open_serial_connection()
+    # Find the arduino to be used for triggering
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Finding microcontroller...")
+        microcontroller = Microcontroller(save_location / base_filename, final_config)
+        microcontroller.open_serial_connection()
+
+    # TODO: triggerdata file
 
     # Create the various processes
     # TODO: refactor these into one "running processes" dict or sth like that
+    logger.debug("Starting child processes...")
     writers = []
     acquisition_loops = []
     display_queues = []
@@ -502,6 +560,9 @@ def refactor_acquire_video(
             metadata_file_name,
             writer_type=camera_dict["writer"]["type"],
             config=camera_dict["writer"],
+            process_name=f"{camera_name}_writer",
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
 
         # Get a second writer process for depth if needed
@@ -519,6 +580,9 @@ def refactor_acquire_video(
                 config=camera_dict[
                     "writer_depth"
                 ],  # TODO: make a separate writer_depth config for depth
+                process_name=f"{camera_name}_writer",
+                logger_queue=logger_queue,
+                logging_level=logging_level,
             )
         else:
             write_queue_depth = None
@@ -536,11 +600,13 @@ def refactor_acquire_video(
         acquisition_loop = AcquisitionLoop(
             write_queue=write_queue,
             display_queue=display_queue,
-            fps=final_config["globals"]["fps"],
             camera_device_index=device_index_dict[camera_name],
-            write_queue_depth=write_queue_depth,
             camera_config=camera_dict,
+            write_queue_depth=write_queue_depth,
             acq_loop_config=final_config["acq_loop"],
+            logger_queue=logger_queue,
+            logging_level=logging_level,
+            process_name=f"{camera_name}_acqLoop",
         )
 
         # Start the writer and acquisition loop processes
@@ -568,20 +634,17 @@ def refactor_acquire_video(
         disp = None
 
     # Wait for the acq loop processes to start their cameras
+    logger.info("Starting cameras...")
     for acquisition_loop in acquisition_loops:
         acquisition_loop._continue_from_main_thread()
         acquisition_loop.await_process.wait()
 
     # Tell microcontroller to start the acquisition loop
-    try:
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Starting microcontroller...")
         microcontroller.start_acquisition(recording_duration_s)
-    except:
-        # kill everything if we can't get confirmation that microcontroller started
-        end_processes(acquisition_loops, writers, [])
-        return save_location, video_file_name, final_config
 
     # Wait for the specified duration
-
     try:
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
 
@@ -589,11 +652,19 @@ def refactor_acquire_video(
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
-            # Tell the microcontroller to check for input trigger data or finish signal
-            finished = microcontroller.check_for_input()
-
-            if finished:
-                print("Finished recieved from microcontroller")
+            if final_config["globals"]["microcontroller_required"]:
+                # Tell the microcontroller to check for input trigger data or finish signal
+                finished = microcontroller.check_for_input()
+                if finished:
+                    logger.debug("Finished recieved from microcontroller")
+                    break
+            elif not any(
+                [acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]
+            ):
+                # If no microcontroller, then there might be a frame limit on the acq loops
+                # (eg during testing), and they might all be stopped, in which case
+                # we can also just break.
+                logger.debug("All acquisition loops have stopped")
                 break
 
             # Update pbar
@@ -601,16 +672,14 @@ def refactor_acquire_video(
                 pbar.update((datetime.now() - datetime_prev).seconds)
                 datetime_prev = datetime.now()
 
-    except KeyboardInterrupt as e:
-        microcontroller.interrupt_acquisition()
-
     finally:
         # End the processes and close the microcontroller serial connection
         pbar.update((datetime.now() - datetime_prev).seconds)
         pbar.close()
         print("Ending processes, this may take a moment...")
-        microcontroller.close()
+        if final_config["globals"]["microcontroller_required"]:
+            microcontroller.interrupt_acquisition()
         end_processes(acquisition_loops, writers, None, writer_timeout=300)
-        print("Done.")
+        logger.info("Done.")
 
     return save_location, video_file_name, final_config

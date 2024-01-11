@@ -83,7 +83,7 @@ def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
 
     # Create the full config, filling in defaults where necessary
     full_config = create_full_camera_default_config(partial_new_config, fps)
-    full_config["globals"] = dict(fps=fps, arduino_required=False)
+    full_config["globals"] = dict(fps=fps, microcontroller_required=False)
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config().copy()
