@@ -648,9 +648,9 @@ class Microcontroller(object):
     def check_for_input(self):
         """
         Check for input from the microcontroller. Two kinds of input are possible:
-        - The line "F\n" indicates that the microcontroller has finished the acquisition loop.
-        - A triggerdata message reporting the state of the microcontroller's input pins and
-          has the format "<STX><pin1><state1>...<pinN><stateN><cycleIndex>\n"
+        - The character "F\n" indicates that the microcontroller has finished the acquisition loop.
+        - A triggerdata message reporting the state of the microcontroller's input pins that
+          has the format "<STX><pin><state><micros><cycleIndex>\n"
 
         Returns:
         --------
@@ -658,27 +658,28 @@ class Microcontroller(object):
             True if the microcontroller has finished the acquisition loop, False otherwise.
         """
         if self.serial_connection.in_waiting > 0:
-            msg = self.serial_connection.readline()
-            if msg[:1] == b"F":
+            char = self.serial_connection.read(1)
+            if char == b"F":
+                self.serial_connection.read(1)  # read newline
                 return True
-            elif msg[:1] == STX:
-                data = bytes.fromhex(msg[1:-1])
-                pin, state, micros, cycleIndex = struct.unpack("<HBLI", data)
+            elif char == STX:
+                data = self.serial_connection.read(12)
+                pin, state, micros, cycleIndex = struct.unpack("<HBLL", data[:-1])
                 time = cycleIndex * self.cycle_duration + micros
                 self.trigger_data_file.write(f"{time},{pin},{state}\n")
             else:
-                raise RuntimeError(f"Unexpected message from microcontroller: {msg}")
+                raise RuntimeError(f"Unexpected character from microcontroller: {char}")
         return False
 
     @staticmethod
     def default_microcontroller_config():
         return {
-            "azure_trigger_pins": ["0"],
-            "top_camera_pins": ["1", "3", "5", "7", "9"],
-            "bottom_camera_pins": ["11"],
-            "input_pins": ["10"],
-            "top_light_pins": ["38", "39", "40", "41", "14", "15"],
-            "bottom_light_pins": ["16", "17", "20", "21", "22", "23"],
+            "azure_trigger_pins": [0],
+            "top_camera_pins": [1, 3, 5, 7, 9],
+            "bottom_camera_pins": [11],
+            "input_pins": [10],
+            "top_light_pins": [38, 39, 40, 41, 14, 15],
+            "bottom_light_pins": [16, 17, 20, 21, 22, 23],
             "top_light_dur": None,
             "bottom_light_dur": None,
             "random_output_pins": [],
@@ -688,7 +689,7 @@ class Microcontroller(object):
             "azure_pulse_dur": 100,
             "basler_pulse_dur": 100,
             "bottom_camera_offset": 100,
-            "gap_between_azure_and_basler": 100,
+            "gap_between_azure_and_basler": 50,
             "trigger_plot_figsize": (12, 3),
             "plot_trigger_schedule": True,
             "microcontroller_port": None,
