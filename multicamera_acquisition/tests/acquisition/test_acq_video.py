@@ -1,3 +1,4 @@
+import logging
 import pytest
 import os
 
@@ -43,7 +44,15 @@ def writer_type(pytestconfig):
     return pytestconfig.getoption("writer_type")  # default nvc, see conftest.py
 
 
-def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, writer_type, fps):
+@pytest.fixture(scope="session")
+def logging_level(pytestconfig):
+    return pytestconfig.getoption("log_cli_level")  # this captures the built-in pytest --log-cli-level option
+
+
+def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, writer_type, fps, logging_level):
+
+    if logging_level is None:
+        logging_level = logging.INFO
 
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0},
@@ -59,6 +68,10 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
 
     # Add writer configs to each camera config
     if writer_type == "nvc":
+        try:
+            import PyNvCodec as nvc
+        except ImportError:
+            pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
         writer_config = NVC_Writer.default_writer_config(fps)
     elif writer_type == "ffmpeg":
         writer_config = FFMPEG_Writer.default_writer_config(fps)
@@ -85,6 +98,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         recording_duration_s=int(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
+        logging_level=logging_level
     )
 
     # Check that the video exists
@@ -225,3 +239,15 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     # NB: this won't work unless we mux the videos, so this also tests the muxing.
     for camera_name in full_config["cameras"].keys():
         assert count_frames(str(first_video_file_name)) == n_test_frames
+
+
+if __name__ == "__main__":
+    test_refactor_acquire_video(
+        tmp_path="./multicamera_acquisition/scratch/acq_test",
+        camera_brand="basler_emulated",
+        n_test_frames=200,
+        trigger_type="no_trigger",
+        writer_type="ffmpeg",
+        fps=30,
+        logging_level=logging.DEBUG
+    )

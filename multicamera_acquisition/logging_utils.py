@@ -5,38 +5,47 @@ from logging.handlers import QueueHandler
 import logging
 
 
-def logger_process(queue, level=logging.DEBUG):
-    """ A process that consumes log messages from a queue, implemented in order to 
-    allow logging from many child processes at once.
-
-    Taken from: https://superfastpython.com/multiprocessing-logging-in-python/. 
-    See also: https://docs.python.org/3/library/logging.handlers.html and 
-    https://docs.python.org/3/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes
+def setup_child_logger(
+        logger_queue, 
+        level=logging.DEBUG, 
+        logging_format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+):
+    """Given a queue to a parent logger process, set up a logger for the current process.
+    The logger's name will be the name of the current process.
 
     Parameters
     ----------
     queue : multiprocessing.Queue
         A queue to which the logger will write messages.
+
+    level : int
+        The logging level to use for the child logger.
+
+    logging_format : str
+        The logging format to use for the child logger.
+
+    Returns
+    -------
+    logger : logging.Logger
+        A logger for the current process.
+
+    process_name: str
+        The name of the current process. 
     """
 
+    # Get the current process name
+    process_name = current_process().name
+
     # Create a logger
-    logger = logging.getLogger('central_logger')
+    logger = logging.getLogger(process_name)
 
-    # Configure a stream handler
-    logger.addHandler(logging.StreamHandler())
+    # Add a handler that uses the shared queue
+    handler = logging.handlers.QueueHandler(logger_queue)
+    formatter = logging.Formatter(logging_format)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
-    # Log all messages, debug and up
+    # Set level so we don't burden the queue with things we're not going to log anyways
     logger.setLevel(level)
 
-    # Run until we get a stop signal
-    while True:
-
-        # Consume a log message, block until one arrives
-        message = queue.get()
-
-        # Check for shutdown
-        if message is None:
-            break
-
-        # Log the message
-        logger.handle(message)
+    return logger

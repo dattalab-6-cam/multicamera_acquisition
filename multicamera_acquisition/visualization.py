@@ -13,15 +13,19 @@ import pandas as pd
 import PIL
 from PIL import ImageTk
 
+from multicamera_acquisition.logging_utils import setup_child_logger
+
 
 class MultiDisplay(mp.Process):
-    def __init__(self, queues, config=None):
+    def __init__(self, queues, config=None, logger_queue=None, logging_level=logging.DEBUG):
         super().__init__()
 
         # Store params
         self.config = config
         self.queues = queues
         self.num_cameras = len(self.config["camera_names"])
+        self.logger_queue = logger_queue
+        self.logging_level = logging_level
 
         # Set up the config
         if config is None:
@@ -82,6 +86,22 @@ class MultiDisplay(mp.Process):
         return data
 
     def run(self):
+
+        # Set up the logger
+        if self.logger_queue is None:
+            # Just use the root logger
+            self.logger = logging.getLogger()
+        elif isinstance(self.logger_queue, mp.queues.Queue):
+            # Create a logger for this process 
+            # (it will automatically include the process name in the log output)
+            logger = setup_child_logger(self.logger_queue, level=self.logging_level)
+            self.logger = logger
+            self.logger.debug("Created logger")
+        else:
+            raise ValueError(
+                "logger_queue must be a multiprocessing.Queue or None."
+            )
+        
         root, labels = self._init_layout()
 
         quit = False

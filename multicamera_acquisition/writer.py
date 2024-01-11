@@ -7,8 +7,9 @@ import warnings
 import os
 from pathlib import Path
 
-
 import numpy as np
+
+from multicamera_acquisition.logging_utils import setup_child_logger
 
 # for reference only
 NVIDIA_SETTINGS = """
@@ -51,14 +52,25 @@ NVIDIA_SETTINGS = """
 
 
 class BaseWriter(mp.Process):
-    def __init__(self, queue, video_file_name, metadata_file_name, config=None):
-        super().__init__()
+    def __init__(
+        self, 
+        queue, 
+        video_file_name, 
+        metadata_file_name, 
+        config=None, 
+        process_name=None,
+        logger_queue=None,
+        logging_level=logging.DEBUG,
+    ):
+        super().__init__(name=process_name)
 
         # Store params
         self.queue = queue
         self.video_file_name = video_file_name
         self.metadata_file_name = metadata_file_name
         self.config = config
+        self.logger_queue = logger_queue
+        self.logging_level = logging_level
 
         # File naming stuff
         # File name format is {prefix}.{start_timestamp}.{camera_name}.{serial_num}.{first_frame_number}.{extension}
@@ -93,7 +105,24 @@ class BaseWriter(mp.Process):
         pass
 
     def run(self):
+
+        # Set up the logger
+        if self.logger_queue is None:
+            # Just use the root logger
+            self.logger = logging.getLogger()
+        elif isinstance(self.logger_queue, mp.queues.Queue):
+            # Create a logger for this process 
+            # (it will automatically include the process name in the log output)
+            logger = setup_child_logger(self.logger_queue, level=self.logging_level)
+            self.logger = logger
+            self.logger.debug("Created logger")
+        else:
+            raise ValueError(
+                "logger_queue must be a multiprocessing.Queue or None."
+            )
+
         # Get CSV writer for metadata file
+        self.logger.debug("Creating metadata file")
         self.initialize_metadata()
 
         # Loop until we get a stop signal
@@ -103,6 +132,7 @@ class BaseWriter(mp.Process):
 
             # If we get an empty tuple, stop
             if len(data) == 0:
+                self.logger.debug("Got stop signal")
                 break
 
             # Unpack the data
@@ -118,6 +148,7 @@ class BaseWriter(mp.Process):
 
             # If the frame is corrupted (TODO: how does this check for corruption?)
             if img is None:
+                self.logger.warning("Got empty frame (corruption?), continuing")
                 continue
 
             # Write the metadata
@@ -126,14 +157,17 @@ class BaseWriter(mp.Process):
                     [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
                 )
             except ValueError as e:
-                print(f"frame id: {self.frame_id}")
-                print(f"current fr: {current_frame}")
+                self.logger.error(
+                    f"Failed to write metadata for frame {current_frame}, frame id: {self.frame_id}"
+                )
+                self.logger.error(e)
                 raise
 
             # Reset the pipe if needed (after self._reset_writer())
             if self.pipe is None:
                 data_shape = img.shape
                 self._get_new_pipe(data_shape)
+                self.logger.debug("Created new video pipe")
 
             # Write the frame
             self.append(img)
@@ -143,16 +177,13 @@ class BaseWriter(mp.Process):
 
             # If the current frame is greater than the max, create a new video and metadata file
             if self.frame_id >= self.config["max_video_frames"]:
+                self.logger.info("Reached max vid frames, resetting writers")
                 self._reset_writers()
 
-        logging.log(
-            logging.DEBUG, f"Closing writer pipe ({self.config['camera_name']})"
-        )
+        self.logger.debug(f"Closing writer pipe ({self.config['camera_name']})")
         self.close_video()
 
-        logging.log(
-            logging.DEBUG, f"Writer run finished ({self.config['camera_name']})"
-        )
+        self.logger.debug(f"Writer run finished ({self.config['camera_name']})")
         self.finish()
 
     def _reset_writers(self):
@@ -162,7 +193,8 @@ class BaseWriter(mp.Process):
             self.video_file_name.parent
             / f"{self.orig_stem}.{self.frame_id}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
         )
-        # new pipe will be created on next frame
+        
+        # [new pipe will be created on next frame]
 
         # Reset the metadata writer
         self.metadata_file.close()
@@ -185,18 +217,26 @@ class BaseWriter(mp.Process):
         pass
 
 
-# TODO: deal with ffmpeg warning:
-# "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class NVC_Writer(BaseWriter):
-    def __init__(self, queue, video_file_name, metadata_file_name, config=None):
-        # protect import statement
-        # import PyNvCodec as nvc
+    def __init__(
+        self, 
+        queue, 
+        video_file_name, 
+        metadata_file_name, 
+        config=None, 
+        process_name=None,
+        logger_queue=None,
+        logging_level=logging.DEBUG,
+    ):
 
         super().__init__(
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
             config=config,
+            process_name=process_name,
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
 
         # VPF-specific stuff
@@ -260,7 +300,7 @@ class NVC_Writer(BaseWriter):
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
             "gop": self.config["gop"],  # larger = faster
         }
-        logging.log(logging.DEBUG, f"encoder dict ({encoder_dictionary})")
+        self.logger.debug(f"encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,
             gpu_id=self.config["gpu"],
@@ -268,7 +308,7 @@ class NVC_Writer(BaseWriter):
         )
         self.encFile = open(self.video_file_name, "wb")
         self._current_vid_muxing = False
-        logging.log(logging.DEBUG, "Pipe created")
+        self.debug("Pipe created")
 
     def append(self, data):
         # Cast to uint8
@@ -287,7 +327,7 @@ class NVC_Writer(BaseWriter):
             success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
         except Exception as e:
             success = False
-            logging.log(logging.DEBUG, f"failed to create frame: {e}")
+            self.logger.debug(f"failed to create frame: {e}")
 
         if success:
             encByteArray = bytearray(self.encFrame)
@@ -322,7 +362,9 @@ class NVC_Writer(BaseWriter):
                 break
 
     def _mux_video(self, video_file_name):
+
         # Create a muxer process
+        self.logger.debug(f"Creating muxer process for {video_file_name}")
         success_event = mp.Event()
         muxer = VideoMuxer(video_file_name, success_event)
 
@@ -339,8 +381,10 @@ class NVC_Writer(BaseWriter):
         self._current_vid_muxing = True
 
     def finish(self):
+
         # Join the muxer processes and rename the videos
         if self.config["auto_remux_videos"] and hasattr(self, "muxer_processes"):
+            self.logger.debug("Joining muxer processes")
             for vid, muxer in zip(self.vids_muxed, self.muxer_processes):
                 muxer.join()
                 if not muxer.success.is_set():
@@ -419,13 +463,28 @@ class VideoMuxer(mp.Process):
         self.success.set()
 
 
+# TODO: deal with ffmpeg warning:
+# "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class FFMPEG_Writer(BaseWriter):
-    def __init__(self, queue, video_file_name, metadata_file_name, config=None):
+    def __init__(
+        self, 
+        queue, 
+        video_file_name, 
+        metadata_file_name, 
+        config=None, 
+        process_name=None,
+        logger_queue=None,
+        logging_level=logging.DEBUG,
+    ):
+
         super().__init__(
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
             config=config,
+            process_name=process_name,
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
 
         # FFMPEG-specific stuff
@@ -460,9 +519,6 @@ class FFMPEG_Writer(BaseWriter):
             depth=self.config["depth"],
             loglevel=self.config["loglevel"],
         )
-
-        # Print it
-        # print(' '.join(command))
 
         # Create a subprocess pipe to write frames
         with (
@@ -537,7 +593,6 @@ class FFMPEG_Writer(BaseWriter):
         """Create a pipe for ffmpeg"""
         # Get the size of the frame
         frame_size = "{0:d}x{1:d}".format(frame_shape[1], frame_shape[0])
-        logging.log(logging.DEBUG, f"FRAME SHAPE {frame_shape}")
         if not depth:
             # Prepare the basic ffmpeg command
             command = [
@@ -619,21 +674,27 @@ class FFMPEG_Writer(BaseWriter):
                 str(filename),
             ]
 
-        # log
-        logging.log(logging.DEBUG, f"filename: {' '.join(command)}")
-
         return command
 
 
 def get_writer(
-    queue, video_file_name, metadata_file_name, writer_type="nvc", config=None
+    queue, 
+    video_file_name, 
+    metadata_file_name, 
+    writer_type="nvc", 
+    config=None,
+    process_name=None,
+    logger_queue=None,
+    logging_level=logging.DEBUG,
 ):
     """Get a Writer object."""
     if writer_type == "nvc":
-        writer = NVC_Writer(queue, video_file_name, metadata_file_name, config=config)
+        writer = NVC_Writer(
+            queue, video_file_name, metadata_file_name, config=config, process_name=process_name, logger_queue=logger_queue, logging_level=logging_level
+        )
     elif writer_type == "ffmpeg":
         writer = FFMPEG_Writer(
-            queue, video_file_name, metadata_file_name, config=config
+            queue, video_file_name, metadata_file_name, config=config, process_name=process_name, logger_queue=logger_queue, logging_level=logging_level
         )
     else:
         raise ValueError(f"Unrecognized writer type: {writer_type}")
