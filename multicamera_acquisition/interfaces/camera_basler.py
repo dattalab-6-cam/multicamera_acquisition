@@ -1,16 +1,23 @@
-from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from pypylon import pylon
-from pypylon._genicam import RuntimeException
-import numpy as np
+import logging
 import os
 import time
-import warnings
 
-import pdb
+import numpy as np
+from pypylon import pylon
+from pypylon._genicam import RuntimeException
+
+from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
+                                                            CameraError)
 
 
 class BaslerCamera(BaseCamera):
-    def __init__(self, id=None, name=None, config=None, fps=None):
+    def __init__(
+        self, 
+        id=None, 
+        name=None, 
+        config=None, 
+        fps=None,
+    ):
         """Encapsulates a connection to a Basler camera.
 
         Parameters
@@ -27,8 +34,14 @@ class BaslerCamera(BaseCamera):
             If config is None, uses the camera's default config file.
 
         fps : int (default: None)
-            Current deprecated for Basler cameras in triggered mode. (Baslers are enabled for their max fps by default.)
+            Current deprecated for Basler cameras.  Baslers are enabled for their max fps by default.
             If performing non-triggered acquisition, the desired fps for the camera.
+
+        logger_queue : multiprocessing.Queue (default: None)
+            A queue to which the camera will write log messages.
+
+        logging_level : int (default: logging.DEBUG)
+            The logging level to use for the camera.
         """
 
         # Init the parent class
@@ -55,7 +68,7 @@ class BaslerCamera(BaseCamera):
             "trigger_mode" in self.config.keys()
             and self.config["trigger_mode"] == "arduino"
         ):
-            warnings.warn(
+            self.logger.warn(
                 "Providing fps for Baslers in triggered mode is deprecated and generally not necessary."
             )
 
@@ -173,6 +186,14 @@ class BaslerCamera(BaseCamera):
         using a `with` clause.
         """
 
+        # Try to find the logger within the acqLoop process
+        try:
+            self.logger = logging.getLogger(f"{self.name}_acqLoop")
+        except AttributeError:
+            self.logger = logging.getLogger()
+
+        self.logger.debug(f"Initializing camera {self.name}...")
+
         # Create the pypylon camera object
         self._create_pylon_cam()
 
@@ -216,7 +237,7 @@ class BaslerCamera(BaseCamera):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
+                f"(Real) Basler camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
             )
 
     def _configure_basler(self):
@@ -306,7 +327,7 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerMode.SetValue("On")
         elif mode == "no_trigger":
             if self.fps is None:
-                warnings.warn(
+                self.logger.warn(
                     "No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps."
                 )
                 self.fps = 30
@@ -449,7 +470,13 @@ class EmulatedBaslerCamera(BaslerCamera):
         di.SetDeviceClass(device_class)
         return [di]
 
-    def __init__(self, id=None, name=None, config=None, fps=None):
+    def __init__(
+        self, 
+        id=None, 
+        name=None, 
+        config=None, 
+        fps=None,
+    ):
         super().__init__(id=id, name=name, config=None, fps=fps)
 
         if config is None:
@@ -499,7 +526,7 @@ class EmulatedBaslerCamera(BaslerCamera):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
+                f"(Emulated) Basler camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
             )
         self.model_name = "Emulated"
 

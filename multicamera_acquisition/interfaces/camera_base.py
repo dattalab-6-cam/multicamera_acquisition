@@ -1,6 +1,8 @@
+import logging
 import numpy as np
-from warnings import warn
 import yaml
+
+from multicamera_acquisition.logging_utils import setup_child_logger
 
 
 class CameraError(Exception):
@@ -33,6 +35,10 @@ def get_camera(
         A dictionary of config values.
         If config is None, uses the camera's default config file.
 
+    process_name : str (default: None)
+        The name of the process that will use this camera.  This is used to
+        create a logger for the camera.
+
     Returns
     -------
     cam : Camera object
@@ -64,11 +70,7 @@ def get_camera(
         )
 
     elif brand == "lucid":
-        from multicamera_acquisition.interfaces.camera_lucid import (
-            LucidCamera as Camera,
-        )
-
-        cam = Camera(index=str(serial))
+        raise NotImplementedError("Lucid camera not yet implemented in refactored branch.")
 
     return cam
 
@@ -111,7 +113,13 @@ class BaseCamera(object):
 
     """
 
-    def __init__(self, id=0, name=None, config=None, fps=None):
+    def __init__(
+        self, 
+        id=0, 
+        name=None, 
+        config=None, 
+        fps=None, 
+    ):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
         ----------
@@ -130,21 +138,29 @@ class BaseCamera(object):
             The desired frame rate for the recording.
             It is preferred to set this from the config, but this is provided
             for convenience.
+
+        logger_queue : multiprocessing.Queue (default: None)
+            A queue to which the camera will write log messages.
+
+        logging_level : int (default: logging.DEBUG)
+            The logging level to use for the camera.
         """
+
         if isinstance(id, int):
             self.serial_number = None
             self.device_index = id
             if id > 10:
-                warn(
-                    "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
-                )
+                pass
+                # self.logger.warn(
+                #     "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
+                # )
         elif isinstance(id, str):
             self.serial_number = id
             self.device_index = None
         elif id is None:
             self.serial_number = None
             self.device_index = 0
-            warn("No camera ID provided.  Using device index 0.")
+            # self.logger.warn("No camera ID provided.  Using device index 0.")
         else:
             raise ValueError("Invalid camera ID, must be int or str.")
 
