@@ -22,6 +22,8 @@ def validate_recording_config(recording_config):
 
     This function checks that the recording config dict is valid,
     and raises an error if it is not.
+
+    # TODO: warn user if use mcu is False but there is a lot of MCU config in the config file
     """
 
     # Ensure that the recording config is a dict
