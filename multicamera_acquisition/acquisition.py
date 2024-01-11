@@ -11,6 +11,7 @@ import pdb
 
 import numpy as np
 import serial
+import yaml
 
 from tqdm import tqdm
 from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError

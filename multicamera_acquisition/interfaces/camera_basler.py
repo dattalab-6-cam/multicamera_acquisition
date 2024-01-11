@@ -396,7 +396,7 @@ class BaslerCamera(BaseCamera):
         tstamp : int
             The timestamp of the frame, if get_timestamp=True.
         """
-        if self.cam.IsGrabbing() == False:
+        if self.cam.IsGrabbing() is False:
             raise ValueError("Camera is not set up to grab frames.")
 
         img = self.get_image(timeout)

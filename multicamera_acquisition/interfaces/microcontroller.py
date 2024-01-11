@@ -682,7 +682,6 @@ class Microcontroller(object):
             "custom_output_pins": [],
             "custom_output_times": [],
             "custom_output_states": [],
-            "random_output_pins": [],
             "azure_pulse_dur": 100,
             "basler_pulse_dur": 100,
             "bottom_camera_offset": 100,
