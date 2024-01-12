@@ -287,7 +287,7 @@ class NVC_Writer(BaseWriter):
         )
         self.encFile = open(self.video_file_name, "wb")
         self._current_vid_muxing = False
-        self.debug("Pipe created")
+        self.logger.debug("Pipe created")
 
     def append(self, data):
         # Cast to uint8
