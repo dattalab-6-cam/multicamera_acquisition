@@ -326,7 +326,7 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerActivation.SetValue("RisingEdge")
             self.cam.TriggerMode.SetValue("On")
         elif mode == "no_trigger":
-            if self.fps is None:
+            if not hasattr(self, "fps") or self.fps is None:
                 self.logger.warn(
                     "No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps."
                 )

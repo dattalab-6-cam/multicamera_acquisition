@@ -177,6 +177,8 @@ class BaseCamera(object):
             and self.config["fps"] is not None
         ):
             self.fps = self.config["fps"]
+        elif fps is not None:
+            self.fps = fps
 
     def _resolve_device_index(self):
         """Resolve the device index of the camera.  This is used to connect to
