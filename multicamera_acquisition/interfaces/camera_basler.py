@@ -315,10 +315,10 @@ class BaslerCamera(BaseCamera):
         ----------
         mode : str
             The trigger mode to use.  Must be one of:
-                - 'hardware': use the arduino trigger
+                - 'arduino': use the arduino trigger
                 - 'no_trigger': acquire continuously without requiring a trigger.
         """
-        if mode == "hardware":
+        if mode == "arduino":
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
             self.cam.TriggerSource.SetValue("Line1")
@@ -337,7 +337,7 @@ class BaslerCamera(BaseCamera):
             self.cam.AcquisitionFrameRate.SetValue(float(self.fps))
 
         else:
-            raise ValueError("Trigger mode must be 'hardware' or 'no_trigger'")
+            raise ValueError("Trigger mode must be 'arduino' or 'no_trigger'")
 
     def start(self):
         "Start recording images."
