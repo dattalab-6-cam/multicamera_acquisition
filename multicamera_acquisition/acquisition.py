@@ -140,14 +140,12 @@ class AcquisitionLoop(mp.Process):
             # Just use the root logger
             self.logger = logging.getLogger()
         elif isinstance(self.logger_queue, mp.queues.Queue):
-            # Create a logger for this process 
+            # Create a logger for this process
             # (it will automatically include the process name in the log output)
             logger = setup_child_logger(self.logger_queue, level=self.logging_level)
             self.logger = logger
         else:
-            raise ValueError(
-                "logger_queue must be a multiprocessing.Queue or None."
-            )
+            raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
 
         # Get the Camera object instance
         cam = get_camera(
@@ -244,8 +242,12 @@ class AcquisitionLoop(mp.Process):
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
-        self.logger.debug(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
-        self.logger.debug(f"Writing empties to stop queue, {self.camera_config['name']}")
+        self.logger.debug(
+            f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}"
+        )
+        self.logger.debug(
+            f"Writing empties to stop queue, {self.camera_config['name']}"
+        )
 
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
@@ -482,7 +484,7 @@ def refactor_acquire_video(
     logger.addHandler(handler)
     logger.debug("Set up main logger.")
 
-    # TODO: could set up a second logger for arduino messages
+    # TODO: could set up a second logger for microcontroller messages
 
     # Set up the mp logger to log across processes
     logger_queue = mp.Queue()
@@ -521,7 +523,7 @@ def refactor_acquire_video(
     config_filepath = save_location / "recording_config.yaml"
     save_config(config_filepath, final_config)
 
-    # Find the arduino to be used for triggering
+    # Find the microcontroller to be used for triggering
     if final_config["globals"]["microcontroller_required"]:
         logger.info("Finding microcontroller...")
         microcontroller = Microcontroller(save_location / base_filename, final_config)

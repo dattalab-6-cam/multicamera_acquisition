@@ -6,16 +6,15 @@ import numpy as np
 from pypylon import pylon
 from pypylon._genicam import RuntimeException
 
-from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
-                                                            CameraError)
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
 
 class BaslerCamera(BaseCamera):
     def __init__(
-        self, 
-        id=None, 
-        name=None, 
-        config=None, 
+        self,
+        id=None,
+        name=None,
+        config=None,
         fps=None,
     ):
         """Encapsulates a connection to a Basler camera.
@@ -317,10 +316,10 @@ class BaslerCamera(BaseCamera):
         ----------
         mode : str
             The trigger mode to use.  Must be one of:
-                - 'hardware': use the microcontroller trigger
+                - 'microcontroller': use the microcontroller trigger
                 - 'no_trigger': acquire continuously without requiring a trigger.
         """
-        if mode == "hardware":
+        if mode == "microcontroller":
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
             self.cam.TriggerSource.SetValue("Line1")
@@ -339,7 +338,7 @@ class BaslerCamera(BaseCamera):
             self.cam.AcquisitionFrameRate.SetValue(float(self.fps))
 
         else:
-            raise ValueError("Trigger mode must be 'hardware' or 'no_trigger'")
+            raise ValueError("Trigger mode must be 'microcontroller' or 'no_trigger'")
 
     def start(self):
         "Start recording images."
@@ -473,10 +472,10 @@ class EmulatedBaslerCamera(BaslerCamera):
         return [di]
 
     def __init__(
-        self, 
-        id=None, 
-        name=None, 
-        config=None, 
+        self,
+        id=None,
+        name=None,
+        config=None,
         fps=None,
     ):
         super().__init__(id=id, name=name, config=None, fps=fps)
