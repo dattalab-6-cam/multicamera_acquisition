@@ -316,10 +316,10 @@ class BaslerCamera(BaseCamera):
         ----------
         mode : str
             The trigger mode to use.  Must be one of:
-                - 'arduino': use the arduino trigger
+                - 'microcontroller': use the microcontroller trigger
                 - 'no_trigger': acquire continuously without requiring a trigger.
         """
-        if mode == "arduino":
+        if mode == "microcontroller":
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
             self.cam.TriggerSource.SetValue("Line1")
