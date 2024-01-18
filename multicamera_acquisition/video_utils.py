@@ -6,14 +6,9 @@ import numpy as np
 
 
 def count_frames(file_name):
-    if os.path.exists(file_name):
-        try:
-            with av.open(file_name, "r") as reader:
-                return reader.streams.video[0].frames
-        except Exception as e:
-            print(e)
-    else:
-        print("File does not exist")
+    with av.open(file_name, "r") as reader:
+        return reader.streams.video[0].frames
+
 
 
 def read_frames(

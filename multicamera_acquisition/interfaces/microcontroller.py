@@ -502,17 +502,18 @@ class Microcontroller(object):
         # extract relevant config parameters
         if config is not None:
             self.config = config["microcontroller"]
-            basler_fps = config["fps"]
+            basler_fps = config["globals"]["fps"]
             n_azures = len(
                 [c for c in config["cameras"].values() if c["brand"] == "azure"]
             )
             exposure_times = [
-                c["exposure_time"]
+                c["exposure"]
                 for c in config["cameras"].values()
                 if c["brand"] in ["basler", "flir"]
             ]
             basler_exposure_time = max(exposure_times)
         else:
+            # TODO: this needs to guess at an fps? might not really work..
             self.config = self.default_microcontroller_config()
 
         # set light durations if not specified

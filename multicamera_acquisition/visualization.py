@@ -119,7 +119,7 @@ class MultiDisplay(mp.Process):
 
                 if len(data) == 0:
                     quit = True
-                    print("No data, quitting...")
+                    self.logger.debug("No data, quitting...")
                     break
 
                 # retrieve frame
@@ -138,7 +138,6 @@ class MultiDisplay(mp.Process):
                     labels[qi].config(image=img)
                     labels[qi].image = img
                 else:
-                    # print(f"No data: {self.config['camera_names'][qi]}")
                     continue
 
             if quit:

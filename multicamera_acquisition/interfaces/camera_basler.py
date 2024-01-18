@@ -457,6 +457,9 @@ def enumerate_basler_cameras(behav_on_none="raise"):
         serial_nos.append(sn)
         models.append(model)
 
+    # Destroy the devices instance to free them up (maybe not nec?)
+    del devices
+
     # Return a list of serial numbers
     return serial_nos, models
 

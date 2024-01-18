@@ -1,6 +1,7 @@
 import yaml
 from multicamera_acquisition.interfaces.config import create_full_camera_default_config
 import pdb
+import logging
 
 
 def load_config(config_filepath):
@@ -26,6 +27,10 @@ def validate_recording_config(recording_config):
     # TODO: warn user if use mcu is False but there is a lot of MCU config in the config file
     """
 
+    # Grab a logger
+    logger = logging.getLogger()
+
+
     # Ensure that the recording config is a dict
     if not isinstance(recording_config, dict):
         raise TypeError("Recording config must be a dict")
@@ -48,7 +53,7 @@ def validate_recording_config(recording_config):
     # Warn user that fps for baslers / azures is deprecated
     for camera_name in recording_config["cameras"].keys():
         if "fps" in recording_config["cameras"][camera_name].keys():
-            print(
+            logger.warning(
                 "WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported)."
             )
 
@@ -59,8 +64,8 @@ def validate_recording_config(recording_config):
 
     ### FPS checks ###
     # Warn user if writers don't have fps params
+    ir_fpses = []
     for camera_name in recording_config["cameras"].keys():
-        ir_fpses = []
         if "fps" not in recording_config["cameras"][camera_name]["writer"].keys():
             raise ValueError(f"No fps specified for writer {camera_name}.")
         elif recording_config["cameras"][camera_name]["brand"] not in ["azure", "lucid"]:

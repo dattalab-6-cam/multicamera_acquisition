@@ -16,6 +16,7 @@ import yaml
 from tqdm import tqdm
 from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
 from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
+from multicamera_acquisition.interfaces.camera_azure import enumerate_azure_cameras
 from multicamera_acquisition.writer import get_writer
 from multicamera_acquisition.config import (
     load_config,
@@ -228,6 +229,8 @@ class AcquisitionLoop(mp.Process):
                 else:
                     raise e
                 if self.acq_config["dropped_frame_warnings"]:
+                    # TODO: tell this loop how many frames it expects, and dont raise this warning
+                    # if we're at the end of the acquisition. 
                     self.logger.warn(
                         f"Dropped frame after receiving {n_frames_received} on {current_iter} iters: \n{type(e).__name__}"
                     )
@@ -358,7 +361,23 @@ def resolve_device_indices(config):
         device_index_dict[camera_name] = dev_idx
 
     # Resolve any Azure cameras
-    # TODO
+    serial_nos_dict = enumerate_azure_cameras()
+    serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] not in ["azure"]:
+            continue
+        if camera_dict["id"] is None:
+            raise ValueError(f"Camera {camera_name} has no id specified.")
+        elif isinstance(camera_dict["id"], int):
+            dev_idx = camera_dict["id"]
+        elif isinstance(camera_dict["id"], str):
+            if camera_dict["id"] not in list(serial_nos_dict.keys()):
+                raise CameraError(
+                    f"Camera with serial number {camera_dict['id']} not found."
+                )
+            else:
+                dev_idx = serial_nos_dict[camera_dict["id"]]
+        device_index_dict[camera_name] = dev_idx
 
     # Resolve any Lucid cameras
     # TODO
@@ -386,7 +405,6 @@ def refactor_acquire_video(
     config : dict or str or Path
         A dict containing the recording config, or a filepath to a yaml file
         containing the recording config.
-        # TODO: incl rt_display_params
 
     recording_duration_s : int (default: 60)
         The duration of the recording in seconds.
@@ -580,10 +598,8 @@ def refactor_acquire_video(
                 video_file_name_depth,
                 metadata_file_name_depth,
                 writer_type=camera_dict["writer"]["type"],
-                config=camera_dict[
-                    "writer_depth"
-                ],  # TODO: make a separate writer_depth config for depth
-                process_name=f"{camera_name}_writer",
+                config=camera_dict["writer_depth"],
+                process_name=f"{camera_name}_writer_depth",
                 logger_queue=logger_queue,
                 logging_level=logging_level,
             )
@@ -677,12 +693,12 @@ def refactor_acquire_video(
 
     finally:
         # End the processes and close the microcontroller serial connection
+        end_processes(acquisition_loops, writers, None, writer_timeout=300)
         pbar.update((datetime.now() - datetime_prev).seconds)
         pbar.close()
-        print("Ending processes, this may take a moment...")
-        if final_config["globals"]["microcontroller_required"]:
+        logger.info("Ending processes, this may take a moment...")
+        if final_config["globals"]["microcontroller_required"] and not finished:
             microcontroller.interrupt_acquisition()
-        end_processes(acquisition_loops, writers, None, writer_timeout=300)
         logger.info("Done.")
 
     return save_location, video_file_name, final_config

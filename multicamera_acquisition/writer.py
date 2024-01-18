@@ -524,7 +524,7 @@ class FFMPEG_Writer(BaseWriter):
         """
         config = {
             "fps": fps,
-            "max_video_frames": 60 * 60 * fps * 24,  # one day
+            "max_video_frames": 60 * 60 * fps * 24,  # one day  # TODO: do we really want to hardcode this?
             "quality": 15,
             "loglevel": "error",
             "type": "ffmpeg",

@@ -156,7 +156,7 @@ class AzureCamera(BaseCamera):
         (serial_nos, models) : tuple of list of strings
             Lists of serial numbers and models of all connected cameras.
         """
-        camera_index_dict = get_camera_indexes()
+        camera_index_dict = enumerate_azure_cameras()
         serial_nos = list(camera_index_dict.values())
         if len(camera_index_dict) == 0:
             if behav_on_none == "raise":
@@ -253,7 +253,7 @@ class AzureCamera(BaseCamera):
         raise NotImplementedError
 
 
-def get_camera_indexes():
+def enumerate_azure_cameras():
     """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py"""
     count = connected_device_count()
     if not count:

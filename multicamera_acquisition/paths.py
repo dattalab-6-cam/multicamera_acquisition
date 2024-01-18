@@ -22,7 +22,8 @@ def ensure_dir(file_path):
                 os.makedirs(directory)
             except FileExistsError as e:
                 # multiprocessing can cause directory creation problems
-                print(e)
+                # print(e)
+                pass
     elif isinstance(file_path, pathlib2.PosixPath):
         # if this is a file
         if len(file_path.suffix) > 0:
