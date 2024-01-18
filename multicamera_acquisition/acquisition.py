@@ -11,6 +11,7 @@ import pdb
 
 import numpy as np
 import serial
+import yaml
 
 from tqdm import tqdm
 from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
@@ -20,18 +21,12 @@ from multicamera_acquisition.config import (
     load_config,
     save_config,
     validate_recording_config,
-    create_full_camera_default_config
+    create_full_camera_default_config,
 )
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 from multicamera_acquisition.logging_utils import setup_child_logger
-
-
-from multicamera_acquisition.interfaces.arduino import (
-    find_serial_ports,
-    packIntAsLong,
-    wait_for_serial_confirmation,
-)
+from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 
 
 class AcquisitionLoop(mp.Process):
@@ -145,14 +140,12 @@ class AcquisitionLoop(mp.Process):
             # Just use the root logger
             self.logger = logging.getLogger()
         elif isinstance(self.logger_queue, mp.queues.Queue):
-            # Create a logger for this process 
+            # Create a logger for this process
             # (it will automatically include the process name in the log output)
             logger = setup_child_logger(self.logger_queue, level=self.logging_level)
             self.logger = logger
         else:
-            raise ValueError(
-                "logger_queue must be a multiprocessing.Queue or None."
-            )
+            raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
 
         # Get the Camera object instance
         cam = get_camera(
@@ -249,8 +242,12 @@ class AcquisitionLoop(mp.Process):
                     break
 
         # Once the stop signal is received, stop the writer and dispaly processes
-        self.logger.debug(f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}")
-        self.logger.debug(f"Writing empties to stop queue, {self.camera_config['name']}")
+        self.logger.debug(
+            f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}"
+        )
+        self.logger.debug(
+            f"Writing empties to stop queue, {self.camera_config['name']}"
+        )
 
         self.write_queue.put(tuple())
         if self.write_queue_depth is not None:
@@ -268,12 +265,11 @@ class AcquisitionLoop(mp.Process):
 def generate_full_config(camera_lists):
     full_config = {}
     acquisition_config = AcquisitionLoop.default_acq_loop_config().copy()
-    # TODO: Add arduino config
-    # arduino_config = default_arduino_config().copy()
+    microcontroller_config = Microcontroller.default_microcontroller_config().copy()
     # camera, camera writer, camera display config
     full_camera_config = create_full_camera_default_config(camera_lists)
     full_config["acq_loop"] = acquisition_config
-    # full_config["arduino"] = arduino_config
+    full_config["microcontroller"] = microcontroller_config
     full_config["cameras"] = full_camera_config
 
     # write to file
@@ -436,14 +432,14 @@ def refactor_acquire_video(
             [list of acquisition loop params]
         rt_display:
             [list of rt display params]
-        arduino:
-            [list of arduino params]
+        microcontroller:
+            [list of microcontroller params]
 
-    For example, here is a minimal config file for a single camera without an arduino:
+    For example, here is a minimal config file for a single camera without an microcontroller:
 
         globals:
             fps: 30
-            arduino_required: False  # since trigger short name is set to no_trigger
+            microcontroller_required: False  # since trigger short name is set to no_trigger
         cameras:
             top:
                 name: top
@@ -451,7 +447,7 @@ def refactor_acquire_video(
                 id: "12345678"  # ie the serial number, as a string
                 gain: 6
                 exposure: 1000
-                display: 
+                display:
                     display_frames: True
                     display_range: (0, 255)
                 roi: null  # or an roi to crop the image
@@ -488,7 +484,7 @@ def refactor_acquire_video(
     logger.addHandler(handler)
     logger.debug("Set up main logger.")
 
-    # TODO: could set up a second logger for arduino messages
+    # TODO: could set up a second logger for microcontroller messages
 
     # Set up the mp logger to log across processes
     logger_queue = mp.Queue()
@@ -517,8 +513,6 @@ def refactor_acquire_video(
     # Add the display params to the config
     final_config = config
 
-    # TODO: add arduino configs
-
     # Resolve camera device indices
     device_index_dict = resolve_device_indices(final_config)
 
@@ -529,30 +523,11 @@ def refactor_acquire_video(
     config_filepath = save_location / "recording_config.yaml"
     save_config(config_filepath, final_config)
 
-    # Find the arduino to be used for triggering
-    if final_config["globals"]["arduino_required"]:
-        logger.info("Finding arduino...")
-        ports = find_serial_ports()
-        found_arduino = False
-        for port in ports:
-            with serial.Serial(port=port, timeout=0.1) as arduino:
-                try:
-                    wait_for_serial_confirmation(
-                        arduino, expected_confirmation="Waiting...", seconds_to_wait=2
-                    )
-                    found_arduino = True
-                    break
-                except ValueError:
-                    continue
-        if found_arduino is False:
-            raise RuntimeError("Could not find waiting arduino to do triggers!")
-        else:
-            logger.info(f"Using port {port} for arduino.")
-        arduino = serial.Serial(port=port, timeout=1)  # TODO: un-hardcode the timeout
-
-        # Delay recording to allow serial connection to connect
-        sleep_duration = 2
-        time.sleep(sleep_duration)
+    # Find the microcontroller to be used for triggering
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Finding microcontroller...")
+        microcontroller = Microcontroller(save_location / base_filename, final_config)
+        microcontroller.open_serial_connection()
 
     # TODO: triggerdata file
 
@@ -667,56 +642,31 @@ def refactor_acquire_video(
         acquisition_loop._continue_from_main_thread()
         acquisition_loop.await_process.wait()
 
-    # If using arduino, start it. Otherwise, just wait for the specified duration.
-    if final_config["globals"]["arduino_required"]:
-        logger.info("Starting arduino...")
-        # Tell the arduino to start recording by sending along the recording parameters
-        fps = final_config["globals"]["fps"]
-        inv_framerate = int(np.round(1e6 / fps, 0))
-        num_cycles = int(recording_duration_s * 30)
-        msg = b"".join(
-            map(
-                packIntAsLong,
-                (
-                    num_cycles,
-                    inv_framerate,
-                ),
-            )
-        )
-        arduino.write(msg)
-
-        # Listen for confirmation from arduino that we're going, abort if not
-        try:
-            _ = wait_for_serial_confirmation(
-                arduino, expected_confirmation="Start", seconds_to_wait=10
-            )
-        except ValueError:
-            # kill everything if we can't get confirmation
-            logger.info("Arduino did not confirm start, aborting.")
-            end_processes(acquisition_loops, writers, [])
-            return save_location, video_file_name, final_config
+    # Tell microcontroller to start the acquisition loop
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Starting microcontroller...")
+        microcontroller.start_acquisition(recording_duration_s)
 
     # Wait for the specified duration
-    logger.info("Sucessfully started, recording...")
     try:
         pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
-        # how long to record
+
         datetime_prev = datetime.now()
-        time_to_wait = recording_duration_s + 10
-        endtime = datetime_prev + timedelta(seconds=time_to_wait)
+        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+
         while datetime.now() < endtime:
-            if final_config["globals"]["arduino_required"]:
-                # Check for the arduino to say we're done
-                msg = arduino.readline().decode("utf-8").strip("\r\n")
-                if len(msg) > 0:
-                    print(msg)
-                    # TODO: save trigger data
-                if msg == "Finished":
-                    print("Finished recieved from arduino")
+            if final_config["globals"]["microcontroller_required"]:
+                # Tell the microcontroller to check for input trigger data or finish signal
+                finished = microcontroller.check_for_input()
+                if finished:
+                    logger.debug("Finished recieved from microcontroller")
                     break
             elif not any(
                 [acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]
             ):
+                # If no microcontroller, then there might be a frame limit on the acq loops
+                # (eg during testing), and they might all be stopped, in which case
+                # we can also just break.
                 logger.debug("All acquisition loops have stopped")
                 break
 
@@ -726,14 +676,12 @@ def refactor_acquire_video(
                 datetime_prev = datetime.now()
 
     finally:
-        # End the processes and close the arduino regardless
-        # of whether there was an error or not
+        # End the processes and close the microcontroller serial connection
         pbar.update((datetime.now() - datetime_prev).seconds)
         pbar.close()
-        logger.info("Ending processes, this may take a moment...")
-        if final_config["globals"]["arduino_required"]:
-            arduino.close()
-        logger_queue.put(None)
+        print("Ending processes, this may take a moment...")
+        if final_config["globals"]["microcontroller_required"]:
+            microcontroller.interrupt_acquisition()
         end_processes(acquisition_loops, writers, None, writer_timeout=300)
         logger.info("Done.")
 

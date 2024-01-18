@@ -117,6 +117,9 @@ class AzureCamera(BaseCamera):
             subordinate_delay_off_master_usec = config[
                 "subordinate_delay_off_master_usec"
             ]
+            assert (
+                config["subordinate_delay_off_master_usec"] % 160 == 0
+            ), "subordinate_delay_off_master_usec must be a multiple of 160"
 
         elif config["sync_mode"] == "master":
             wsm = (

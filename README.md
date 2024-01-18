@@ -5,7 +5,11 @@ Python library for simultaneous video acquisition with Basler cameras (pypylon) 
 
 The custom library is necessary in order to interleave the Basler's frames betwee the Azure's sub-frame pulses. Acquisition is done in parallel using a microcontroller to trigger the cameras and IR lights. We use a [Teensy](https://www.pjrc.com/store/teensy41.html), with a [custom PCB](https://github.com/HMS-RIC/Datta-Open-Field-Arena) to control the lights and send triggers to the cameras, but in theory any microcontroller that can go fast enough will work. 
 
+<<<<<<< HEAD
+In addition, we record input GPIOs on the microcontroller to sync external data sources to the video frames. 
+=======
 Separate processes exist to capture frames and write the frames to a video for each camera. In addition, we record incoming GPIOs to the microcontroller, to allow syncing with external data sources.
+>>>>>>> origin/versey-sherry-refactor_config
 
 Authors
 - Tim Sainburg
@@ -45,64 +49,11 @@ Cameras (1) need to be synchronized with other data sources and (2) need to be s
 
 ### triggerdata.csv
 
-The arduino has a set of GPIOs dedicated to pulse input (by default 4) that can recieve input from an external synchronization. Each row of the triggerdata.csv file corresponds to an input state change in the monitored GPIO channels.
+The microcontroller has a set of GPIOs dedicated to pulse input that can recieve input from an external synchronization device. Detected changes in the state of these input pins are logged in to a triggerdata.csv file that saves:
 
-The triggerdata.csv file saves:
-- **`pulse_id`**: This is the pulse frame number, according to the microcontroller. This number is computed simply by iterating over the number of frame acquisition pulses that microconstroller has sent out.
-- **`arduino_ms`**: This is the microprocessor clock in milliseconds (computed using the `millis()` function. 
-- **`flag_{n}`**: This is the state of the GPIO input when a GPIO state change has occured. 
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align:right">
-      <th></th>
-      <th>pulse_id</th>
-      <th>arduino_ms</th>
-      <th>flag_0</th>
-      <th>flag_1</th>
-      <th>flag_2</th>
-      <th>flag_3</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>110</td>
-      <td>0</td>
-      <td>0</td>
-      <td>1</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>90</td>
-      <td>1000</td>
-      <td>0</td>
-      <td>0</td>
-      <td>1</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>627</td>
-      <td>6371</td>
-      <td>1</td>
-      <td>1</td>
-      <td>0</td>
-      <td>0</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1165</td>
-      <td>11751</td>
-      <td>0</td>
-      <td>0</td>
-      <td>0</td>
-      <td>0</td>
-    </tr>
-  </tbody>
-</table>
+- **`time`**: Time that the pin state changed in microseconds from the beginning of acquition (in the microcontroller's clock).
+- **`pin`**: The pin that changed state.
+- **`state`**: The state that the pin changed to.
 
 
 ### {camera}.metadata.csv

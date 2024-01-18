@@ -6,16 +6,15 @@ import numpy as np
 from pypylon import pylon
 from pypylon._genicam import RuntimeException
 
-from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
-                                                            CameraError)
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
 
 class BaslerCamera(BaseCamera):
     def __init__(
-        self, 
-        id=None, 
-        name=None, 
-        config=None, 
+        self,
+        id=None,
+        name=None,
+        config=None,
         fps=None,
     ):
         """Encapsulates a connection to a Basler camera.
@@ -66,7 +65,7 @@ class BaslerCamera(BaseCamera):
 
         if (fps is not None or "fps" in self.config.keys()) and (
             "trigger_mode" in self.config.keys()
-            and self.config["trigger_mode"] == "arduino"
+            and self.config["trigger_mode"] == "microcontroller"
         ):
             self.logger.warn(
                 "Providing fps for Baslers in triggered mode is deprecated and generally not necessary."
@@ -100,7 +99,7 @@ class BaslerCamera(BaseCamera):
                 "display_range": (0, 255),
             },
             "trigger": {
-                "trigger_type": "arduino",
+                "trigger_type": "microcontroller",
                 "acquisition_mode": "Continuous",
                 "trigger_source": "Line2",
                 "trigger_selector": "FrameStart",
@@ -277,7 +276,7 @@ class BaslerCamera(BaseCamera):
 
         # Set trigger
         trigger = self.config["trigger"]
-        if trigger["trigger_type"] == "arduino":
+        if trigger["trigger_type"] == "microcontroller":
             self.cam.AcquisitionMode.SetValue(trigger["acquisition_mode"])
             max_fps = self.cam.AcquisitionFrameRate.GetMax()
             self.cam.AcquisitionFrameRate.SetValue(max_fps)
@@ -296,17 +295,19 @@ class BaslerCamera(BaseCamera):
         elif trigger["trigger_type"] == "no_trigger":
             self.set_trigger_mode("no_trigger")
         else:
-            raise ValueError("Trigger must be 'arduino' or 'software'")
+            raise ValueError("Trigger must be 'microcontroller' or 'software'")
 
     def check_config(self):
         """Check for some common issues with Basler configs."""
 
-        # Ensure user doesnt request emulated cameras with arduino trigger mode
+        # Ensure user doesnt request emulated cameras with microcontroller trigger mode
         if (
-            self.config["trigger"]["trigger_type"] == "arduino"
+            self.config["trigger"]["trigger_type"] == "microcontroller"
             and self.config["brand"] == "basler_emulated"
         ):
-            raise ValueError("Cannot use arduino trigger with emulated cameras.")
+            raise ValueError(
+                "Cannot use microcontroller trigger with emulated cameras."
+            )
 
     def set_trigger_mode(self, mode):
         """Shortcut method to quickly change the camera's trigger settings.
@@ -338,6 +339,7 @@ class BaslerCamera(BaseCamera):
 
         else:
             raise ValueError("Trigger mode must be 'arduino' or 'no_trigger'")
+
 
     def start(self):
         "Start recording images."
@@ -394,7 +396,7 @@ class BaslerCamera(BaseCamera):
         tstamp : int
             The timestamp of the frame, if get_timestamp=True.
         """
-        if self.cam.IsGrabbing() == False:
+        if self.cam.IsGrabbing() is False:
             raise ValueError("Camera is not set up to grab frames.")
 
         img = self.get_image(timeout)
@@ -471,10 +473,10 @@ class EmulatedBaslerCamera(BaslerCamera):
         return [di]
 
     def __init__(
-        self, 
-        id=None, 
-        name=None, 
-        config=None, 
+        self,
+        id=None,
+        name=None,
+        config=None,
         fps=None,
     ):
         super().__init__(id=id, name=name, config=None, fps=fps)

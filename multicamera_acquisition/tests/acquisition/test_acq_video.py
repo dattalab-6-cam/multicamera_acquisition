@@ -2,10 +2,7 @@ import logging
 import pytest
 import os
 
-from multicamera_acquisition.acquisition import (
-    refactor_acquire_video,
-    AcquisitionLoop
-)
+from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
 
 from multicamera_acquisition.interfaces.config import (
     partial_config_from_camera_list,
@@ -26,9 +23,9 @@ from multicamera_acquisition.tests.writer.test_writers import (
     n_test_frames,
 )
 
-from multicamera_acquisition.tests.interfaces.test_ir_cameras import ( 
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_type,
-    camera_brand
+    camera_brand,
 )
 
 from multicamera_acquisition.visualization import MultiDisplay
@@ -36,7 +33,9 @@ from multicamera_acquisition.visualization import MultiDisplay
 
 @pytest.fixture(scope="session")
 def trigger_type(pytestconfig):
-    return pytestconfig.getoption("trigger_type")  # default no_trigger (ie no trigger required), see conftest.py
+    return pytestconfig.getoption(
+        "trigger_type"
+    )  # default no_trigger (ie no trigger required), see conftest.py
 
 
 @pytest.fixture(scope="session")
@@ -56,7 +55,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
 
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1}
+        {"name": "bottom", "brand": camera_brand, "id": 1},
     ]
 
     # Set the trigger behavior
@@ -84,7 +83,9 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
     full_config = create_full_camera_default_config(partial_new_config, fps)
     full_config["globals"] = {}
     full_config["globals"]["fps"] = fps
-    full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
+    full_config["globals"]["microcontroller_required"] = (
+        trigger_type == "microcontroller"
+    )
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config().copy()
@@ -104,15 +105,18 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
     # Check that the video exists
     for camera_name in full_config["cameras"].keys():
         assert os.path.exists(first_video_file_name)
-        assert os.path.exists(str(first_video_file_name).replace(".mp4", ".metadata.csv"))
+        assert os.path.exists(
+            str(first_video_file_name).replace(".mp4", ".metadata.csv")
+        )
 
     # Check that the video has the right number of frames
     for camera_name in full_config["cameras"].keys():
         assert count_frames(str(first_video_file_name)) == n_test_frames
 
 
-def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
-
+def test_refactor_acquire_video_multiple_vids_muxing(
+    tmp_path, camera_brand, n_test_frames, trigger_type, fps
+):
     try:
         import PyNvCodec as nvc
     except ImportError:
@@ -120,7 +124,7 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
 
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1}
+        {"name": "bottom", "brand": camera_brand, "id": 1},
     ]
 
     # Set the trigger behavior
@@ -132,7 +136,9 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
 
     # Add NVC writers to each camera
     nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
-    nvc_writer_config["auto_remux_videos"] = True  # this is the default, but just to make it explicit / in case we change the default
+    nvc_writer_config[
+        "auto_remux_videos"
+    ] = True  # this is the default, but just to make it explicit / in case we change the default
 
     # KEY LINE FOR THIS TEST
     assert n_test_frames % 2 == 0
@@ -146,7 +152,9 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
     full_config = create_full_camera_default_config(partial_new_config, fps)
     full_config["globals"] = {}
     full_config["globals"]["fps"] = fps
-    full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
+    full_config["globals"]["microcontroller_required"] = (
+        trigger_type == "microcontroller"
+    )
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config().copy()
@@ -164,15 +172,20 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
 
     # Check that the videos exist
     for camera_name in full_config["cameras"].keys():
-
         # Check that the first video exists
         assert os.path.exists(first_video_file_name)
-        assert os.path.exists(str(first_video_file_name).replace(".mp4", ".metadata.csv"))
+        assert os.path.exists(
+            str(first_video_file_name).replace(".mp4", ".metadata.csv")
+        )
 
         # Check that the next video exists
-        next_video_file_name = str(first_video_file_name).replace(".0", f".{nvc_writer_config['max_video_frames']}")
+        next_video_file_name = str(first_video_file_name).replace(
+            ".0", f".{nvc_writer_config['max_video_frames']}"
+        )
         assert os.path.exists(next_video_file_name)
-        assert os.path.exists(str(next_video_file_name).replace(".mp4", ".metadata.csv"))
+        assert os.path.exists(
+            str(next_video_file_name).replace(".mp4", ".metadata.csv")
+        )
 
     # Check that the video has the right number of frames
     # NB: this won't work unless we mux the videos, so this also tests the muxing.
@@ -181,8 +194,9 @@ def test_refactor_acquire_video_multiple_vids_muxing(tmp_path, camera_brand, n_t
         assert count_frames(str(next_video_file_name)) == n_test_frames / 2
 
 
-def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, trigger_type, fps):
-
+def test_refactor_acquire_video_muxing(
+    tmp_path, camera_brand, n_test_frames, trigger_type, fps
+):
     try:
         import PyNvCodec as nvc
     except ImportError:
@@ -190,7 +204,7 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
 
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1}
+        {"name": "bottom", "brand": camera_brand, "id": 1},
     ]
 
     # Set the trigger behavior
@@ -202,7 +216,9 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
 
     # Add NVC writers to each camera
     nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
-    nvc_writer_config["auto_remux_videos"] = True  # this is the default, but just to make it explicit / in case we change the default
+    nvc_writer_config[
+        "auto_remux_videos"
+    ] = True  # this is the default, but just to make it explicit / in case we change the default
     for camera_name in partial_new_config["cameras"].keys():
         nvc_writer_config["camera_name"] = camera_name
         partial_new_config["cameras"][camera_name]["writer"] = nvc_writer_config
@@ -211,7 +227,9 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     full_config = create_full_camera_default_config(partial_new_config, fps)
     full_config["globals"] = {}
     full_config["globals"]["fps"] = fps
-    full_config["globals"]["arduino_required"] = (trigger_type == "arduino")
+    full_config["globals"]["microcontroller_required"] = (
+        trigger_type == "microcontroller"
+    )
 
     # Set up the acquisition loop part of the config
     acq_config = AcquisitionLoop.default_acq_loop_config().copy()
@@ -233,7 +251,9 @@ def test_refactor_acquire_video_muxing(tmp_path, camera_brand, n_test_frames, tr
     # Check that the video exists
     for camera_name in full_config["cameras"].keys():
         assert os.path.exists(first_video_file_name)
-        assert os.path.exists(str(first_video_file_name).replace(".mp4", ".metadata.csv"))
+        assert os.path.exists(
+            str(first_video_file_name).replace(".mp4", ".metadata.csv")
+        )
 
     # Check that the video has the right number of frames
     # NB: this won't work unless we mux the videos, so this also tests the muxing.

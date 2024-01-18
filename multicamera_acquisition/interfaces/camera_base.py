@@ -17,32 +17,32 @@ def get_camera(
 ):
     """Get a camera object.
 
-    Parameters
-    ----------
-    fps : int
-        The desired frame rate for the camera.
+        Parameters
+        ----------
+        fps : int
+            The desired frame rate for the camera.
 
-    brand : string (default: 'flir')
-        The brand of camera to use.  Currently only 'flir' is supported. If
-        'flir', the software PySpin is used. if 'basler', the software pypylon
-        is used.
+        brand : string (default: 'flir')
+            The brand of camera to use.  Currently only 'flir' is supported. If
+            'flir', the software PySpin is used. if 'basler', the software pypylon
+            is used.
 
-    id: int or str (default: 0)
-        If an int, the index of the camera to acquire.
-        If a string, the serial number of the camera.
+        id: int or str (default: 0)
+            If an int, the index of the camera to acquire.
+            If a string, the serial number of the camera.
 
-    config : dict (default: None)
-        A dictionary of config values.
-        If config is None, uses the camera's default config file.
+        config_file : path-like str or Path (default: None)
+            Path to config file.
+            If config and config_file are both None, uses the camera's default config file.
 
-    process_name : str (default: None)
-        The name of the process that will use this camera.  This is used to
-        create a logger for the camera.
+        config : dict (default: None)
+            A dictionary of config values.
+            If config and config_file are both None, uses the camera's default config file.
 
-    Returns
-    -------
-    cam : Camera object
-        The camera object, specific to the brand.
+        Returns
+        -------
+        cam : Camera object
+            The camera object, specific to the brand.
 
     """
     if brand == "basler":

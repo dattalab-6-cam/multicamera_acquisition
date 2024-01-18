@@ -1,9 +1,11 @@
 import pytest
 
+
 def pytest_addoption(parser):
     parser.addoption(
         "--rungui", action="store_true", default=False, help="run gui tests"
     )
+
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "gui: mark test as slow to run")
