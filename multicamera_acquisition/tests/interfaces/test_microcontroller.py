@@ -5,12 +5,12 @@ import numpy as np
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 
 
-def test_microcontroller():
+def test_microcontroller(tmp_path):
     """
     Test requires that the computer is connected to a microcontroller with the correct firmware.
     """
     recording_duration_s = 2
-    basename = "./multicamera_acquisition/scratch/mcu_test/mcu_test"
+    basename = tmp_path / "mcu_test"
 
     microcontroller = Microcontroller(basename=basename)
     microcontroller.open_serial_connection()
