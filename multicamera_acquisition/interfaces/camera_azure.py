@@ -13,7 +13,7 @@ import warnings
 
 
 class AzureCamera(BaseCamera):
-    def __init__(self, id=0, name=None, config=None, lock=True):
+    def __init__(self, id=0, name=None, config=None):
         """Create an instance of an Azure Kinect camera, without actually "open"ing it (i.e. without starting the connection).
         Parameters
         ----------
@@ -25,14 +25,10 @@ class AzureCamera(BaseCamera):
         config : dict (default: None)
             A dictionary of config params.
             If None, uses the default config.
-        lock : bool (default: True)
-            If True, setting new attributes after initialization results in
-            an error.
-            (Currently only implemented for FLIR cameras)
         """
 
         # Init the parent class
-        super().__init__(id=id, name=name, config=config, lock=lock)
+        super().__init__(id=id, name=name, config=config)
 
         # Resolve which device to use
         self._resolve_device_index()  # sets self.device_index based on the id the user provides
@@ -69,7 +65,7 @@ class AzureCamera(BaseCamera):
             "depth_mode": "NFOV_UNBINNED",  # "narrow field of view, unbinned"
             "synchronized_images_only": False,
             "sync_mode": "subordinate",
-            "subordinate_delay_off_master_usec": 500,
+            "subordinate_delay_off_master_usec": 0,
             "brand": "azure",
             "display": {"display_frames": False, "display_range": (0, 255)},
         }
@@ -119,12 +115,16 @@ class AzureCamera(BaseCamera):
             ]
             assert (
                 config["subordinate_delay_off_master_usec"] % 160 == 0
-            ), "subordinate_delay_off_master_usec must be a multiple of 160"
+            ), f"subordinate_delay_off_master_usec must be a multiple of 160 but was {config['subordinate_delay_off_master_usec']}"
 
         elif config["sync_mode"] == "master":
             wsm = (
                 WiredSyncMode.SUBORDINATE
             )  # if you set this to master, it won't listen for triggers. For us "master" means first subordinate to receive a trigger.
+            cr = ColorResolution.RES_720P
+            subordinate_delay_off_master_usec = 0
+        elif config["sync_mode"] == "true_master":
+            wsm = WiredSyncMode.MASTER
             cr = ColorResolution.RES_720P
             subordinate_delay_off_master_usec = 0
         else:
@@ -227,8 +227,10 @@ class AzureCamera(BaseCamera):
         if get_color:
             color = capture.color
             return depth, ir, color, tstamp
-        else:
+        elif get_timestamp:
             return depth, ir, tstamp
+        else:
+            return depth, ir
 
     def get_info(self, name):
         """Gen information on a camera node (attribute or method).
@@ -257,9 +259,9 @@ def enumerate_azure_cameras():
     """https://github.com/etiennedub/pyk4a/blob/master/example/devices.py"""
     count = connected_device_count()
     if not count:
-        print("No Azures available")
-        return
-    print(f"Available Azures: {count}")
+        # print("No Azures available")
+        return {}
+    # print(f"Available Azures: {count}")
     idx_to_sn_dict = {}
     for device_id in range(count):
         device = PyK4A(device_id=device_id)
