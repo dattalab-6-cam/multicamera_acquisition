@@ -36,7 +36,6 @@ def test_acq_loop_init(fps):
     )
     assert isinstance(loop.await_process, mp.synchronize.Event)
     assert isinstance(loop.await_main_thread, mp.synchronize.Event)
-    assert loop.acq_config["frame_timeout"] == 1000
 
 
 def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
@@ -90,6 +89,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
         camera_device_index=None,
         camera_config=camera_config,
         acq_loop_config=acq_config,
+        fps=fps,
     )
 
     # Start the writer processes

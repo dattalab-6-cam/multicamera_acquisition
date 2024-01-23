@@ -46,6 +46,7 @@ class AcquisitionLoop(mp.Process):
         logger_queue=None,
         logging_level=logging.DEBUG,
         process_name=None,
+        fps=None,
     ):
         """
         Parameters
@@ -78,6 +79,12 @@ class AcquisitionLoop(mp.Process):
 
         process_name : str (default: None)
             The name of the process.
+
+        fps : int (default: None)
+            The fps of the acquisition, as controlled by either the camera or the microcontroller.
+            Only used to determine the timeout for the camera.get_array() call.
+            If None, the timeout will be set to 1000 ms.
+
         """
 
         # Save the process name for logging purposes
@@ -91,6 +98,7 @@ class AcquisitionLoop(mp.Process):
         self.camera_device_index = camera_device_index
         self.logger_queue = logger_queue
         self.logging_level = logging_level
+        self.fps = fps
 
         # Get config
         if acq_loop_config is None:
@@ -111,7 +119,6 @@ class AcquisitionLoop(mp.Process):
     def default_acq_loop_config():
         """Get the default config for the acquisition loop."""
         return {
-            "frame_timeout": 1000,
             "display_every_n": 1,
             "dropped_frame_warnings": False,
             "max_frames_to_acqure": None,
@@ -178,9 +185,13 @@ class AcquisitionLoop(mp.Process):
         # thread to continue
         self.await_process.set()  # report to the main loop that the camera is ready
 
+        # Get ready to record
         current_iter = 0
         n_frames_received = 0
         first_frame = False
+        timeout = 1000 if self.fps is None else int(1000 / self.fps)
+
+        # Acquire frames until we receive the stop signal
         while not self.stopped.is_set():
             try:
                 if first_frame:
@@ -189,10 +200,14 @@ class AcquisitionLoop(mp.Process):
                     first_frame = False
                 else:
                     data = cam.get_array(
-                        timeout=self.acq_config["frame_timeout"], get_timestamp=True
+                        timeout=timeout,
+                        get_timestamp=True
                     )
 
+                # If we received a frame:
                 if len(data) != 0:
+
+                    # Increment the frame counter (distinct from number of while loop iterations)
                     n_frames_received += 1
 
                     # If this is an azure camera, we write the depth data to a separate queue
@@ -217,24 +232,24 @@ class AcquisitionLoop(mp.Process):
                             if current_iter % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
+            # Deal with dropped frames by catching the exception and warning instead
             except Exception as e:
-                # if a frame was dropped, log the lost frame and contiue
+                
                 if type(e).__name__ == "SpinnakerException":
                     pass
                 elif type(e).__name__ == "TimeoutException":
-                    self.logger.warn(
-                        f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
-                    )
+                    if self.acq_config["dropped_frame_warnings"]:
+                        self.logger.warn(
+                            f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
+                        )
                     pass
                 else:
                     raise e
-                if self.acq_config["dropped_frame_warnings"]:
-                    # TODO: tell this loop how many frames it expects, and dont raise this warning
-                    # if we're at the end of the acquisition. 
-                    self.logger.warn(
-                        f"Dropped frame after receiving {n_frames_received} on {current_iter} iters: \n{type(e).__name__}"
-                    )
+                
+            # Increment the iteration counter
             current_iter += 1
+
+            # Check if we've reached the max frames to acquire
             if self.acq_config["max_frames_to_acqure"] is not None:
                 if current_iter >= self.acq_config["max_frames_to_acqure"]:
                     if not self.stopped.is_set():
@@ -251,8 +266,7 @@ class AcquisitionLoop(mp.Process):
         self.logger.debug(
             f"Writing empties to stop queue, {self.camera_config['name']}"
         )
-
-        self.write_queue.put(tuple())
+        self.write_queue.put(tuple())  # empty tuple signals the writer to stop
         if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
         if self.display_queue is not None:
@@ -261,7 +275,6 @@ class AcquisitionLoop(mp.Process):
         # Close the camera
         self.logger.debug(f"Closing camera {self.camera_config['name']}")
         cam.close()
-
         self.logger.debug("Camera closed")
 
 
@@ -482,7 +495,6 @@ def refactor_acquire_video(
                     profile: high
                     tuning_info: ultra_low_latency
         acq_loop:
-            frame_timeout: 1000
             display_every_n: 4
             dropped_frame_warnings: False
             max_frames_to_acqure: null
@@ -626,6 +638,7 @@ def refactor_acquire_video(
             logger_queue=logger_queue,
             logging_level=logging_level,
             process_name=f"{camera_name}_acqLoop",
+            fps=final_config["globals"]["fps"],
         )
 
         # Start the writer and acquisition loop processes
