@@ -5,6 +5,7 @@ from logging.handlers import QueueListener
 import multiprocessing as mp
 import os
 import time
+import traceback
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -156,12 +157,17 @@ class AcquisitionLoop(mp.Process):
             raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
 
         # Get the Camera object instance
-        cam = get_camera(
-            brand=self.camera_config["brand"],
-            id=self.camera_device_index,
-            name=self.camera_config["name"],
-            config=self.camera_config,
-        )
+        try:
+            cam = get_camera(
+                brand=self.camera_config["brand"],
+                id=self.camera_device_index,
+                name=self.camera_config["name"],
+                config=self.camera_config,
+            )
+        except Exception as e:
+            # show the entire traceback
+            self.logger.error(traceback.format_exc())
+            raise e
 
         # Actually open / initialize the connection to the camera
         self.logger.debug(f"About to initialize camera {self.camera_config['name']}")
@@ -237,13 +243,14 @@ class AcquisitionLoop(mp.Process):
                 
                 if type(e).__name__ == "SpinnakerException":
                     pass
-                elif type(e).__name__ == "TimeoutException":
+                elif type(e).__name__ == "TimeoutException" or type(e).__name__ == "K4ATimeoutException":
                     if self.acq_config["dropped_frame_warnings"]:
                         self.logger.warn(
                             f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
                         )
                     pass
                 else:
+                    self.logger.error(traceback.format_exc())
                     raise e
                 
             # Increment the iteration counter
@@ -570,84 +577,94 @@ def refactor_acquire_video(
     camera_list = []
     display_ranges = []
 
-    for camera_name, camera_dict in final_config["cameras"].items():
-        # Create a writer queue
-        write_queue = mp.Queue()
+    try:
+        for camera_name, camera_dict in final_config["cameras"].items():
+            # Create a writer queue
+            write_queue = mp.Queue()
 
-        # Generate file names
-        if append_camera_serial:
-            cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"
-        else:
-            cam_append_str = f".{camera_dict['name']}.mp4"
-        video_file_name = Path(basename + cam_append_str)
-        metadata_file_name = Path(basename + cam_append_str.replace(".mp4", ".metadata.csv"))
+            # Generate file names
+            if append_camera_serial:
+                cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"
+            else:
+                cam_append_str = f".{camera_dict['name']}.mp4"
+            video_file_name = Path(basename + cam_append_str)
+            metadata_file_name = Path(basename + cam_append_str.replace(".mp4", ".metadata.csv"))
 
-        # Get a writer process
-        writer = get_writer(
-            write_queue,
-            video_file_name,
-            metadata_file_name,
-            writer_type=camera_dict["writer"]["type"],
-            config=camera_dict["writer"],
-            process_name=f"{camera_name}_writer",
-            logger_queue=logger_queue,
-            logging_level=logging_level,
-        )
-
-        # Get a second writer process for depth if needed
-        if camera_dict["brand"] == "azure":
-            write_queue_depth = mp.Queue()
-            video_file_name_depth = full_save_location / f"{camera_name}.depth.avi"
-            metadata_file_name_depth = (
-                full_save_location / f"{camera_name}.metadata.depth.csv"
-            )
-            writer_depth = get_writer(
-                write_queue_depth,
-                video_file_name_depth,
-                metadata_file_name_depth,
+            # Get a writer process
+            writer = get_writer(
+                write_queue,
+                video_file_name,
+                metadata_file_name,
                 writer_type=camera_dict["writer"]["type"],
-                config=camera_dict["writer_depth"],
-                process_name=f"{camera_name}_writer_depth",
+                config=camera_dict["writer"],
+                process_name=f"{camera_name}_writer",
                 logger_queue=logger_queue,
                 logging_level=logging_level,
             )
-        else:
-            write_queue_depth = None
 
-        # Setup display queue for camera if requested
-        if camera_dict["display"]["display_frames"] is True:
-            display_queue = mp.Queue()
-            display_queues.append(display_queue)
-            camera_list.append(camera_name)
-            display_ranges.append(camera_dict["display"]["display_range"])
-        else:
-            display_queue = None
+            # Get a second writer process for depth if needed
+            if camera_dict["brand"] == "azure":
+                write_queue_depth = mp.Queue()
+                video_file_name_depth = full_save_location / f"{camera_name}.depth.avi"
+                metadata_file_name_depth = (
+                    full_save_location / f"{camera_name}.metadata.depth.csv"
+                )
+                writer_depth = get_writer(
+                    write_queue_depth,
+                    video_file_name_depth,
+                    metadata_file_name_depth,
+                    writer_type=camera_dict["writer"]["type"],
+                    config=camera_dict["writer_depth"],
+                    process_name=f"{camera_name}_writer_depth",
+                    logger_queue=logger_queue,
+                    logging_level=logging_level,
+                )
+            else:
+                write_queue_depth = None
 
-        # Create an acquisition loop process
-        acquisition_loop = AcquisitionLoop(
-            write_queue=write_queue,
-            display_queue=display_queue,
-            camera_device_index=device_index_dict[camera_name],
-            camera_config=camera_dict,
-            write_queue_depth=write_queue_depth,
-            acq_loop_config=final_config["acq_loop"],
-            logger_queue=logger_queue,
-            logging_level=logging_level,
-            process_name=f"{camera_name}_acqLoop",
-            fps=final_config["globals"]["fps"],
-        )
+            # Setup display queue for camera if requested
+            if camera_dict["display"]["display_frames"] is True:
+                display_queue = mp.Queue()
+                display_queues.append(display_queue)
+                camera_list.append(camera_name)
+                display_ranges.append(camera_dict["display"]["display_range"])
+            else:
+                display_queue = None
 
-        # Start the writer and acquisition loop processes
-        writer.start()
-        writers.append(writer)
-        if camera_dict["brand"] == "azure":
-            writer_depth.start()
-            writers.append(writer_depth)
-        acquisition_loop.start()
-        acquisition_loops.append(acquisition_loop)
+            # Create an acquisition loop process
+            acquisition_loop = AcquisitionLoop(
+                write_queue=write_queue,
+                display_queue=display_queue,
+                camera_device_index=device_index_dict[camera_name],
+                camera_config=camera_dict,
+                write_queue_depth=write_queue_depth,
+                acq_loop_config=final_config["acq_loop"],
+                logger_queue=logger_queue,
+                logging_level=logging_level,
+                process_name=f"{camera_name}_acqLoop",
+                fps=final_config["globals"]["fps"],
+            )
 
-        # Block until the acq loop process reports that it's initialized
-        acquisition_loop.await_process.wait()
+            # Start the writer and acquisition loop processes
+            writer.start()
+            writers.append(writer)
+            if camera_dict["brand"] == "azure":
+                writer_depth.start()
+                writers.append(writer_depth)
+            acquisition_loop.start()
+            acquisition_loops.append(acquisition_loop)
+
+            # Block until the acq loop process reports that it's initialized
+            logger.debug(f"Waiting for acquisition loop ({camera_name}) to initialize...")
+            status = acquisition_loop.await_process.wait(3)
+            if not status:
+                raise CameraError(
+                    f"Acq loop for {acquisition_loop.camera_config['name']} failed to initialize."
+                )
+    except Exception as e:
+        end_processes(acquisition_loops, [], None)
+        microcontroller.close()
+        raise e
 
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
@@ -665,7 +682,11 @@ def refactor_acquire_video(
     logger.info("Starting cameras...")
     for acquisition_loop in acquisition_loops:
         acquisition_loop._continue_from_main_thread()
-        acquisition_loop.await_process.wait()
+        status = acquisition_loop.await_process.wait(timeout=3)
+        if not status:
+            raise CameraError(
+                f"Camera {acquisition_loop.camera_config['name']} failed to initialize."
+            )
 
     # Tell microcontroller to start the acquisition loop
     if final_config["globals"]["microcontroller_required"]:
