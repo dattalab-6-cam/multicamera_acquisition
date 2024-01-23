@@ -6,6 +6,7 @@ import time
 import warnings
 import os
 from pathlib import Path
+import traceback
 
 import numpy as np
 
@@ -105,59 +106,63 @@ class BaseWriter(mp.Process):
         self.initialize_metadata()
 
         # Loop until we get a stop signal
-        while True:
-            # Get data from the queue
-            data = self.queue.get()
+        try:
+            while True:
+                # Get data from the queue
+                data = self.queue.get()
 
-            # If we get an empty tuple, stop
-            if len(data) == 0:
-                self.logger.debug("Got stop signal")
-                break
+                # If we get an empty tuple, stop
+                if len(data) == 0:
+                    self.logger.debug("Got stop signal")
+                    break
 
-            # Unpack the data
-            # TODO: if we drop a frame, is current_frame still valid?
-            img, camera_timestamp, current_frame = data
+                # Unpack the data
+                # TODO: if we drop a frame, is current_frame still valid?
+                img, camera_timestamp, current_frame = data
 
-            # Get the metadata about the frame
-            frame_image_uid = str(round(time.time(), 5)).zfill(5)
-            try:
-                qsize = self.queue.qsize()
-            except NotImplementedError:
-                qsize = np.nan
+                # Get the metadata about the frame
+                frame_image_uid = str(round(time.time(), 5)).zfill(5)
+                try:
+                    qsize = self.queue.qsize()
+                except NotImplementedError:
+                    qsize = np.nan
 
-            # If the frame is corrupted (TODO: how does this check for corruption?)
-            if img is None:
-                self.logger.warning("Got empty frame (corruption?), continuing")
-                continue
+                # If the frame is corrupted (TODO: how does this check for corruption?)
+                if img is None:
+                    self.logger.warning("Got empty frame (corruption?), continuing")
+                    continue
 
-            # Write the metadata
-            try:
-                self.metadata_writer.writerow(
-                    [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
-                )
-            except ValueError as e:
-                self.logger.error(
-                    f"Failed to write metadata for frame {current_frame}, frame id: {self.frame_id}"
-                )
-                self.logger.error(e)
-                raise
+                # Write the metadata
+                try:
+                    self.metadata_writer.writerow(
+                        [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
+                    )
+                except ValueError as e:
+                    self.logger.error(
+                        f"Failed to write metadata for frame {current_frame}, frame id: {self.frame_id}"
+                    )
+                    self.logger.error(e)
+                    raise
 
-            # Reset the pipe if needed (after self._reset_writer())
-            if self.pipe is None:
-                data_shape = img.shape
-                self._get_new_pipe(data_shape)
-                self.logger.debug("Created new video pipe")
+                # Reset the pipe if needed (at beginning, or after self._reset_writer())
+                if self.pipe is None:
+                    data_shape = img.shape
+                    self._get_new_pipe(data_shape)
+                    self.logger.debug("Created new video pipe")
 
-            # Write the frame
-            self.append(img)
+                # Write the frame
+                self.append(img)
 
-            # Increment the frame counter
-            self.frame_id = self.frame_id + 1
+                # Increment the frame counter
+                self.frame_id = self.frame_id + 1
 
-            # If the current frame is greater than the max, create a new video and metadata file
-            if self.frame_id >= self.config["max_video_frames"]:
-                self.logger.info("Reached max vid frames, resetting writers")
-                self._reset_writers()
+                # If the current frame is greater than the max, create a new video and metadata file
+                if self.frame_id >= self.config["max_video_frames"]:
+                    self.logger.info("Reached max vid frames, resetting writers")
+                    self._reset_writers()
+        except Exception as e:
+            self.logger.error(traceback.format_exc())
+            raise e
 
         self.logger.debug(f"Closing writer pipe ({self.config['camera_name']})")
         self.close_video()
@@ -500,16 +505,12 @@ class FFMPEG_Writer(BaseWriter):
         )
 
         # Create a subprocess pipe to write frames
-        with (
-            open(f"{str(self.video_file_name)}.stdout.txt", "w") as f_out,
-            open(f"{str(self.video_file_name)}.stderr.txt", "w") as f_err,
-        ):
-            self.pipe = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=f_out,  # standard output is redirected to 'stdout.txt'
-                stderr=f_err,  # standard error is redirected to 'stderr.txt'
-            )
+        # TODO: give user option to save ffmpeg logs to an output file.
+        # Having trouble getting them to write directly to the mp logger.
+        self.pipe = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+        )
 
     def close_video(self):
         if self.pipe is not None:
@@ -634,6 +635,8 @@ class FFMPEG_Writer(BaseWriter):
             codec = "ffv1"
             command = [
                 "ffmpeg",
+                "-loglevel",
+                loglevel,
                 "-y",
                 "-framerate",
                 str(fps),
