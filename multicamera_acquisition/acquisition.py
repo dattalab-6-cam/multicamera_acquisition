@@ -609,10 +609,12 @@ def refactor_acquire_video(
             # Get a second writer process for depth if needed
             if camera_dict["brand"] == "azure":
                 write_queue_depth = mp.Queue()
-                video_file_name_depth = full_save_location / f"{camera_name}.depth.avi"
-                metadata_file_name_depth = (
-                    full_save_location / f"{camera_name}.metadata.depth.csv"
-                )
+                if append_camera_serial:
+                    cam_append_str = f".{camera_dict['name']}_depth.{camera_dict['id']}.avi"
+                else:
+                    cam_append_str = f".{camera_dict['name']}_depth.avi"
+                video_file_name_depth = Path(basename + cam_append_str)
+                metadata_file_name_depth = Path(basename + cam_append_str.replace(".avi", ".metadata.csv"))
                 writer_depth = get_writer(
                     write_queue_depth,
                     video_file_name_depth,
