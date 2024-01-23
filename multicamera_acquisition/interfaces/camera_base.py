@@ -59,15 +59,7 @@ def get_camera(
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
-
-        if "name" in kwargs:
-            name = kwargs["name"]
-        else:
-            raise ValueError("Azure camera requires name")
-
-        cam = AzureCamera(
-            serial_number=str(serial), name=name, azure_index=kwargs["azure_index"]
-        )
+        cam = AzureCamera(id=id, name=name, config=config)
 
     elif brand == "lucid":
         raise NotImplementedError("Lucid camera not yet implemented in refactored branch.")
@@ -151,6 +143,8 @@ class BaseCamera(object):
             self.device_index = id
             if id > 10:
                 pass
+                # TODO: figure out how to pass these warnings even tho the logger isn't up yet
+                # or just set the logger up earlier
                 # self.logger.warn(
                 #     "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
                 # )
@@ -195,12 +189,12 @@ class BaseCamera(object):
                 )
             device_index = camera_serials.index(self.serial_number)
             self.device_index = device_index
-        else:
+        elif self.device_index is None:
             raise CameraError(
                 "Must specify either serial number or index of camera to connect to."
             )
 
-        self.model_name = model_names[device_index]
+        self.model_name = model_names[self.device_index] if len(model_names) > 0 else None
 
     def check_config(self, config=None):
         """Check if the camera configuration is valid."""
