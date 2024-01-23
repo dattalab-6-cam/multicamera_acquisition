@@ -18,18 +18,25 @@ def save_config(config_filepath, recording_config):
     return
 
 
-def validate_recording_config(recording_config):
+def validate_recording_config(recording_config, logging_level):
     """Validate a recording config dict.
 
     This function checks that the recording config dict is valid,
     and raises an error if it is not.
 
-    # TODO: warn user if use mcu is False but there is a lot of MCU config in the config file
+    ### TODO: warn user if use mcu is False but there is a lot of MCU config in the config file
     """
 
     # Grab a logger
     logger = logging.getLogger()
 
+    # If user is requesting logging level of DEBUG, then make sure any ffmpeg loglevels are set to debug
+    if (logging_level == "DEBUG") or (logging_level == "debug"):
+        for camera_name in recording_config["cameras"].keys():
+            if "loglevel" in recording_config["cameras"][camera_name]["writer"].keys():
+                if recording_config["cameras"][camera_name]["writer"]["loglevel"] != "debug":
+                    logger.warning("Logging level is set to DEBUG, but writer loglevel is not set to debug.  Setting writer loglevel to debug.")
+                    recording_config["cameras"][camera_name]["writer"]["loglevel"] = "debug" 
 
     # Ensure that the recording config is a dict
     if not isinstance(recording_config, dict):
@@ -74,6 +81,10 @@ def validate_recording_config(recording_config):
     # Warn user if writer fps don't all match, except for azure cameras
     if len(set(ir_fpses)) > 1:
         raise ValueError("All Basler camera fps must match.")
+
+    # Raise error if no basler cameras, currently you need at least one
+    if len(ir_fpses) == 0:
+        raise ValueError("Must have at least one Basler camera.")
 
     # Warn user if global fps does not match fps in individual writers
     if recording_config["globals"]["fps"] != ir_fpses[0]:
