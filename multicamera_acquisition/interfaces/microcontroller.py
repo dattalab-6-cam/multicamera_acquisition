@@ -560,7 +560,7 @@ class Microcontroller(object):
         if port is None:
             ports = find_serial_ports()
             if len(ports) == 0:
-                raise RuntimeError("No serial ports found!")
+                raise RuntimeError("No serial ports available! (Close all open serial connections!)")
 
             for port in ports:
                 with serial.Serial(port=port, timeout=0.1) as serial_connection:
