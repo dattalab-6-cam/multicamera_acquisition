@@ -322,7 +322,7 @@ class BaslerCamera(BaseCamera):
         if mode == "microcontroller":
             self.cam.AcquisitionMode.SetValue("Continuous")
             self.cam.TriggerMode.SetValue("Off")
-            self.cam.TriggerSource.SetValue("Line1")
+            self.cam.TriggerSource.SetValue("Line2")
             self.cam.TriggerSelector.SetValue("FrameStart")
             self.cam.TriggerActivation.SetValue("RisingEdge")
             self.cam.TriggerMode.SetValue("On")
