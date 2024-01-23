@@ -612,7 +612,7 @@ class FFMPEG_Writer(BaseWriter):
                 ]
             else:
                 # CPU encoding options using libx264 codec
-                if pixel_format in ["gray16", "grey16"]:
+                if pixel_format in ["gray16", "gray16"]:
                     command += ["-vcodec", "ffv1"]
                 else:
                     command += ["-c:v", "libx264"]
@@ -625,7 +625,7 @@ class FFMPEG_Writer(BaseWriter):
                     "4",  # Number of threads to use for encoding
                 ]
 
-            if pixel_format not in ["gray16", "grey16"]:
+            if pixel_format not in ["gray16", "gray16"]:
                 command += ["-pix_fmt", "yuv420p"]  # Output pixel format
 
             # Additional options for output format and filename
