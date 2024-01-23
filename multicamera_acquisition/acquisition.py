@@ -729,6 +729,7 @@ def refactor_acquire_video(
         logger.info("Ending processes, this may take a moment...")
         if final_config["globals"]["microcontroller_required"] and not finished:
             microcontroller.interrupt_acquisition()
+        microcontroller.close()
         logger.info("Done.")
 
     return full_save_location, video_file_name, final_config
