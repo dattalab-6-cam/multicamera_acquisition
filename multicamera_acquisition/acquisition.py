@@ -155,6 +155,7 @@ class AcquisitionLoop(mp.Process):
             self.logger = logger
         else:
             raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
+        self.logger.debug(f"Started acq loop for {self.camera_config['name']}")
 
         # Get the Camera object instance
         try:
@@ -182,6 +183,7 @@ class AcquisitionLoop(mp.Process):
 
         # Wait for the main thread to get to the for-loop
         # where it will then wait for the camera to start
+        self.logger.debug(f"Waiting for main thread")
         self.await_main_thread.wait()
 
         # Once we get the go-ahead, tell the camera to start grabbing
@@ -198,12 +200,14 @@ class AcquisitionLoop(mp.Process):
         timeout = 1000 if self.fps is None else int(1000 / self.fps)
 
         # Acquire frames until we receive the stop signal
+        self.logger.debug("Ready to record")
         while not self.stopped.is_set():
             try:
                 if first_frame:
                     # If this is the first frame, give time for serial to connect
-                    data = cam.get_array(timeout=10000, get_timestamp=True)
+                    data = cam.get_array(timeout=5000, get_timestamp=True)
                     first_frame = False
+                    self.logger.debug("First frame received")
                 else:
                     data = cam.get_array(
                         timeout=timeout,
@@ -335,7 +339,7 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     for writer in writers:
         if writer.is_alive():
             writer.join(timeout=writer_timeout)
-    logger.debug(f"Writer exitcode: {writer.exitcode}")
+        logger.debug(f"Writer exitcode: {writer.exitcode}")
 
     # End display processes
     if disp is not None:
@@ -554,7 +558,7 @@ def refactor_acquire_video(
     device_index_dict = resolve_device_indices(final_config)
 
     # Check that the config is valid
-    validate_recording_config(final_config)
+    validate_recording_config(final_config, logging_level)
 
     # Save the config file before starting the recording
     config_filepath = full_save_location / "recording_config.yaml"
@@ -695,7 +699,8 @@ def refactor_acquire_video(
 
     # Wait for the specified duration
     try:
-        pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
+        # pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
+        print(f'\rRecording Progress: 0%', end='')
 
         datetime_prev = datetime.now()
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
@@ -718,14 +723,14 @@ def refactor_acquire_video(
 
             # Update pbar
             if (datetime.now() - datetime_prev).seconds > 0:
-                pbar.update((datetime.now() - datetime_prev).seconds)
+                # pbar.update((datetime.now() - datetime_prev).seconds)
+                print(f'\rRecording Progress: {np.round((datetime.now() - datetime_prev).seconds / recording_duration_s * 100, 2)}%', end='')
                 datetime_prev = datetime.now()
 
     finally:
         # End the processes and close the microcontroller serial connection
         end_processes(acquisition_loops, writers, None, writer_timeout=300)
-        pbar.update((datetime.now() - datetime_prev).seconds)
-        pbar.close()
+        print(f'\rRecording Progress: 100%', end='')
         logger.info("Ending processes, this may take a moment...")
         if final_config["globals"]["microcontroller_required"] and not finished:
             microcontroller.interrupt_acquisition()
