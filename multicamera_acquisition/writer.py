@@ -551,7 +551,7 @@ class FFMPEG_Writer(BaseWriter):
 
         elif vid_type == "depth":
             # Use uint16 for depth vids
-            config["pixel_format"] = "grey16"
+            config["pixel_format"] = "gray16"
             config["video_codec"] = "ffv1"  # lossless depth
             config["depth"] = True
             config["gpu"] = None
