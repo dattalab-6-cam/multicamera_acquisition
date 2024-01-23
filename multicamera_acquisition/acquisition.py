@@ -3,6 +3,7 @@ import logging
 from logging import StreamHandler
 from logging.handlers import QueueListener
 import multiprocessing as mp
+import os
 import time
 import warnings
 from datetime import datetime, timedelta
@@ -25,7 +26,6 @@ from multicamera_acquisition.config import (
     create_full_camera_default_config,
 )
 from multicamera_acquisition.visualization import MultiDisplay
-from multicamera_acquisition.paths import prepare_rec_dir, prepare_base_filename
 from multicamera_acquisition.logging_utils import setup_child_logger
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 
@@ -402,9 +402,9 @@ def refactor_acquire_video(
     save_location,
     config,
     recording_duration_s=60,
+    recording_name=None,
     append_datetime=True,
     append_camera_serial=False,
-    file_prefix=None,
     overwrite=False,
     logging_level=logging.INFO,
 ):
@@ -523,16 +523,16 @@ def refactor_acquire_video(
     logger.debug("Started mp logging.")
 
     # Create the recording directory
-    save_location = prepare_rec_dir(
-        save_location, append_datetime=append_datetime, overwrite=overwrite
-    )
-    logger.debug(f"Have good save location {save_location}")
-
-    base_filename = prepare_base_filename(
-        file_prefix=file_prefix,
-        append_datetime=append_datetime,
-        append_camera_serial=append_camera_serial,
-    )
+    datetime_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+    if recording_name is None:
+        assert append_datetime, "Must append datetime if recording_name is None"
+        recording_name = datetime_str
+    elif append_datetime:
+        recording_name = f"{recording_name}_{datetime_str}"
+    full_save_location = Path(os.path.join(save_location, recording_name))  # /path/to/my/recording_name
+    os.makedirs(full_save_location, exist_ok=True)
+    basename = str(full_save_location / recording_name)  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
+    logger.debug(f"Have good save location {full_save_location}")
 
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
@@ -550,13 +550,13 @@ def refactor_acquire_video(
     validate_recording_config(final_config)
 
     # Save the config file before starting the recording
-    config_filepath = save_location / "recording_config.yaml"
+    config_filepath = full_save_location / "recording_config.yaml"
     save_config(config_filepath, final_config)
 
     # Find the microcontroller to be used for triggering
     if final_config["globals"]["microcontroller_required"]:
         logger.info("Finding microcontroller...")
-        microcontroller = Microcontroller(save_location / base_filename, final_config)
+        microcontroller = Microcontroller(basename, final_config)
         microcontroller.open_serial_connection()
 
     # TODO: triggerdata file
@@ -576,15 +576,11 @@ def refactor_acquire_video(
 
         # Generate file names
         if append_camera_serial:
-            format_kwargs = dict(
-                camera_name=camera_dict["name"], camera_id=camera_dict["id"]
-            )
+            cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"
         else:
-            format_kwargs = dict(camera_name=camera_dict["name"])
-        video_file_name = save_location / base_filename.format(**format_kwargs)
-        metadata_file_name = save_location / base_filename.format(
-            **format_kwargs
-        ).replace(".mp4", ".metadata.csv")
+            cam_append_str = f".{camera_dict['name']}.mp4"
+        video_file_name = Path(basename + cam_append_str)
+        metadata_file_name = Path(basename + cam_append_str.replace(".mp4", ".metadata.csv"))
 
         # Get a writer process
         writer = get_writer(
@@ -601,9 +597,9 @@ def refactor_acquire_video(
         # Get a second writer process for depth if needed
         if camera_dict["brand"] == "azure":
             write_queue_depth = mp.Queue()
-            video_file_name_depth = save_location / f"{camera_name}.depth.avi"
+            video_file_name_depth = full_save_location / f"{camera_name}.depth.avi"
             metadata_file_name_depth = (
-                save_location / f"{camera_name}.metadata.depth.csv"
+                full_save_location / f"{camera_name}.metadata.depth.csv"
             )
             writer_depth = get_writer(
                 write_queue_depth,
@@ -714,4 +710,14 @@ def refactor_acquire_video(
             microcontroller.interrupt_acquisition()
         logger.info("Done.")
 
-    return save_location, video_file_name, final_config
+    return full_save_location, video_file_name, final_config
+
+
+def reset_loggers():
+    # Remove handlers from all loggers
+    for logger in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger, logging.Logger):  # Guard against 'PlaceHolder' objects
+            logger.handlers.clear()
+
+    # Reset the root logger
+    logging.getLogger().handlers.clear()
