@@ -29,6 +29,7 @@ ALL_DISPLAY_PARAMS = [
     "display_every_n",  # ie temporal downsample
     "display_range",  # (min, max) for display colormap
     "display_size",  # int
+    "display_frames",  # bool
 ]
 
 ALL_TRIGGER_PARAMS = [
