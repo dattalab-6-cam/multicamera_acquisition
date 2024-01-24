@@ -78,7 +78,7 @@ class BaseWriter(mp.Process):
             metadata_writer.writerow(
                 ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
             )
-        self.metadata_file = open(self.metadata_file_name, "a")
+        self.metadata_file = open(self.metadata_file_name, "a", newline='')
         self.metadata_writer = csv.writer(self.metadata_file)
 
     def _get_new_pipe(self, data_shape):
