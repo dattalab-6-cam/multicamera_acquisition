@@ -225,21 +225,21 @@ class AcquisitionLoop(mp.Process):
                         depth, ir, camera_timestamp = data
 
                         self.write_queue.put(
-                            tuple([ir, camera_timestamp, current_iter])
+                            tuple([ir, camera_timestamp, n_frames_received])
                         )
                         self.write_queue_depth.put(
-                            tuple([depth, camera_timestamp, current_iter])
+                            tuple([depth, camera_timestamp, n_frames_received])
                         )
                         if self.camera_config["display"]["display_frames"]:
-                            if current_iter % self.display_every_n == 0:
+                            if n_frames_received % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple([depth, camera_timestamp, current_iter])
+                                    tuple([depth, camera_timestamp, n_frames_received])
                                 )
                     else:
-                        data = data + tuple([current_iter])
+                        data = data + tuple([n_frames_received])
                         self.write_queue.put(data)
                         if self.camera_config["display"]["display_frames"]:
-                            if current_iter % self.acq_config["display_every_n"] == 0:
+                            if n_frames_received % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
             # Deal with dropped frames by catching the exception and warning instead
@@ -262,7 +262,7 @@ class AcquisitionLoop(mp.Process):
 
             # Check if we've reached the max frames to acquire
             if self.acq_config["max_frames_to_acqure"] is not None:
-                if current_iter >= self.acq_config["max_frames_to_acqure"]:
+                if n_frames_received >= self.acq_config["max_frames_to_acqure"]:
                     if not self.stopped.is_set():
                         self.logger.debug(
                             f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping."

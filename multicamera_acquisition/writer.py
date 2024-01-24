@@ -70,13 +70,13 @@ class BaseWriter(mp.Process):
         self.pipe = None
 
         # Initialize frame counter
-        self.frame_id = 0
+        self.frame_num = 0
 
     def initialize_metadata(self):
-        with open(self.metadata_file_name, "w") as metadata_f:
+        with open(self.metadata_file_name, "w", newline='') as metadata_f:
             metadata_writer = csv.writer(metadata_f)
             metadata_writer.writerow(
-                ["frame_id", "frame_timestamp", "frame_image_uid", "queue_size"]
+                ["frame_num", "frame_timestamp", "frame_image_uid", "queue_size"]
             )
         self.metadata_file = open(self.metadata_file_name, "a", newline='')
         self.metadata_writer = csv.writer(self.metadata_file)
@@ -117,8 +117,7 @@ class BaseWriter(mp.Process):
                     break
 
                 # Unpack the data
-                # TODO: if we drop a frame, is current_frame still valid?
-                img, camera_timestamp, current_frame = data
+                img, camera_timestamp, self.frame_num = data
 
                 # Get the metadata about the frame
                 frame_image_uid = str(round(time.time(), 5)).zfill(5)
@@ -135,11 +134,11 @@ class BaseWriter(mp.Process):
                 # Write the metadata
                 try:
                     self.metadata_writer.writerow(
-                        [current_frame, camera_timestamp, frame_image_uid, str(qsize)]
+                        [self.frame_num, camera_timestamp, frame_image_uid, str(qsize)]
                     )
                 except ValueError as e:
                     self.logger.error(
-                        f"Failed to write metadata for frame {current_frame}, frame id: {self.frame_id}"
+                        f"Failed to write metadata for frame {self.frame_num}"
                     )
                     self.logger.error(e)
                     raise
@@ -153,11 +152,8 @@ class BaseWriter(mp.Process):
                 # Write the frame
                 self.append(img)
 
-                # Increment the frame counter
-                self.frame_id = self.frame_id + 1
-
                 # If the current frame is greater than the max, create a new video and metadata file
-                if self.frame_id >= self.config["max_video_frames"]:
+                if self.frame_num >= self.config["max_video_frames"]:
                     self.logger.info("Reached max vid frames, resetting writers")
                     self._reset_writers()
         except Exception as e:
@@ -175,7 +171,7 @@ class BaseWriter(mp.Process):
         self.close_video()
         self.video_file_name = (
             self.video_file_name.parent
-            / f"{self.orig_stem}.{self.frame_id}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
+            / f"{self.orig_stem}.{self.frame_num}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
         )
         
         # [new pipe will be created on next frame]
@@ -184,12 +180,12 @@ class BaseWriter(mp.Process):
         self.metadata_file.close()
         self.metadata_file_name = (
             self.metadata_file_name.parent
-            / f"{self.orig_stem}.{self.frame_id}.metadata.csv"
+            / f"{self.orig_stem}.{self.frame_num}.metadata.csv"
         )
         self.initialize_metadata()
 
         # Reset the frame id counter
-        self.frame_id = 0
+        self.frame_num = 0
 
     def append(self, data):
         pass
