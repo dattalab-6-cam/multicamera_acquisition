@@ -204,8 +204,8 @@ class AcquisitionLoop(mp.Process):
         while not self.stopped.is_set():
             try:
                 if first_frame:
-                    # If this is the first frame, give time for serial to connect
-                    data = cam.get_array(timeout=5000, get_timestamp=True)
+                    # If this is the first frame, give a long time for serial to connect
+                    data = cam.get_array(timeout=1000*60, get_timestamp=True)
                     first_frame = False
                     self.logger.debug("First frame received")
                 else:
