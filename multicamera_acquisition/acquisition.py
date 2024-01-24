@@ -674,15 +674,15 @@ def refactor_acquire_video(
 
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
-        disp = MultiDisplay(
+        display_proc = MultiDisplay(
             display_queues,
             camera_list=camera_list,
             display_ranges=display_ranges,
             config=final_config["rt_display"],
         )
-        disp.start()
+        display_proc.start()
     else:
-        disp = None
+        display_proc = None
 
     # Wait for the acq loop processes to start their cameras
     logger.info("Starting cameras...")
@@ -731,7 +731,7 @@ def refactor_acquire_video(
 
     finally:
         # End the processes and close the microcontroller serial connection
-        end_processes(acquisition_loops, writers, None, writer_timeout=300)
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
         print(f'\rRecording Progress: 100%', end='')
         logger.info("Ending processes, this may take a moment...")
         if final_config["globals"]["microcontroller_required"]:
