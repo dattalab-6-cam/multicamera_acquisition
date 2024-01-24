@@ -561,7 +561,7 @@ def refactor_acquire_video(
     validate_recording_config(final_config, logging_level)
 
     # Save the config file before starting the recording
-    config_filepath = full_save_location / "recording_config.yaml"
+    config_filepath = Path(basename + ".recording_config.yaml")
     save_config(config_filepath, final_config)
 
     # Find the microcontroller to be used for triggering
