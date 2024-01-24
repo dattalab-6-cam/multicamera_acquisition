@@ -310,6 +310,13 @@ void setup()
     // Start the serial communication
     Serial.begin(9600);
     delay(SERIAL_START_DELAY);
+
+    // Turn off all digital pins for safety, until we get instructions
+    for (int i = 0; i < NUM_DIGITAL_PINS; i++)
+    {
+        pinMode(i, OUTPUT);
+        digitalWrite(i, LOW);
+    }
 }
 
 void loop()
@@ -395,6 +402,13 @@ void loop()
                     state_change_pins,
                     state_change_states,
                     num_state_changes);
+            }
+
+            // Turn off all digital pins for safety at the end
+            for (int i = 0; i < NUM_DIGITAL_PINS; i++)
+            {
+                pinMode(i, OUTPUT);
+                digitalWrite(i, LOW);
             }
         }
     }
