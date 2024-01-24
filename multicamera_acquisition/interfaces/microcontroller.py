@@ -411,20 +411,6 @@ def generate_output_schedule(config, n_azures, basler_fps):
     return state_change_times, state_change_pins, state_change_states, cycle_duration
 
 
-def check_for_response(serial_connection, expected_response, port=""):
-    """
-    Check if the microcontroller sends an expected response within 5 seconds.
-    """
-    for _ in range(50):  # connection has 0.1 second timeout
-        msg = serial_connection.readline().decode("utf-8").strip("\n")
-        logging.debug(
-            f"`check_for_response` on port {port}. Recieved: {msg} from microcontroller. Expected: {expected_response}"
-        )
-        if msg == expected_response:
-            return True
-    return False
-
-
 def find_serial_ports():
     """Lists serial port names, across OS's.
     https://stackoverflow.com/questions/12090503/listing-available-com-ports-with-python
@@ -499,6 +485,13 @@ class Microcontroller(object):
         basler_exposure_time : int, optional
             Exposure time of Basler cameras in microseconds. Used if `config` is None.
         """
+
+        # Try to find the main logger
+        try:
+            self.logger = logging.getLogger("main_acq_logger")
+        except:
+            self.logger = logging.getLogger("microcontroller_logger")
+
         # extract relevant config parameters
         if config is not None:
             self.config = config["microcontroller"]
@@ -542,6 +535,19 @@ class Microcontroller(object):
         header = "time,pin,state\n"
         self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
         self.trigger_data_file.write(header)
+        self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
+
+    def check_for_response(self, serial_connection, expected_response, port=""):
+        """ Check if the microcontroller sends an expected response within 5 seconds.
+        """
+        for _ in range(50):  # connection has 0.1 second timeout
+            msg = serial_connection.readline().decode("utf-8").strip("\n")
+            self.logger.debug(
+                f"`check_for_response` on port {port}. Recieved: {msg} from microcontroller. Expected: {expected_response}"
+            )
+            if msg == expected_response:
+                return True
+        return False
 
     def open_serial_connection(self, port=None):
         """
@@ -564,20 +570,20 @@ class Microcontroller(object):
 
             for port in ports:
                 with serial.Serial(port=port, timeout=0.1) as serial_connection:
-                    found_ready_microcontroller = check_for_response(
+                    found_ready_microcontroller = self.check_for_response(
                         serial_connection, "READY", port
                     )
                     if found_ready_microcontroller:
                         break
         else:
             with serial.Serial(port=port, timeout=0.1) as serial_connection:
-                found_ready_microcontroller = check_for_response(
+                found_ready_microcontroller = self.check_for_response(
                     serial_connection, "READY", port
                 )
 
         if found_ready_microcontroller:
             self.serial_connection = serial.Serial(port=port, timeout=0.1)
-            logging.info(f"Found ready microcontroller on port: {port}")
+            self.logger.info(f"Found ready microcontroller on port: {port}")
         else:
             raise RuntimeError(
                 "Could not find ready microcontroller! Try restarting the microcontroller."
@@ -620,7 +626,7 @@ class Microcontroller(object):
         self.serial_connection.reset_input_buffer()
 
         # check for response
-        acquisition_started = check_for_response(self.serial_connection, "RECEIVED")
+        acquisition_started = self.check_for_response(self.serial_connection, "RECEIVED")
 
         if not acquisition_started:
             raise RuntimeError(
@@ -636,7 +642,7 @@ class Microcontroller(object):
         self.serial_connection.write(b"I")
 
         # check for correct response
-        acquisition_interrupted = check_for_response(
+        acquisition_interrupted = self.check_for_response(
             self.serial_connection, "INTERRUPTED"
         )
         if not acquisition_interrupted:
@@ -644,7 +650,7 @@ class Microcontroller(object):
                 "Could not interrupt acquisition! microcontroller did not recieve interrupt signal."
             )
         else:
-            logging.info("Microcontroller acquisition loop interrupted.")
+            self.logger.info("Microcontroller acquisition loop interrupted.")
 
     def check_for_input(self):
         """
