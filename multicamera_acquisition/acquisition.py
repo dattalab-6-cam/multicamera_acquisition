@@ -288,6 +288,9 @@ class AcquisitionLoop(mp.Process):
         cam.close()
         self.logger.debug("Camera closed")
 
+        # Report that the process has stopped
+        self.logger.info(f"Acq loop for {self.camera_config['name']} is finished.")
+
 
 def generate_full_config(camera_lists):
     full_config = {}
@@ -327,12 +330,13 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             logger.debug(
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            acquisition_loop.join(timeout=1)
+            # acquisition_loop.join(timeout=1)
+            acquisition_loop.join(timeout=60*60)
 
             # If still alive, terminate it
             if acquisition_loop.is_alive():
                 # debug: notify user we had to terminate the acq loop
-                logger.warning("Terminating acquisition loop (join timed out)")
+                logger.warning(f"Terminating acquisition loop {acquisition_loop.camera_config['name']} (join timed out)")
                 acquisition_loop.terminate()
 
     # End writer processes
@@ -574,7 +578,7 @@ def refactor_acquire_video(
 
     # Create the various processes
     # TODO: refactor these into one "running processes" dict or sth like that
-    logger.debug("Starting child processes...")
+    logger.info("Opening subprocesses and cameras, this may take a moment...")
     writers = []
     acquisition_loops = []
     display_queues = []
@@ -724,8 +728,8 @@ def refactor_acquire_video(
                 break
 
             # Update pbar
-            if (datetime.now() - datetime_prev).seconds > 0:
-                # pbar.update((datetime.now() - datetime_prev).seconds)
+            if (datetime.now() - datetime_prev).seconds > 1:
+            #     # pbar.update((datetime.now() - datetime_prev).seconds)
                 print(f'\rRecording Progress: {np.round((datetime.now() - datetime_prev).seconds / recording_duration_s * 100, 2)}%', end='')
                 datetime_prev = datetime.now()
 
