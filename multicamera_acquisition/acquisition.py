@@ -197,7 +197,8 @@ class AcquisitionLoop(mp.Process):
         current_iter = 0
         n_frames_received = 0
         first_frame = False
-        timeout = 1000 if self.fps is None else int(1000 / self.fps)
+        timeout = 1000 if self.fps is None else int(1000 / self.fps * 1.25)
+        prev_timestamp = 0
 
         # Acquire frames until we receive the stop signal
         self.logger.debug("Ready to record")
@@ -208,6 +209,7 @@ class AcquisitionLoop(mp.Process):
                     data = cam.get_array(timeout=1000*60, get_timestamp=True)
                     first_frame = False
                     self.logger.debug("First frame received")
+                    prev_timestamp = data[1]
                 else:
                     data = cam.get_array(
                         timeout=timeout,
@@ -236,13 +238,22 @@ class AcquisitionLoop(mp.Process):
                                     tuple([depth, camera_timestamp, n_frames_received])
                                 )
                     else:
+                        camera_timestamp = data[1]
                         data = data + tuple([n_frames_received])
                         self.write_queue.put(data)
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.acq_config["display_every_n"] == 0:
                                 self.display_queue.put(data)
 
-            # Deal with dropped frames by catching the exception and warning instead
+                    # Check if we dropped any frames
+                    delta_t = (camera_timestamp - prev_timestamp) / 1e6
+                    if self.acq_config["dropped_frame_warnings"] and delta_t > (timeout)*1.25:
+                        self.logger.warn(
+                            f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames (delta_t={delta_t} ms, threshold={timeout*1.25} ms)"
+                        )
+                    prev_timestamp = camera_timestamp
+
+            # Catch any frame timeouts
             except Exception as e:
                 
                 if type(e).__name__ == "SpinnakerException":
@@ -250,7 +261,7 @@ class AcquisitionLoop(mp.Process):
                 elif type(e).__name__ == "TimeoutException" or type(e).__name__ == "K4ATimeoutException":
                     if self.acq_config["dropped_frame_warnings"]:
                         self.logger.warn(
-                            f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames"
+                            f"Frame grabbing timed out, not nec. a dropped frame ( on iter {current_iter} after receiving {n_frames_received} frames)"
                         )
                     pass
                 else:
@@ -545,6 +556,10 @@ def refactor_acquire_video(
     elif append_datetime:
         recording_name = f"{recording_name}_{datetime_str}"
     full_save_location = Path(os.path.join(save_location, recording_name))  # /path/to/my/recording_name
+    if os.path.exists(full_save_location) and not overwrite:
+        raise ValueError(
+            f"Save location {full_save_location} already exists, if you want to overwrite set overwrite to True!"
+        )
     os.makedirs(full_save_location, exist_ok=True)
     basename = str(full_save_location / recording_name)  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
     logger.debug(f"Have good save location {full_save_location}")
@@ -732,6 +747,9 @@ def refactor_acquire_video(
             #     # pbar.update((datetime.now() - datetime_prev).seconds)
                 print(f'\rRecording Progress: {np.round((datetime.now() - datetime_prev).seconds / recording_duration_s * 100, 2)}%', end='')
                 datetime_prev = datetime.now()
+
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, stopping recording.")
 
     finally:
         # End the processes and close the microcontroller serial connection
