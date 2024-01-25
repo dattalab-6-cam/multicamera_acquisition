@@ -150,7 +150,7 @@ class MultiDisplay(mp.Process):
     def default_MultiDisplay_config():
         return {
             "downsample": 4,
-            "display_every_n": 1,
+            "display_every_n": 3,
             "cameras_per_row": 3,
             "display_size": (300, 300),  # TODO: allow this to be per-camera
         }
