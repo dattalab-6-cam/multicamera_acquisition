@@ -1,6 +1,4 @@
-import logging
 import numpy as np
-import yaml
 
 from multicamera_acquisition.logging_utils import setup_child_logger
 
@@ -46,14 +44,14 @@ def get_camera(
 
     """
     if brand == "basler":
-        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+        from multicamera_acquisition.interfaces.camera_basler import \
+            BaslerCamera
 
         cam = BaslerCamera(id=id, name=name, config=config)
 
     elif brand == "basler_emulated":
-        from multicamera_acquisition.interfaces.camera_basler import (
-            EmulatedBaslerCamera,
-        )
+        from multicamera_acquisition.interfaces.camera_basler import \
+            EmulatedBaslerCamera
 
         cam = EmulatedBaslerCamera(id=id, name=name, config=config)
 

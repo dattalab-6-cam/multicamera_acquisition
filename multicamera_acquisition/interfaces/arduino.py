@@ -1,10 +1,10 @@
-import struct
-import numpy as np
-import warnings
-import sys
 import glob
-import serial
 import logging
+import struct
+import sys
+
+import numpy as np
+import serial
 
 
 def packIntAsLong(value):

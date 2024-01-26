@@ -1,9 +1,10 @@
-from pathlib2 import Path
-import pathlib2
 import os
-from datetime import datetime
-import numpy as np
 import shutil
+from datetime import datetime
+
+import numpy as np
+import pathlib2
+from pathlib2 import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = Path(__file__).resolve().parent

@@ -1,7 +1,9 @@
-import yaml
-from multicamera_acquisition.interfaces.config import create_full_camera_default_config
-import pdb
 import logging
+
+import yaml
+
+from multicamera_acquisition.interfaces.config import \
+    create_full_camera_default_config
 
 
 def load_config(config_filepath):

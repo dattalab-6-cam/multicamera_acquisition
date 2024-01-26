@@ -8,18 +8,18 @@ setup(
     author="dattalab",
     license="MIT",
     install_requires=[
-        "tqdm",
-        "numpy",
-        "pyserial",
-        "pathlib2",
-        "opencv-python",
-        "av",
-        "pyyaml",
-        "pandas",
-        "pypylon",
-        "Pillow",
-        "matplotlib",
-        "pyusb",
-        "notebook",
+        "av"
+        "matplotlib"
+        "notebook"
+        "numpy"
+        "opencv-python"
+        "pandas"
+        "pathlib2"
+        "Pillow"
+        "pyserial"
+        "pyusb"
+        "pyyaml"
+        "pypylon"
+        "tqdm"
     ],
 )

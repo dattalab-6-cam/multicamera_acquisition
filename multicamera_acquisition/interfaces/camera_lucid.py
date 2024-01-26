@@ -1,13 +1,15 @@
-from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-import numpy as np
+import ctypes
+import logging
+import time
 
+import numpy as np
 from arena_api.__future__.save import Writer
 from arena_api.buffer import BufferFactory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
-import logging
-import time
-import ctypes
+
+from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
+                                                            CameraError)
 
 
 class LucidCamera(BaseCamera):

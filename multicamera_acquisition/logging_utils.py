@@ -1,8 +1,6 @@
-from multiprocessing import current_process
-from multiprocessing import Process
-from multiprocessing import Queue
-from logging.handlers import QueueHandler
 import logging
+
+from multiprocessing import current_process
 
 
 def setup_child_logger(

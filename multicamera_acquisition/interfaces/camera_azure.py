@@ -1,15 +1,16 @@
 import logging
-from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
-from pyk4a import (
-    PyK4A,
-    Config,
-    ColorResolution,
-    DepthMode,
-    WiredSyncMode,
-    connected_device_count,
-)
-import numpy as np
 import warnings
+
+import numpy as np
+
+from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
+                                                            CameraError)
+
+try:
+    from pyk4a import (ColorResolution, Config, DepthMode, PyK4A, WiredSyncMode,
+                    connected_device_count)
+except ImportError:
+    warnings.warn("pyk4a not installed.  Azure cameras will not be available.")
 
 
 class AzureCamera(BaseCamera):

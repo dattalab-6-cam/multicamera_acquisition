@@ -1,34 +1,28 @@
-import csv
 import logging
-from logging import StreamHandler
-from logging.handlers import QueueListener
 import multiprocessing as mp
 import os
-import time
 import traceback
-import warnings
 from datetime import datetime, timedelta
+from logging import StreamHandler
+from logging.handlers import QueueListener
 from pathlib import Path
-import pdb
 
 import numpy as np
-import serial
 import yaml
 
-from tqdm import tqdm
-from multicamera_acquisition.interfaces.camera_base import get_camera, CameraError
-from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
-from multicamera_acquisition.interfaces.camera_azure import enumerate_azure_cameras
-from multicamera_acquisition.writer import get_writer
-from multicamera_acquisition.config import (
-    load_config,
-    save_config,
-    validate_recording_config,
-    create_full_camera_default_config,
-)
-from multicamera_acquisition.visualization import MultiDisplay
-from multicamera_acquisition.logging_utils import setup_child_logger
+from multicamera_acquisition.config import (create_full_camera_default_config,
+                                            load_config, save_config,
+                                            validate_recording_config)
+from multicamera_acquisition.interfaces.camera_azure import \
+    enumerate_azure_cameras
+from multicamera_acquisition.interfaces.camera_base import (CameraError,
+                                                            get_camera)
+from multicamera_acquisition.interfaces.camera_basler import \
+    enumerate_basler_cameras
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
+from multicamera_acquisition.logging_utils import setup_child_logger
+from multicamera_acquisition.visualization import MultiDisplay
+from multicamera_acquisition.writer import get_writer
 
 
 class AcquisitionLoop(mp.Process):

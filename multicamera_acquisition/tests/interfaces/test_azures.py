@@ -52,7 +52,7 @@ class Test_Camera_InitAndStart():
 def test_azure_acquire():
     """ Test the ability of the Azure to acquire many images
     """
-    
+
     config = AzureCamera.default_camera_config()
     config["sync_mode"] = "true_master"
     cam = get_camera(brand="azure", id=0, config=config)
@@ -63,6 +63,7 @@ def test_azure_acquire():
         assert isinstance(ir, np.ndarray)
     cam.stop()
     cam.close()
+
 
 def test_azure_ir_writer(tmp_path):
     """Test the ir writer for the Azures 

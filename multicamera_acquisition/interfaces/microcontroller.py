@@ -1,10 +1,11 @@
-import struct
-import numpy as np
-import sys
 import glob
-import serial
 import logging
+import struct
+import sys
+
 import matplotlib.pyplot as plt
+import numpy as np
+import serial
 
 STX = b"\x02"
 ETX = b"\x03"

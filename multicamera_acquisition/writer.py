@@ -1,12 +1,12 @@
 import csv
 import logging
 import multiprocessing as mp
+import os
 import subprocess
 import time
-import warnings
-import os
-from pathlib import Path
 import traceback
+import warnings
+from pathlib import Path
 
 import numpy as np
 
