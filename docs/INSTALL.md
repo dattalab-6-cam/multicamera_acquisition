@@ -213,7 +213,6 @@ pip install -e .
 sudo usermod -a -G dialout <your-username>
 ```
 ***
-<!-- TODO: Test this part, NVIDIA patch not tested on laptop-->
 ### NVIDIA GPU encoding patch
 
 #### Linux
@@ -226,8 +225,7 @@ bash ./patch.sh
 ```
 
 #### Windows
->[!WARNING]
-> This is TBD for Windows, although the python library that we use claims to support Windows.
+The same patch is required, but it is a bit more involved to install: https://github.com/keylase/nvidia-patch/tree/master/win. That said, we have had success using it.
 
 ***
 <!-- TODO: Test this part, NVIDIA VPF not tested on laptop-->
