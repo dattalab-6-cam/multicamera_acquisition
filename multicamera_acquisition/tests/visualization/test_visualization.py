@@ -15,7 +15,7 @@ import pdb
 from multicamera_acquisition.visualization import (
     MultiDisplay,
     load_first_frames,
-    plot_image_grid
+    plot_image_grid,
 )
 
 from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
@@ -24,12 +24,12 @@ from multicamera_acquisition.tests.writer.test_writers import (
     get_DummyFrames_process,
     fps,
     n_test_frames,
-    dummy_frames_func
+    dummy_frames_func,
 )
 
-from multicamera_acquisition.tests.interfaces.test_ir_cameras import ( 
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
     camera_type,
-    camera_brand
+    camera_brand,
 )
 
 from multicamera_acquisition.tests.acquisition.test_acq_video import (
@@ -48,13 +48,11 @@ from multicamera_acquisition.writer import (
 
 @pytest.fixture(scope="function")
 def multidisplay_processes(fps, n_test_frames):
-    """Generate linked MultiDisplay and DummyFrames processes for testing
-    """
+    """Generate linked MultiDisplay and DummyFrames processes for testing"""
     config = MultiDisplay.default_MultiDisplay_config().copy()
     queues = [mp.Queue() for _ in range(2)]
     dummy_frames_procs = [
-        get_DummyFrames_process(fps, queue, n_test_frames)
-        for queue in queues
+        get_DummyFrames_process(fps, queue, n_test_frames) for queue in queues
     ]
     display = MultiDisplay(
         queues,
@@ -68,14 +66,19 @@ def multidisplay_processes(fps, n_test_frames):
 def create_twocam_config(camera_brand, n_test_frames, fps, trigger_type):
     camera_list = [
         {"name": "top", "brand": camera_brand, "id": 0, "trigger_type": trigger_type},
-        {"name": "bottom", "brand": camera_brand, "id": 1, "trigger_type": trigger_type}
+        {
+            "name": "bottom",
+            "brand": camera_brand,
+            "id": 1,
+            "trigger_type": trigger_type,
+        },
     ]
 
     # Parse the "camera list" into a partial config
     partial_new_config = partial_config_from_camera_list(camera_list)
 
     # Add ffmpeg writers to each camera
-    # TODO: allow this to be nvc dynamically for testing. 
+    # TODO: allow this to be nvc dynamically for testing.
     for camera_name in partial_new_config["cameras"].keys():
         ffmpeg_writer_config = FFMPEG_Writer.default_writer_config(fps).copy()
         ffmpeg_writer_config["camera_name"] = camera_name
@@ -138,9 +141,10 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_ty
 
 @pytest.mark.gui
 def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
-    """Test the display range functionality of MultiDisplay
-    """
-    full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type="no_trigger")
+    """Test the display range functionality of MultiDisplay"""
+    full_config = create_twocam_config(
+        camera_brand, n_test_frames, fps, trigger_type="no_trigger"
+    )
 
     # Set display config as desired for the test
     for camera in full_config["cameras"].values():
@@ -161,12 +165,13 @@ def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
 
 
 def test_image_grid(tmp_path, camera_brand, fps):
-    """Run an acquisition and display its first frames in a grid
-    """
+    """Run an acquisition and display its first frames in a grid"""
 
     n_test_frames = 5
-    full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type="no_trigger")
-    
+    full_config = create_twocam_config(
+        camera_brand, n_test_frames, fps, trigger_type="no_trigger"
+    )
+
     save_loc, vid_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
@@ -177,9 +182,13 @@ def test_image_grid(tmp_path, camera_brand, fps):
     print(full_config)
     first_frames = load_first_frames(save_loc)
     fig, ax = plot_image_grid(
-        images=first_frames, 
-        display_config=full_config['rt_display'], 
-        camera_names=list(full_config['cameras'].keys()),
-        display_ranges=[cam["display"]["display_range"] for cam in full_config["cameras"].values() if cam["display"]["display_frames"]]
+        images=first_frames,
+        display_config=full_config["rt_display"],
+        camera_names=list(full_config["cameras"].keys()),
+        display_ranges=[
+            cam["display"]["display_range"]
+            for cam in full_config["cameras"].values()
+            if cam["display"]["display_frames"]
+        ],
     )
     plt.show()

@@ -15,52 +15,55 @@ def get_camera(
 ):
     """Get a camera object.
 
-        Parameters
-        ----------
-        fps : int
-            The desired frame rate for the camera.
+    Parameters
+    ----------
+    fps : int
+        The desired frame rate for the camera.
 
-        brand : string (default: 'flir')
-            The brand of camera to use.  Currently only 'flir' is supported. If
-            'flir', the software PySpin is used. if 'basler', the software pypylon
-            is used.
+    brand : string (default: 'flir')
+        The brand of camera to use.  Currently only 'flir' is supported. If
+        'flir', the software PySpin is used. if 'basler', the software pypylon
+        is used.
 
-        id: int or str (default: 0)
-            If an int, the index of the camera to acquire.
-            If a string, the serial number of the camera.
+    id: int or str (default: 0)
+        If an int, the index of the camera to acquire.
+        If a string, the serial number of the camera.
 
-        config_file : path-like str or Path (default: None)
-            Path to config file.
-            If config and config_file are both None, uses the camera's default config file.
+    config_file : path-like str or Path (default: None)
+        Path to config file.
+        If config and config_file are both None, uses the camera's default config file.
 
-        config : dict (default: None)
-            A dictionary of config values.
-            If config and config_file are both None, uses the camera's default config file.
+    config : dict (default: None)
+        A dictionary of config values.
+        If config and config_file are both None, uses the camera's default config file.
 
-        Returns
-        -------
-        cam : Camera object
-            The camera object, specific to the brand.
+    Returns
+    -------
+    cam : Camera object
+        The camera object, specific to the brand.
 
     """
     if brand == "basler":
-        from multicamera_acquisition.interfaces.camera_basler import \
-            BaslerCamera
+        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
 
         cam = BaslerCamera(id=id, name=name, config=config)
 
     elif brand == "basler_emulated":
-        from multicamera_acquisition.interfaces.camera_basler import \
-            EmulatedBaslerCamera
+        from multicamera_acquisition.interfaces.camera_basler import (
+            EmulatedBaslerCamera,
+        )
 
         cam = EmulatedBaslerCamera(id=id, name=name, config=config)
 
     elif brand == "azure":
         from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+
         cam = AzureCamera(id=id, name=name, config=config)
 
     elif brand == "lucid":
-        raise NotImplementedError("Lucid camera not yet implemented in refactored branch.")
+        raise NotImplementedError(
+            "Lucid camera not yet implemented in refactored branch."
+        )
 
     return cam
 
@@ -104,11 +107,11 @@ class BaseCamera(object):
     """
 
     def __init__(
-        self, 
-        id=0, 
-        name=None, 
-        config=None, 
-        fps=None, 
+        self,
+        id=0,
+        name=None,
+        config=None,
+        fps=None,
     ):
         """Set up a camera object,instance ready to connect to a camera.
         Parameters
@@ -192,7 +195,9 @@ class BaseCamera(object):
                 "Must specify either serial number or index of camera to connect to."
             )
 
-        self.model_name = model_names[self.device_index] if len(model_names) > 0 else None
+        self.model_name = (
+            model_names[self.device_index] if len(model_names) > 0 else None
+        )
 
     def check_config(self, config=None):
         """Check if the camera configuration is valid."""

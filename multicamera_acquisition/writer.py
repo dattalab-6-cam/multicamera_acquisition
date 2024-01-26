@@ -14,9 +14,17 @@ from multicamera_acquisition.logging_utils import setup_child_logger
 
 
 class BaseWriter(mp.Process):
-    def __init__(self, queue, video_file_name, metadata_file_name, config=None, process_name=None,
+    def __init__(
+        self,
+        queue,
+        video_file_name,
+        metadata_file_name,
+        config=None,
+        process_name=None,
         logger_queue=None,
-        logging_level=logging.DEBUG, fps=None):
+        logging_level=logging.DEBUG,
+        fps=None,
+    ):
         """An abstract parent class to write videos from a queue.
 
         Parameters
@@ -73,12 +81,12 @@ class BaseWriter(mp.Process):
         self.frames_received = 0
 
     def initialize_metadata(self):
-        with open(self.metadata_file_name, "w", newline='') as metadata_f:
+        with open(self.metadata_file_name, "w", newline="") as metadata_f:
             metadata_writer = csv.writer(metadata_f)
             metadata_writer.writerow(
                 ["frames_received", "frame_timestamp", "frame_image_uid", "queue_size"]
             )
-        self.metadata_file = open(self.metadata_file_name, "a", newline='')
+        self.metadata_file = open(self.metadata_file_name, "a", newline="")
         self.metadata_writer = csv.writer(self.metadata_file)
 
     def _get_new_pipe(self, data_shape):
@@ -91,15 +99,13 @@ class BaseWriter(mp.Process):
             # Just use the root logger
             self.logger = logging.getLogger()
         elif isinstance(self.logger_queue, mp.queues.Queue):
-            # Create a logger for this process 
+            # Create a logger for this process
             # (it will automatically include the process name in the log output)
             logger = setup_child_logger(self.logger_queue, level=self.logging_level)
             self.logger = logger
             self.logger.debug("Created logger")
         else:
-            raise ValueError(
-                "logger_queue must be a multiprocessing.Queue or None."
-            )
+            raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
 
         # Get CSV writer for metadata file
         self.logger.debug("Creating metadata file")
@@ -134,7 +140,12 @@ class BaseWriter(mp.Process):
                 # Write the metadata
                 try:
                     self.metadata_writer.writerow(
-                        [self.frames_received, camera_timestamp, frame_image_uid, str(qsize)]
+                        [
+                            self.frames_received,
+                            camera_timestamp,
+                            frame_image_uid,
+                            str(qsize),
+                        ]
                     )
                 except ValueError as e:
                     self.logger.error(
@@ -173,7 +184,7 @@ class BaseWriter(mp.Process):
             self.video_file_name.parent
             / f"{self.orig_stem}.{self.frames_received}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
         )
-        
+
         # [new pipe will be created on next frame]
 
         # Reset the metadata writer
@@ -199,11 +210,11 @@ class BaseWriter(mp.Process):
 
 class NVC_Writer(BaseWriter):
     def __init__(
-        self, 
-        queue, 
-        video_file_name, 
-        metadata_file_name, 
-        config=None, 
+        self,
+        queue,
+        video_file_name,
+        metadata_file_name,
+        config=None,
         process_name=None,
         logger_queue=None,
         logging_level=logging.DEBUG,
@@ -447,11 +458,11 @@ class VideoMuxer(mp.Process):
 # "Timestamps are unset in a packet for stream 0. This is deprecated and will stop working in the future. Fix your code to set the timestamps properly"
 class FFMPEG_Writer(BaseWriter):
     def __init__(
-        self, 
-        queue, 
-        video_file_name, 
-        metadata_file_name, 
-        config=None, 
+        self,
+        queue,
+        video_file_name,
+        metadata_file_name,
+        config=None,
         process_name=None,
         logger_queue=None,
         logging_level=logging.DEBUG,
@@ -521,7 +532,10 @@ class FFMPEG_Writer(BaseWriter):
         """
         config = {
             "fps": fps,
-            "max_video_frames": 60 * 60 * fps * 24,  # one day  # TODO: do we really want to hardcode this?
+            "max_video_frames": 60
+            * 60
+            * fps
+            * 24,  # one day  # TODO: do we really want to hardcode this?
             "quality": 15,
             "loglevel": "error",
             "type": "ffmpeg",
@@ -656,10 +670,10 @@ class FFMPEG_Writer(BaseWriter):
 
 
 def get_writer(
-    queue, 
-    video_file_name, 
-    metadata_file_name, 
-    writer_type="nvc", 
+    queue,
+    video_file_name,
+    metadata_file_name,
+    writer_type="nvc",
     config=None,
     process_name=None,
     logger_queue=None,
@@ -668,11 +682,23 @@ def get_writer(
     """Get a Writer object."""
     if writer_type == "nvc":
         writer = NVC_Writer(
-            queue, video_file_name, metadata_file_name, config=config, process_name=process_name, logger_queue=logger_queue, logging_level=logging_level
+            queue,
+            video_file_name,
+            metadata_file_name,
+            config=config,
+            process_name=process_name,
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
     elif writer_type == "ffmpeg":
         writer = FFMPEG_Writer(
-            queue, video_file_name, metadata_file_name, config=config, process_name=process_name, logger_queue=logger_queue, logging_level=logging_level
+            queue,
+            video_file_name,
+            metadata_file_name,
+            config=config,
+            process_name=process_name,
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
     else:
         raise ValueError(f"Unrecognized writer type: {writer_type}")

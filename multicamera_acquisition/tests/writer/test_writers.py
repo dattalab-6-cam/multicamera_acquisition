@@ -20,8 +20,7 @@ from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
 
 @pytest.fixture(scope="session")
 def n_test_frames(pytestconfig):
-    """A session-wide fixture to return the desired number of test frames per movie.
-    """
+    """A session-wide fixture to return the desired number of test frames per movie."""
     return int(pytestconfig.getoption("n_test_frames"))
 
 
@@ -34,30 +33,31 @@ def dummy_frames_func(fps, queue, n_test_frames):
     frame = np.zeros((*shape, 3), dtype=np.uint8)
     for i in range(n_test_frames):
         frame[:] = 0
-        frame = cv2.putText(frame, str(i), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        frame = cv2.putText(
+            frame, str(i), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
+        )
         queue.put((frame[:, :, 0], i * 0.033, i))
         time.sleep(1 / fps)
     queue.put(())
 
 
 def get_DummyFrames_process(fps, queue, n_test_frames):
-    """Get a DummyFrames process for testing.
-    """
+    """Get a DummyFrames process for testing."""
     process = mp.Process(target=dummy_frames_func, args=(fps, queue, n_test_frames))
     return process
 
 
 @pytest.fixture(scope="function")
 def nvc_writer_processes(tmp_path, fps, n_test_frames):
-    """Generate linked NVC_Writer and DummyFrames processes for testing
-    """
+    """Generate linked NVC_Writer and DummyFrames processes for testing"""
     from multicamera_acquisition.writer import NVC_Writer
+
     config = NVC_Writer.default_writer_config(fps).copy()
     config["camera_name"] = "test"
     queue = mp.Queue()
     dummy_frames_proc = get_DummyFrames_process(fps, queue, n_test_frames)
     writer = NVC_Writer(
-        queue, 
+        queue,
         video_file_name=tmp_path / "test.mp4",
         metadata_file_name=tmp_path / "test.csv",
         config=config,
@@ -72,7 +72,6 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
         import PyNvCodec as nvc
     except ImportError:
         pytest.skip("PyNvCodec not installed, skipping NVC_Writer test")
-
 
     # Get the writer and dummy frames proc
     writer, dummy_frames_proc = nvc_writer_processes
@@ -92,15 +91,14 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
 
 @pytest.fixture(scope="function")
 def ffmpeg_writer_processes(tmp_path, fps, n_test_frames):
-    """Generate linked FFMPEG_Writer and DummyFrames processes for testing
-    """
+    """Generate linked FFMPEG_Writer and DummyFrames processes for testing"""
     config = FFMPEG_Writer.default_writer_config(fps).copy()
-    config["camera_name"] = "test"  
+    config["camera_name"] = "test"
     config["loglevel"] = "debug"
     queue = mp.Queue()
     dummy_frames_proc = get_DummyFrames_process(fps, queue, n_test_frames)
     writer = FFMPEG_Writer(
-        queue, 
+        queue,
         video_file_name=tmp_path / "test.mp4",
         metadata_file_name=tmp_path / "test.csv",
         config=config,

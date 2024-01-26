@@ -45,10 +45,14 @@ def writer_type(pytestconfig):
 
 @pytest.fixture(scope="session")
 def logging_level(pytestconfig):
-    return pytestconfig.getoption("log_cli_level")  # this captures the built-in pytest --log-cli-level option
+    return pytestconfig.getoption(
+        "log_cli_level"
+    )  # this captures the built-in pytest --log-cli-level option
 
 
-def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_type, writer_type, fps, logging_level):
+def test_refactor_acquire_video(
+    tmp_path, camera_brand, n_test_frames, trigger_type, writer_type, fps, logging_level
+):
 
     if logging_level is None:
         logging_level = logging.INFO
@@ -70,7 +74,9 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         try:
             import PyNvCodec as nvc
         except ImportError:
-            pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
+            pytest.skip(
+                "PyNvCodec not installed, try running with --writer_type ffmpeg"
+            )
         writer_config = NVC_Writer.default_writer_config(fps).copy()
     elif writer_type == "ffmpeg":
         writer_config = FFMPEG_Writer.default_writer_config(fps).copy()
@@ -99,7 +105,7 @@ def test_refactor_acquire_video(tmp_path, camera_brand, n_test_frames, trigger_t
         recording_duration_s=int(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
-        logging_level=logging_level
+        logging_level=logging_level,
     )
 
     # Check that the video exists
@@ -136,9 +142,9 @@ def test_refactor_acquire_video_multiple_vids_muxing(
 
     # Add NVC writers to each camera
     nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
-    nvc_writer_config[
-        "auto_remux_videos"
-    ] = True  # this is the default, but just to make it explicit / in case we change the default
+    nvc_writer_config["auto_remux_videos"] = (
+        True  # this is the default, but just to make it explicit / in case we change the default
+    )
 
     # KEY LINE FOR THIS TEST
     assert n_test_frames % 2 == 0
@@ -216,9 +222,9 @@ def test_refactor_acquire_video_muxing(
 
     # Add NVC writers to each camera
     nvc_writer_config = NVC_Writer.default_writer_config(fps).copy()
-    nvc_writer_config[
-        "auto_remux_videos"
-    ] = True  # this is the default, but just to make it explicit / in case we change the default
+    nvc_writer_config["auto_remux_videos"] = (
+        True  # this is the default, but just to make it explicit / in case we change the default
+    )
     for camera_name in partial_new_config["cameras"].keys():
         nvc_writer_config["camera_name"] = camera_name
         partial_new_config["cameras"][camera_name]["writer"] = nvc_writer_config
@@ -269,5 +275,5 @@ if __name__ == "__main__":
         trigger_type="no_trigger",
         writer_type="ffmpeg",
         fps=30,
-        logging_level=logging.DEBUG
+        logging_level=logging.DEBUG,
     )

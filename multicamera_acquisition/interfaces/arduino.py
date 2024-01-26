@@ -75,8 +75,8 @@ def find_serial_ports():
             pass
     return result
 
-class Arduino(object):
 
+class Arduino(object):
     """
     Represents an Arduino setup for synchronization between cameras.
 
@@ -93,19 +93,19 @@ class Arduino(object):
 
     """
 
-
     def __init__(self, config):
-        
+
         self.config = config
-        self.fps = self.config['fps']
-        self.azure_pulse_dur = self.config['azure_pulse_dur']
-        self.acq_cycle_dur = self.config['acq_cycle_dur']
-        self.camera_type = self.config['camera_type_arduino']
-        self.basler_offset = self.config['basler_offset']
-        self.azure_offset = self.config['azure_offset']
-        self.n_azures = self.config['n_azures']
+        self.fps = self.config["fps"]
+        self.azure_pulse_dur = self.config["azure_pulse_dur"]
+        self.acq_cycle_dur = self.config["acq_cycle_dur"]
+        self.camera_type = self.config["camera_type_arduino"]
+        self.basler_offset = self.config["basler_offset"]
+        self.azure_offset = self.config["azure_offset"]
+        self.n_azures = self.config["n_azures"]
 
         return None
+
     def generate_basler_frametimes(self):
         """
         Generate trigger times for Basler camera frames accounting for Azure camera synchronization.
@@ -121,24 +121,29 @@ class Arduino(object):
         - ValueError: If the camera parameter is not 'top' or 'bottom'.
         """
         valid_fps = [30, 60, 90, 120, 150]
-        assert self.fps in valid_fps, ValueError(f'fps not in {valid_fps}')
+        assert self.fps in valid_fps, ValueError(f"fps not in {valid_fps}")
 
         # convert to microseconds
-        interframe_interval = (1/self.fps)*1e6
+        interframe_interval = (1 / self.fps) * 1e6
         # get nframes per cycle
         nframes = np.ceil(self.acq_cycle_dur / interframe_interval).astype(int)
 
-        if self.camera_type =='top':
+        if self.camera_type == "top":
             bottom_offset = 0
-        elif self.camera_type == 'bottom':
+        elif self.camera_type == "bottom":
             bottom_offset = 1750
         else:
-            raise ValueError('camera must be one of the following: top, bottom')
+            raise ValueError("camera must be one of the following: top, bottom")
 
         times = []
         # get times
         for n in range(nframes):
-            t = (interframe_interval * n) + (self.nazures * self.azure_pulse_dur) + self.azure_offset + self.basler_offset
+            t = (
+                (interframe_interval * n)
+                + (self.nazures * self.azure_pulse_dur)
+                + self.azure_offset
+                + self.basler_offset
+            )
             t += bottom_offset
             times.append(t)
 
@@ -146,7 +151,7 @@ class Arduino(object):
         if self.fps in (120, 150):
             times[1] += 510
         # edge case to deal with last frame interfering with azure
-        if self.fps == 150 and self.camera_type =='bottom':
+        if self.fps == 150 and self.camera_type == "bottom":
             times[-1] -= 330
 
         return times

@@ -539,8 +539,7 @@ class Microcontroller(object):
         self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
 
     def check_for_response(self, serial_connection, expected_response, port=""):
-        """ Check if the microcontroller sends an expected response within 5 seconds.
-        """
+        """Check if the microcontroller sends an expected response within 5 seconds."""
         for _ in range(50):  # connection has 0.1 second timeout
             msg = serial_connection.readline().decode("utf-8").strip("\n")
             self.logger.debug(
@@ -567,7 +566,9 @@ class Microcontroller(object):
         if port is None:
             ports = find_serial_ports()
             if len(ports) == 0:
-                raise RuntimeError("No serial ports available! (Close all open serial connections!)")
+                raise RuntimeError(
+                    "No serial ports available! (Close all open serial connections!)"
+                )
 
             for port in ports:
                 with serial.Serial(port=port, timeout=0.1) as serial_connection:
@@ -627,7 +628,9 @@ class Microcontroller(object):
         self.serial_connection.reset_input_buffer()
 
         # check for response
-        acquisition_started = self.check_for_response(self.serial_connection, "RECEIVED")
+        acquisition_started = self.check_for_response(
+            self.serial_connection, "RECEIVED"
+        )
 
         if not acquisition_started:
             raise RuntimeError(

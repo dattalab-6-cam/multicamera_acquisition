@@ -25,4 +25,6 @@ def test_microcontroller(tmp_path):
     microcontroller.close()
 
     assert finished, "Microcontroller did not finish acquisition."
-    assert os.path.exists(str(basename) + ".triggerdata.csv"), "No trigger data file found."
+    assert os.path.exists(
+        str(basename) + ".triggerdata.csv"
+    ), "No trigger data file found."

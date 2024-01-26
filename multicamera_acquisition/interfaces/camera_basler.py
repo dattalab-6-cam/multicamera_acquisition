@@ -6,8 +6,7 @@ import numpy as np
 from pypylon import pylon
 from pypylon._genicam import RuntimeException
 
-from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
-                                                            CameraError)
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
 
 class BaslerCamera(BaseCamera):
@@ -340,7 +339,6 @@ class BaslerCamera(BaseCamera):
 
         else:
             raise ValueError("Trigger mode must be 'arduino' or 'no_trigger'")
-
 
     def start(self):
         "Start recording images."

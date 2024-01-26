@@ -14,20 +14,22 @@ def dummy_task(logger_queue, level=logging.DEBUG):
     # simulate doing work
     for i in range(5):
         # report a message
-        logger.debug(f'step {i}.')
+        logger.debug(f"step {i}.")
         # block
         time.sleep(0.1)
 
     # report final message
-    logger.info('done.')
+    logger.info("done.")
 
 
 def test_logger():
 
     # Set up a logger for this process
-    main_logger = logging.getLogger('main')
+    main_logger = logging.getLogger("main")
     main_logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     handler = StreamHandler()
     handler.setFormatter(formatter)
     main_logger.addHandler(handler)  # Console logging
@@ -38,7 +40,7 @@ def test_logger():
     queue_listener.start()
 
     # Configure child processes
-    main_logger.info('Starting child processes.')
+    main_logger.info("Starting child processes.")
     processes = [mp.Process(target=dummy_task, args=(logger_queue,)) for i in range(5)]
 
     # Start child processes

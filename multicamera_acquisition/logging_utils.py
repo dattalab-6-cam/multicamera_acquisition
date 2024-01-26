@@ -4,9 +4,9 @@ from multiprocessing import current_process
 
 
 def setup_child_logger(
-        logger_queue, 
-        level=logging.DEBUG, 
-        logging_format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logger_queue,
+    level=logging.DEBUG,
+    logging_format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 ):
     """Given a queue to a parent logger process, set up a logger for the current process.
     The logger's name will be the name of the current process.
@@ -28,7 +28,7 @@ def setup_child_logger(
         A logger for the current process.
 
     process_name: str
-        The name of the current process. 
+        The name of the current process.
     """
 
     # Get the current process name

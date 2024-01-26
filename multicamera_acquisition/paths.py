@@ -83,4 +83,3 @@ def prepare_rec_dir(save_location, append_datetime=True, overwrite=False):
         raise ValueError(f"Failed to create save location {save_location}!")
 
     return save_location
-

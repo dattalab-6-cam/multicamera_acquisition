@@ -8,17 +8,13 @@ from multicamera_acquisition.tests.writer.test_writers import (
     n_test_frames,
 )
 from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
-    camera_type, 
+    camera_type,
     camera,
 )
 
-from multicamera_acquisition.acquisition import (
-    AcquisitionLoop
-)
+from multicamera_acquisition.acquisition import AcquisitionLoop
 
-from multicamera_acquisition.interfaces.camera_basler import (
-    BaslerCamera
-)
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
 
 from multicamera_acquisition.video_utils import count_frames
 
@@ -39,31 +35,42 @@ def test_acq_loop_init(fps):
 
 
 def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
-    """Test the whole darn thing!
-    """
+    """Test the whole darn thing!"""
 
     if writer_type == "nvc":
         try:
             import PyNvCodec as nvc
         except ImportError:
-            pytest.skip("PyNvCodec not installed, try running with --writer_type ffmpeg")
+            pytest.skip(
+                "PyNvCodec not installed, try running with --writer_type ffmpeg"
+            )
 
     print(camera_type)
     # Get the Camera config
     if camera_type == "basler_camera":
-        from multicamera_acquisition.interfaces.camera_basler import BaslerCamera as Camera  
+        from multicamera_acquisition.interfaces.camera_basler import (
+            BaslerCamera as Camera,
+        )
+
         id = 0  # or could dynamically pass serials
     elif camera_type == "basler_emulated":
-        from multicamera_acquisition.interfaces.camera_basler import EmulatedBaslerCamera as Camera
+        from multicamera_acquisition.interfaces.camera_basler import (
+            EmulatedBaslerCamera as Camera,
+        )
+
         id = 0
     elif camera_type == "azure":
-        from multicamera_acquisition.interfaces.camera_azure import AzureCamera as Camera
+        from multicamera_acquisition.interfaces.camera_azure import (
+            AzureCamera as Camera,
+        )
     else:
         raise NotImplementedError
     camera_config = Camera.default_camera_config().copy()
     camera_config["name"] = "test"
     camera_config["id"] = id
-    camera_config["trigger"] = {"trigger_type": "no_trigger"}  # overwrite defaults to allow cam to run without triggers
+    camera_config["trigger"] = {
+        "trigger_type": "no_trigger"
+    }  # overwrite defaults to allow cam to run without triggers
 
     # Create the Writer process
     if writer_type == "nvc":

@@ -10,15 +10,15 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from multicamera_acquisition.config import (create_full_camera_default_config,
-                                            load_config, save_config,
-                                            validate_recording_config)
-from multicamera_acquisition.interfaces.camera_azure import \
-    enumerate_azure_cameras
-from multicamera_acquisition.interfaces.camera_base import (CameraError,
-                                                            get_camera)
-from multicamera_acquisition.interfaces.camera_basler import \
-    enumerate_basler_cameras
+from multicamera_acquisition.config import (
+    create_full_camera_default_config,
+    load_config,
+    save_config,
+    validate_recording_config,
+)
+from multicamera_acquisition.interfaces.camera_azure import enumerate_azure_cameras
+from multicamera_acquisition.interfaces.camera_base import CameraError, get_camera
+from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 from multicamera_acquisition.logging_utils import setup_child_logger
 from multicamera_acquisition.visualization import MultiDisplay
@@ -199,15 +199,12 @@ class AcquisitionLoop(mp.Process):
             try:
                 if first_frame:
                     # If this is the first frame, give a long time for serial to connect
-                    data = cam.get_array(timeout=1000*60, get_timestamp=True)
+                    data = cam.get_array(timeout=1000 * 60, get_timestamp=True)
                     first_frame = False
                     self.logger.debug("First frame received")
                     prev_timestamp = data[1]
                 else:
-                    data = cam.get_array(
-                        timeout=timeout,
-                        get_timestamp=True
-                    )
+                    data = cam.get_array(timeout=timeout, get_timestamp=True)
 
                 # If we received a frame:
                 if len(data) != 0:
@@ -228,24 +225,42 @@ class AcquisitionLoop(mp.Process):
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple([depth[::self.acq_config["downsample"], ::self.acq_config["downsample"]], camera_timestamp, n_frames_received])
+                                    tuple(
+                                        [
+                                            depth[
+                                                :: self.acq_config["downsample"],
+                                                :: self.acq_config["downsample"],
+                                            ],
+                                            camera_timestamp,
+                                            n_frames_received,
+                                        ]
+                                    )
                                 )
                     else:
                         camera_timestamp = data[1]
                         data = data + tuple([n_frames_received])
                         self.write_queue.put(data)
                         if self.camera_config["display"]["display_frames"]:
-                            if n_frames_received % self.acq_config["display_every_n"] == 0:
+                            if (
+                                n_frames_received % self.acq_config["display_every_n"]
+                                == 0
+                            ):
                                 data = (
-                                    data[0][::self.acq_config["downsample"], ::self.acq_config["downsample"]],
+                                    data[0][
+                                        :: self.acq_config["downsample"],
+                                        :: self.acq_config["downsample"],
+                                    ],
                                     data[1],
-                                    data[2]
+                                    data[2],
                                 )
                                 self.display_queue.put(data)
 
                     # Check if we dropped any frames
                     delta_t = (camera_timestamp - prev_timestamp) / 1e6
-                    if self.acq_config["dropped_frame_warnings"] and delta_t > (timeout)*1.25:
+                    if (
+                        self.acq_config["dropped_frame_warnings"]
+                        and delta_t > (timeout) * 1.25
+                    ):
                         self.logger.warn(
                             f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames (delta_t={delta_t} ms, threshold={timeout*1.25} ms)"
                         )
@@ -253,10 +268,13 @@ class AcquisitionLoop(mp.Process):
 
             # Catch any frame timeouts
             except Exception as e:
-                
+
                 if type(e).__name__ == "SpinnakerException":
                     pass
-                elif type(e).__name__ == "TimeoutException" or type(e).__name__ == "K4ATimeoutException":
+                elif (
+                    type(e).__name__ == "TimeoutException"
+                    or type(e).__name__ == "K4ATimeoutException"
+                ):
                     if self.acq_config["dropped_frame_warnings"]:
                         self.logger.warn(
                             f"Frame grabbing timed out, not nec. a dropped frame ( on iter {current_iter} after receiving {n_frames_received} frames)"
@@ -265,7 +283,7 @@ class AcquisitionLoop(mp.Process):
                 else:
                     self.logger.error(traceback.format_exc())
                     raise e
-                
+
             # Increment the iteration counter
             current_iter += 1
 
@@ -340,12 +358,14 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
             # acquisition_loop.join(timeout=1)
-            acquisition_loop.join(timeout=60*60)
+            acquisition_loop.join(timeout=60 * 60)
 
             # If still alive, terminate it
             if acquisition_loop.is_alive():
                 # debug: notify user we had to terminate the acq loop
-                logger.warning(f"Terminating acquisition loop {acquisition_loop.camera_config['name']} (join timed out)")
+                logger.warning(
+                    f"Terminating acquisition loop {acquisition_loop.camera_config['name']} (join timed out)"
+                )
                 acquisition_loop.terminate()
 
     # End writer processes
@@ -553,13 +573,17 @@ def refactor_acquire_video(
         recording_name = datetime_str
     elif append_datetime:
         recording_name = f"{recording_name}_{datetime_str}"
-    full_save_location = Path(os.path.join(save_location, recording_name))  # /path/to/my/recording_name
+    full_save_location = Path(
+        os.path.join(save_location, recording_name)
+    )  # /path/to/my/recording_name
     if os.path.exists(full_save_location) and not overwrite:
         raise ValueError(
             f"Save location {full_save_location} already exists, if you want to overwrite set overwrite to True!"
         )
     os.makedirs(full_save_location, exist_ok=True)
-    basename = str(full_save_location / recording_name)  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
+    basename = str(
+        full_save_location / recording_name
+    )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
     logger.debug(f"Have good save location {full_save_location}")
 
     # Load the config file if it exists
@@ -609,7 +633,9 @@ def refactor_acquire_video(
             else:
                 cam_append_str = f".{camera_dict['name']}.mp4"
             video_file_name = Path(basename + cam_append_str)
-            metadata_file_name = Path(basename + cam_append_str.replace(".mp4", ".metadata.csv"))
+            metadata_file_name = Path(
+                basename + cam_append_str.replace(".mp4", ".metadata.csv")
+            )
 
             # Get a writer process
             writer = get_writer(
@@ -627,11 +653,15 @@ def refactor_acquire_video(
             if camera_dict["brand"] == "azure":
                 write_queue_depth = mp.Queue()
                 if append_camera_serial:
-                    cam_append_str = f".{camera_dict['name']}_depth.{camera_dict['id']}.avi"
+                    cam_append_str = (
+                        f".{camera_dict['name']}_depth.{camera_dict['id']}.avi"
+                    )
                 else:
                     cam_append_str = f".{camera_dict['name']}_depth.avi"
                 video_file_name_depth = Path(basename + cam_append_str)
-                metadata_file_name_depth = Path(basename + cam_append_str.replace(".avi", ".metadata.csv"))
+                metadata_file_name_depth = Path(
+                    basename + cam_append_str.replace(".avi", ".metadata.csv")
+                )
                 writer_depth = get_writer(
                     write_queue_depth,
                     video_file_name_depth,
@@ -678,7 +708,9 @@ def refactor_acquire_video(
             acquisition_loops.append(acquisition_loop)
 
             # Block until the acq loop process reports that it's initialized
-            logger.debug(f"Waiting for acquisition loop ({camera_name}) to initialize...")
+            logger.debug(
+                f"Waiting for acquisition loop ({camera_name}) to initialize..."
+            )
             status = acquisition_loop.await_process.wait(3)
             if not status:
                 raise CameraError(
@@ -718,7 +750,7 @@ def refactor_acquire_video(
 
     # Wait for the specified duration
     try:
-        print(f'\rRecording Progress: 0%', end='')
+        print(f"\rRecording Progress: 0%", end="")
 
         datetime_prev = datetime.now()
         datetime_rec_start = datetime_prev
@@ -742,9 +774,17 @@ def refactor_acquire_video(
 
             # Update pbar
             if (datetime.now() - datetime_prev).total_seconds() > 1:
-                pct_prog = np.round((datetime.now() - datetime_rec_start).seconds / recording_duration_s * 100, 2)
+                pct_prog = np.round(
+                    (datetime.now() - datetime_rec_start).seconds
+                    / recording_duration_s
+                    * 100,
+                    2,
+                )
                 total_sec = (datetime.now() - datetime_rec_start).seconds
-                print(f'\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)', end='')
+                print(
+                    f"\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)",
+                    end="",
+                )
                 datetime_prev = datetime.now()
 
     except KeyboardInterrupt:
@@ -755,7 +795,7 @@ def refactor_acquire_video(
         logger.info("Ending processes, this may take a moment...")
         end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
         logger.info("Processed ended")
-        print(f'\rRecording Progress: 100%', end='')
+        print(f"\rRecording Progress: 100%", end="")
         if final_config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()

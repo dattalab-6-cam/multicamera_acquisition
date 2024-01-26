@@ -2,7 +2,9 @@ import itertools
 
 from multicamera_acquisition.config_utils import dict_update_with_precedence
 from multicamera_acquisition.interfaces.camera_basler import (
-    BaslerCamera, EmulatedBaslerCamera)
+    BaslerCamera,
+    EmulatedBaslerCamera,
+)
 
 # Per-camera allowed parameter names
 ALL_CAM_PARAMS = [
@@ -162,8 +164,8 @@ def create_full_camera_default_config(partial_config, fps):
             default_writer_conf = EmulatedBaslerCamera.default_writer_config(fps).copy()
             defaults = {**default_cam_conf, "writer": default_writer_conf}
         elif cam_config["brand"] == "azure":
-            from multicamera_acquisition.interfaces.camera_azure import \
-                AzureCamera
+            from multicamera_acquisition.interfaces.camera_azure import AzureCamera
+
             default_cam_conf = AzureCamera.default_camera_config().copy()
             default_writer_conf = AzureCamera.default_writer_config(
                 30

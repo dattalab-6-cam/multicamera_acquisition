@@ -2,8 +2,7 @@ import logging
 
 import yaml
 
-from multicamera_acquisition.interfaces.config import \
-    create_full_camera_default_config
+from multicamera_acquisition.interfaces.config import create_full_camera_default_config
 
 
 def load_config(config_filepath):
@@ -38,7 +37,7 @@ def validate_recording_config(recording_config, logging_level):
     #         if "loglevel" in recording_config["cameras"][camera_name]["writer"].keys():
     #             if recording_config["cameras"][camera_name]["writer"]["loglevel"] != "debug":
     #                 logger.warning("Logging level is set to DEBUG, but writer loglevel is not set to debug.  Setting writer loglevel to debug.")
-    #                 recording_config["cameras"][camera_name]["writer"]["loglevel"] = "debug" 
+    #                 recording_config["cameras"][camera_name]["writer"]["loglevel"] = "debug"
 
     # Ensure that the recording config is a dict
     if not isinstance(recording_config, dict):
@@ -70,14 +69,16 @@ def validate_recording_config(recording_config, logging_level):
     if recording_config["globals"]["fps"] % 30 != 0:
         raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
 
-
     ### FPS checks ###
     # Warn user if writers don't have fps params
     ir_fpses = []
     for camera_name in recording_config["cameras"].keys():
         if "fps" not in recording_config["cameras"][camera_name]["writer"].keys():
             raise ValueError(f"No fps specified for writer {camera_name}.")
-        elif recording_config["cameras"][camera_name]["brand"] not in ["azure", "lucid"]:
+        elif recording_config["cameras"][camera_name]["brand"] not in [
+            "azure",
+            "lucid",
+        ]:
             ir_fpses.append(recording_config["cameras"][camera_name]["writer"]["fps"])
 
     # Warn user if writer fps don't all match, except for azure cameras

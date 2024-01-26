@@ -8,8 +8,7 @@ from arena_api.buffer import BufferFactory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
-from multicamera_acquisition.interfaces.camera_base import (BaseCamera,
-                                                            CameraError)
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
 
 class LucidCamera(BaseCamera):
@@ -84,9 +83,9 @@ class LucidCamera(BaseCamera):
         #   'HighSpeedDistance1250mmSingleFreq',
         #   'HighSpeedDistance2500mmSingleFreq'
         # self.nodemap['Scan3dOperatingMode'].value = 'HighSpeedDistance2500mmSingleFreq'#'HighSpeedDistance625mmSingleFreq'
-        self.nodemap[
-            "Scan3dOperatingMode"
-        ].value = "HighSpeedDistance1250mmSingleFreq"  # JP
+        self.nodemap["Scan3dOperatingMode"].value = (
+            "HighSpeedDistance1250mmSingleFreq"  # JP
+        )
 
         # set pixel format
         # pixel_format = PixelFormat.Coord3D_ABCY16

@@ -2,12 +2,10 @@ import numpy as np
 import pytest
 import multiprocessing as mp
 
-from multicamera_acquisition.interfaces.camera_base import (
-    get_camera)
+from multicamera_acquisition.interfaces.camera_base import get_camera
 
 
-from multicamera_acquisition.interfaces.camera_azure import (
-    AzureCamera)
+from multicamera_acquisition.interfaces.camera_azure import AzureCamera
 
 from multicamera_acquisition.writer import get_writer
 
@@ -32,9 +30,8 @@ def camera(trigger_type):
     cam.close()
 
 
-class Test_Camera_InitAndStart():
-    """Test the ability of the camera to initialize and start without a trigger.
-    """
+class Test_Camera_InitAndStart:
+    """Test the ability of the camera to initialize and start without a trigger."""
 
     def test_start(self, camera):
         camera.start()
@@ -50,8 +47,7 @@ class Test_Camera_InitAndStart():
 
 
 def test_azure_acquire():
-    """ Test the ability of the Azure to acquire many images
-    """
+    """Test the ability of the Azure to acquire many images"""
 
     config = AzureCamera.default_camera_config()
     config["sync_mode"] = "true_master"
@@ -66,29 +62,28 @@ def test_azure_acquire():
 
 
 def test_azure_ir_writer(tmp_path):
-    """Test the ir writer for the Azures 
-    """
+    """Test the ir writer for the Azures"""
     config = AzureCamera.default_camera_config()
     config["sync_mode"] = "true_master"
     cam = get_camera(brand="azure", id=0, config=config)
     cam.init()
-    
+
     write_queue = mp.Queue()
     video_file_name = tmp_path / "test.mp4"
     metadata_file_name = tmp_path / "test.csv"
     writer_config = {
-        'fps': 30,
-        'max_video_frames': 2592000,
-        'quality': 15,
-        'loglevel': 'debug',
-        'type': 'ffmpeg',
-        'pixel_format': 'gray8',
-        'output_px_format': 'yuv420p',
-        'video_codec': 'libx264',
-        'preset': 'ultrafast',
-        'gpu': None,
-        'depth': False,
-        'camera_name': 'azure_bottom'
+        "fps": 30,
+        "max_video_frames": 2592000,
+        "quality": 15,
+        "loglevel": "debug",
+        "type": "ffmpeg",
+        "pixel_format": "gray8",
+        "output_px_format": "yuv420p",
+        "video_codec": "libx264",
+        "preset": "ultrafast",
+        "gpu": None,
+        "depth": False,
+        "camera_name": "azure_bottom",
     }
 
     writer = get_writer(
@@ -103,34 +98,32 @@ def test_azure_ir_writer(tmp_path):
     cam.start()
     for i in range(10):
         depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
-        write_queue.put(
-            tuple([ir, timestamp, i])
-        )
+        write_queue.put(tuple([ir, timestamp, i]))
 
     cam.stop()
     write_queue.put(tuple())
     writer.join()
     cam.close()
 
+
 def test_azure_depth_writer(tmp_path):
-    """Test the depth writer for the Azures 
-    """
+    """Test the depth writer for the Azures"""
     config = AzureCamera.default_camera_config()
     config["sync_mode"] = "true_master"
     cam = get_camera(brand="azure", id=0, config=config)
     cam.init()
-    
+
     writer_depth_config = {
-        'fps': 30,
-        'max_video_frames': 2592000,
-        'quality': 15,
-        'loglevel': 'debug',
-        'type': 'ffmpeg',
-        'pixel_format': 'gray16',
-        'video_codec': 'ffv1',
-        'depth': True,
-        'gpu': None,
-        'camera_name': 'azure_bottom'
+        "fps": 30,
+        "max_video_frames": 2592000,
+        "quality": 15,
+        "loglevel": "debug",
+        "type": "ffmpeg",
+        "pixel_format": "gray16",
+        "video_codec": "ffv1",
+        "depth": True,
+        "gpu": None,
+        "camera_name": "azure_bottom",
     }
 
     write_queue_depth = mp.Queue()
@@ -148,12 +141,9 @@ def test_azure_depth_writer(tmp_path):
     cam.start()
     for i in range(10):
         depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
-        write_queue_depth.put(
-            tuple([depth, timestamp, i])
-        )
+        write_queue_depth.put(tuple([depth, timestamp, i]))
 
     cam.stop()
     write_queue_depth.put(tuple())
     writer_depth.join()
     cam.close()
-
