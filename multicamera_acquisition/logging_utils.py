@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import QueueHandler
 
 from multiprocessing import current_process
 
@@ -38,7 +39,7 @@ def setup_child_logger(
     logger = logging.getLogger(process_name)
 
     # Add a handler that uses the shared queue
-    handler = logging.handlers.QueueHandler(logger_queue)
+    handler = QueueHandler(logger_queue)
     formatter = logging.Formatter(logging_format)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
