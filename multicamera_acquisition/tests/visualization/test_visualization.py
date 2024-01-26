@@ -156,6 +156,7 @@ def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
         recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
+        logging_level="DEBUG",
     )
 
 

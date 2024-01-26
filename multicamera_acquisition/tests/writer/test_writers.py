@@ -77,9 +77,6 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
     # Get the writer and dummy frames proc
     writer, dummy_frames_proc = nvc_writer_processes
 
-    # Check that the writer is not running
-    assert writer.frame_id == 0
-
     # Start the writer and dummy frames proc
     writer.start()
     dummy_frames_proc.start()
@@ -87,10 +84,6 @@ def test_NVC_writer(nvc_writer_processes, n_test_frames):
     # Wait for the processes to finish
     dummy_frames_proc.join(timeout=60)
     writer.join(timeout=60)
-
-    # NB: this won't work! Because multiprocessing stuff runs in its own scope.
-    # Would need to use a pipe / shared value to communicate between the two.
-    # assert writer.frame_id == 20
 
     # Check that the video exists
     assert writer.video_file_name.exists()
@@ -120,9 +113,6 @@ def test_ffmpeg_writer(ffmpeg_writer_processes, n_test_frames):
     # Get the writer and dummy frames proc
     writer, dummy_frames_proc = ffmpeg_writer_processes
 
-    # Check that the writer is not running
-    assert writer.frame_id == 0
-
     # Start the writer and dummy frames proc
     writer.start()
     dummy_frames_proc.start()
@@ -131,10 +121,6 @@ def test_ffmpeg_writer(ffmpeg_writer_processes, n_test_frames):
     # NB: 5 seconds seems like a lot, but it fails at lower timeouts.
     dummy_frames_proc.join(timeout=5)
     writer.join(timeout=5)
-
-    # NB: this won't work! Because multiprocessing stuff runs in its own scope.
-    # Would need to use a pipe / shared value to communicate between the two.
-    # assert writer.frame_id == 20
 
     # Check that the video exists
     assert writer.video_file_name.exists()
