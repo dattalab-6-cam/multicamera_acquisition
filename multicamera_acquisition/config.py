@@ -31,12 +31,12 @@ def validate_recording_config(recording_config, logging_level):
     logger = logging.getLogger()
 
     # If user is requesting logging level of DEBUG, then make sure any ffmpeg loglevels are set to debug
-    if (logging_level == "DEBUG") or (logging_level == "debug"):
-        for camera_name in recording_config["cameras"].keys():
-            if "loglevel" in recording_config["cameras"][camera_name]["writer"].keys():
-                if recording_config["cameras"][camera_name]["writer"]["loglevel"] != "debug":
-                    logger.warning("Logging level is set to DEBUG, but writer loglevel is not set to debug.  Setting writer loglevel to debug.")
-                    recording_config["cameras"][camera_name]["writer"]["loglevel"] = "debug" 
+    # if (logging_level == "DEBUG") or (logging_level == "debug"):
+    #     for camera_name in recording_config["cameras"].keys():
+    #         if "loglevel" in recording_config["cameras"][camera_name]["writer"].keys():
+    #             if recording_config["cameras"][camera_name]["writer"]["loglevel"] != "debug":
+    #                 logger.warning("Logging level is set to DEBUG, but writer loglevel is not set to debug.  Setting writer loglevel to debug.")
+    #                 recording_config["cameras"][camera_name]["writer"]["loglevel"] = "debug" 
 
     # Ensure that the recording config is a dict
     if not isinstance(recording_config, dict):
