@@ -758,9 +758,10 @@ def refactor_acquire_video(
 
     finally:
         # End the processes and close the microcontroller serial connection
-        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
-        print(f'\rRecording Progress: 100%', end='')
         logger.info("Ending processes, this may take a moment...")
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+        logger.info("Processed ended")
+        print(f'\rRecording Progress: 100%', end='')
         if final_config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
