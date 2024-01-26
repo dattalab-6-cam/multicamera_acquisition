@@ -304,7 +304,7 @@ class AcquisitionLoop(mp.Process):
         self.logger.debug("Camera closed")
 
         # Report that the process has stopped
-        self.logger.info(f"Acq loop for {self.camera_config['name']} is finished.")
+        self.logger.debug(f"Acq loop for {self.camera_config['name']} is finished.")
 
 
 def generate_full_config(camera_lists):
