@@ -127,7 +127,6 @@ class MultiDisplay(mp.Process):
                     initialized[qi] = True
                     frame = format_frame(
                         data[0],
-                        downsample=self.config["downsample"],
                         display_size=self.config["display_size"],
                         display_range=self.display_ranges[qi],
                         is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
@@ -149,7 +148,6 @@ class MultiDisplay(mp.Process):
     @staticmethod
     def default_MultiDisplay_config():
         return {
-            "downsample": 4,
             "display_every_n": 3,
             "cameras_per_row": 3,
             "display_size": (300, 300),  # TODO: allow this to be per-camera
@@ -182,8 +180,7 @@ def get_latest(queue, timeout=0.1):
     return item
 
 
-def format_frame(frame, downsample, display_size, display_range, is_depth):
-    frame = frame[::downsample, ::downsample]
+def format_frame(frame, display_size, display_range, is_depth):
     frame = cv2.resize(frame, display_size)
 
     # normalize in range
@@ -297,7 +294,6 @@ def plot_image_grid(images, display_config, camera_names, display_ranges):
         frame = images[camera_name]
         frame = format_frame(
             frame,
-            cfg["downsample"],
             cfg["display_size"],
             rng,
             frame.dtype == np.uint16 or ("lucid" in camera_name),

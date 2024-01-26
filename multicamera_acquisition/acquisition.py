@@ -107,9 +107,7 @@ class AcquisitionLoop(mp.Process):
         else:
             self.acq_config = acq_loop_config
 
-        # Check for Nones in camera / writer configs
-        # The idea here is that by now, we should have already
-        # resolved any need to use default configs.
+        # Check for Nones in camera config
         if self.camera_config is None:
             raise ValueError("Camera config cannot be None")
 
@@ -121,6 +119,7 @@ class AcquisitionLoop(mp.Process):
         """Get the default config for the acquisition loop."""
         return {
             "display_every_n": 1,
+            "downsample": 4,
             "dropped_frame_warnings": False,
             "max_frames_to_acqure": None,
         }
@@ -235,7 +234,7 @@ class AcquisitionLoop(mp.Process):
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple([depth, camera_timestamp, n_frames_received])
+                                    tuple([depth[::self.acq_config["downsample"], ::self.acq_config["downsample"]], camera_timestamp, n_frames_received])
                                 )
                     else:
                         camera_timestamp = data[1]
@@ -243,6 +242,11 @@ class AcquisitionLoop(mp.Process):
                         self.write_queue.put(data)
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.acq_config["display_every_n"] == 0:
+                                data = (
+                                    data[0][::self.acq_config["downsample"], ::self.acq_config["downsample"]],
+                                    data[1],
+                                    data[2]
+                                )
                                 self.display_queue.put(data)
 
                     # Check if we dropped any frames
@@ -720,10 +724,10 @@ def refactor_acquire_video(
 
     # Wait for the specified duration
     try:
-        # pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         print(f'\rRecording Progress: 0%', end='')
 
         datetime_prev = datetime.now()
+        datetime_rec_start = datetime_prev
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
@@ -743,9 +747,10 @@ def refactor_acquire_video(
                 break
 
             # Update pbar
-            if (datetime.now() - datetime_prev).seconds > 1:
-            #     # pbar.update((datetime.now() - datetime_prev).seconds)
-                print(f'\rRecording Progress: {np.round((datetime.now() - datetime_prev).seconds / recording_duration_s * 100, 2)}%', end='')
+            if (datetime.now() - datetime_prev).total_seconds() > 1:
+                pct_prog = np.round((datetime.now() - datetime_rec_start).seconds / recording_duration_s * 100, 2)
+                total_sec = (datetime.now() - datetime_rec_start).seconds
+                print(f'\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)', end='')
                 datetime_prev = datetime.now()
 
     except KeyboardInterrupt:
