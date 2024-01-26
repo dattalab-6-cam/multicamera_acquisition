@@ -724,10 +724,10 @@ def refactor_acquire_video(
 
     # Wait for the specified duration
     try:
-        # pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
         print(f'\rRecording Progress: 0%', end='')
 
         datetime_prev = datetime.now()
+        datetime_rec_start = datetime_prev
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
@@ -747,9 +747,10 @@ def refactor_acquire_video(
                 break
 
             # Update pbar
-            if (datetime.now() - datetime_prev).seconds > 1:
-            #     # pbar.update((datetime.now() - datetime_prev).seconds)
-                print(f'\rRecording Progress: {np.round((datetime.now() - datetime_prev).seconds / recording_duration_s * 100, 2)}%', end='')
+            if (datetime.now() - datetime_prev).total_seconds() > 1:
+                pct_prog = np.round((datetime.now() - datetime_rec_start).seconds / recording_duration_s * 100, 2)
+                total_sec = (datetime.now() - datetime_rec_start).seconds
+                print(f'\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)', end='')
                 datetime_prev = datetime.now()
 
     except KeyboardInterrupt:
