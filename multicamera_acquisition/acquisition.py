@@ -559,6 +559,7 @@ def refactor_acquire_video(
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.debug("Set up main logger.")
+    logger.info("Starting recording...")
 
     # TODO: could set up a second logger for microcontroller messages
 
