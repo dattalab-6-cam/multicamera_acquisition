@@ -1,6 +1,8 @@
+from glob import glob
 import logging
 import multiprocessing as mp
 import os
+from os.path import join, exists
 import traceback
 from datetime import datetime, timedelta
 from logging import StreamHandler
@@ -574,16 +576,18 @@ def refactor_acquire_video(
     elif append_datetime:
         recording_name = f"{recording_name}_{datetime_str}"
     full_save_location = Path(
-        os.path.join(save_location, recording_name)
+        join(save_location, recording_name)
     )  # /path/to/my/recording_name
-    if os.path.exists(full_save_location) and not overwrite:
+
+    if exists(full_save_location) and len(glob(join(full_save_location, "*.mp4"))) > 0 and not overwrite:
         raise ValueError(
-            f"Save location {full_save_location} already exists, if you want to overwrite set overwrite to True!"
+            f"Save location {full_save_location} already exists with at least one MP4. If you want save into this dir anyways and risk overwriting, set overwrite to True!"
         )
     os.makedirs(full_save_location, exist_ok=True)
     basename = str(
         full_save_location / recording_name
     )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
+    
     logger.debug(f"Have good save location {full_save_location}")
 
     # Load the config file if it exists
