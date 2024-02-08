@@ -1,1 +1,0 @@
-multicamera_acquisition

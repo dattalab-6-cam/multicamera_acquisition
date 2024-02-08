@@ -1,211 +1,382 @@
-from multicamera_acquisition.interfaces import get_camera
-from multicamera_acquisition.video_io_ffmpeg import write_frame
-from multicamera_acquisition.paths import ensure_dir
-from multicamera_acquisition.interfaces.arduino import (
-    packIntAsLong,
-    wait_for_serial_confirmation,
-)
-from multicamera_acquisition.visualization import MultiDisplay
-from multicamera_acquisition.writer import Writer
-
-import multiprocessing as mp
-import csv
-import warnings
-import time
-import csv
-from datetime import datetime, timedelta
-import glob
+from glob import glob
 import logging
-from tqdm import tqdm
-import numpy as np
+import multiprocessing as mp
+import os
+from os.path import join, exists
+import traceback
+from datetime import datetime, timedelta
+from logging import StreamHandler
+from logging.handlers import QueueListener
+from pathlib import Path
 
-import serial
-from pathlib2 import Path
-from multicamera_acquisition.video_io_ffmpeg import count_frames
+import numpy as np
+import yaml
+
+from multicamera_acquisition.config import (
+    create_full_camera_default_config,
+    load_config,
+    save_config,
+    validate_recording_config,
+)
+from multicamera_acquisition.interfaces.camera_azure import enumerate_azure_cameras
+from multicamera_acquisition.interfaces.camera_base import CameraError, get_camera
+from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
+from multicamera_acquisition.interfaces.microcontroller import Microcontroller
+from multicamera_acquisition.logging_utils import setup_child_logger
+from multicamera_acquisition.visualization import MultiDisplay
+from multicamera_acquisition.writer import get_writer
 
 
 class AcquisitionLoop(mp.Process):
-    """A process that acquires images from a camera and writes them to a queue."""
+    """A process that acquires images from a camera
+    and writes them to a queue.
+    """
 
     def __init__(
         self,
         write_queue,
         display_queue,
-        brand="flir",
-        frame_timeout=1000,
-        display_frames=False,
-        display_frequency=1,
-        dropped_frame_warnings=False,
+        camera_device_index,
+        camera_config,
         write_queue_depth=None,
-        cam=None,
-        **camera_params,
+        acq_loop_config=None,
+        logger_queue=None,
+        logging_level=logging.DEBUG,
+        process_name=None,
+        fps=None,
     ):
         """
         Parameters
         ----------
         write_queue : multiprocessing.Queue
             A queue to which frames will be written.
+
         display_queue : multiprocessing.Queue
             A queue from which frames will be read for display.
-        brand : str
-            The brand of camera to use.  Currently 'flir' and 'basler' are supported.
-        frame_timeout : int
-            The number of milliseconds to wait for a frame before timing out.
-        display_frames : bool
-            If True, frames will be displayed.
-        display_frequency : int
-            The number of frames to skip between displaying frames.
-        dropped_frame_warnings: bool
-            Whether to issue a warning when frame grabbing times out
-        **camera_params
-            Keyword arguments to pass to the camera interface.
-        """
-        super().__init__()
 
-        self.ready = mp.Event()
-        self.primed = mp.Event()
-        self.stopped = mp.Event()
+        camera_device_index : int
+            The device index of the camera to acquire from.
+
+        camera_config : dict
+            A config dict for the Camera.
+
+        write_queue_depth : multiprocessing.Queue (default: None)
+            A queue to which depth frames will be written (azure only).
+
+        acq_loop_config : dict (default: None)
+            A config dict for the AcquisitionLoop.
+            If None, the default config will be used.
+
+        logger_queue : multiprocessing.Queue (default: None)
+            A queue to which the logger will write messages.
+            If None, the root logger will be used.
+
+        logging_level : int (default: logging.DEBUG)
+            The logging level to use for the logger.
+
+        process_name : str (default: None)
+            The name of the process.
+
+        fps : int (default: None)
+            The fps of the acquisition, as controlled by either the camera or the microcontroller.
+            Only used to determine the timeout for the camera.get_array() call.
+            If None, the timeout will be set to 1000 ms.
+
+        """
+
+        # Save the process name for logging purposes
+        super().__init__(name=process_name)
+
+        # Save values
         self.write_queue = write_queue
         self.display_queue = display_queue
-        self.camera_params = camera_params
-        self.brand = brand
-        self.frame_timeout = frame_timeout
-        self.display_frames = display_frames
-        self.display_frequency = display_frequency
-        self.dropped_frame_warnings = dropped_frame_warnings
         self.write_queue_depth = write_queue_depth
-        self.cam = cam
+        self.camera_config = camera_config
+        self.camera_device_index = camera_device_index
+        self.logger_queue = logger_queue
+        self.logging_level = logging_level
+        self.fps = fps
+
+        # Get config
+        if acq_loop_config is None:
+            self.acq_config = self.default_acq_loop_config().copy()
+        else:
+            self.acq_config = acq_loop_config
+
+        # Check for Nones in camera config
+        if self.camera_config is None:
+            raise ValueError("Camera config cannot be None")
+
+        # Set up events for mp coordination
+        self._create_mp_events()
+
+    @staticmethod
+    def default_acq_loop_config():
+        """Get the default config for the acquisition loop."""
+        return {
+            "display_every_n": 1,
+            "downsample": 4,
+            "dropped_frame_warnings": False,
+            "max_frames_to_acqure": None,
+        }
+
+    def _create_mp_events(self):
+        """Create multiprocessing events."""
+        self.await_process = mp.Event()  # was previously "ready"
+        self.await_main_thread = mp.Event()  # was previously "primed"
+        self.stopped = mp.Event()
+
+    def _continue_from_main_thread(self):
+        """Tell the acquisition loop to continue
+        (Called from the main thread)
+        """
+        self.await_main_thread.set()
+        self.await_process.clear()  # reset this event so we can use it again
 
     def stop(self):
         self.stopped.set()
 
-    def prime(self):
-        self.ready.clear()
-        self.primed.set()
-
     def run(self):
-        # get the camera if it hasn't been passed in (e.g. for azure)
-        if self.cam is None:
-            cam = get_camera(brand=self.brand, **self.camera_params)
+        """Acquire frames. This is run when mp.Process.start() is called."""
+
+        # Set up logging
+        if self.logger_queue is None:
+            # Just use the root logger
+            self.logger = logging.getLogger()
+        elif isinstance(self.logger_queue, mp.queues.Queue):
+            # Create a logger for this process
+            # (it will automatically include the process name in the log output)
+            logger = setup_child_logger(self.logger_queue, level=self.logging_level)
+            self.logger = logger
         else:
-            cam = self.cam
-        self.ready.set()
-        self.primed.wait()
+            raise ValueError("logger_queue must be a multiprocessing.Queue or None.")
+        self.logger.debug(f"Started acq loop for {self.camera_config['name']}")
 
-        # tell the camera to start grabbing
+        # Get the Camera object instance
+        try:
+            cam = get_camera(
+                brand=self.camera_config["brand"],
+                id=self.camera_device_index,
+                name=self.camera_config["name"],
+                config=self.camera_config,
+            )
+        except Exception as e:
+            # show the entire traceback
+            self.logger.error(traceback.format_exc())
+            raise e
+
+        # Actually open / initialize the connection to the camera
+        self.logger.debug(f"About to initialize camera {self.camera_config['name']}")
+        cam.init()
+
+        # Report that the process has initialized the camera
+        self.await_process.set()  # report to the main loop that the camera is ready
+
+        # Here, the main thread will loop through all the acq loop objects
+        # and start each camera. The main thread will wait for
+        # each acq loop to report that it has started its camera.
+
+        # Wait for the main thread to get to the for-loop
+        # where it will then wait for the camera to start
+        self.logger.debug(f"Waiting for main thread")
+        self.await_main_thread.wait()
+
+        # Once we get the go-ahead, tell the camera to start grabbing
         cam.start()
-        # once the camera is started grabbing, allow the main
-        # process to continue
-        self.ready.set()
 
-        current_frame = 0
-        initialized = False
+        # Once the camera is started grabbing, allow the main
+        # thread to continue
+        self.await_process.set()  # report to the main loop that the camera is ready
+
+        # Get ready to record
+        current_iter = 0
+        n_frames_received = 0
+        first_frame = False
+        timeout = 1000 if self.fps is None else int(1000 / self.fps * 1.25)
+        prev_timestamp = 0
+
+        # Acquire frames until we receive the stop signal
+        self.logger.debug("Ready to record")
         while not self.stopped.is_set():
             try:
-                # debug write getting frame
-                # logging.debug(
-                #    f"Getting frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
-                # )
-                if initialized:
-                    data = cam.get_array(timeout=self.frame_timeout, get_timestamp=True)
+                if first_frame:
+                    # If this is the first frame, give a long time for serial to connect
+                    data = cam.get_array(timeout=1000 * 60, get_timestamp=True)
+                    first_frame = False
+                    self.logger.debug("First frame received")
+                    prev_timestamp = data[1]
                 else:
-                    # if this is the first frame, give time for serial to connect
-                    data = cam.get_array(timeout=10000, get_timestamp=True)
-                # logging.debug(
-                #    f"Got frame, camera, {self.camera_params['name']}, current frame: {current_frame}"
-                # )
+                    data = cam.get_array(timeout=timeout, get_timestamp=True)
+
+                # If we received a frame:
                 if len(data) != 0:
-                    # if this is an azure camera, we write the depth data to a separate queue
-                    if self.brand == "azure":
+
+                    # Increment the frame counter (distinct from number of while loop iterations)
+                    n_frames_received += 1
+
+                    # If this is an azure camera, we write the depth data to a separate queue
+                    if self.camera_config["brand"] == "azure":
                         depth, ir, camera_timestamp = data
 
                         self.write_queue.put(
-                            tuple([ir, camera_timestamp, current_frame])
+                            tuple([ir, camera_timestamp, n_frames_received])
                         )
                         self.write_queue_depth.put(
-                            tuple([depth, camera_timestamp, current_frame])
+                            tuple([depth, camera_timestamp, n_frames_received])
                         )
-                        if self.display_frames:
-                            if current_frame % self.display_frequency == 0:
+                        if self.camera_config["display"]["display_frames"]:
+                            if n_frames_received % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple([depth, camera_timestamp, current_frame])
+                                    tuple(
+                                        [
+                                            depth[
+                                                :: self.acq_config["downsample"],
+                                                :: self.acq_config["downsample"],
+                                            ],
+                                            camera_timestamp,
+                                            n_frames_received,
+                                        ]
+                                    )
                                 )
                     else:
-                        data = data + tuple([current_frame])
+                        camera_timestamp = data[1]
+                        data = data + tuple([n_frames_received])
                         self.write_queue.put(data)
-                        if self.display_frames:
-                            if current_frame % self.display_frequency == 0:
+                        if self.camera_config["display"]["display_frames"]:
+                            if (
+                                n_frames_received % self.acq_config["display_every_n"]
+                                == 0
+                            ):
+                                data = (
+                                    data[0][
+                                        :: self.acq_config["downsample"],
+                                        :: self.acq_config["downsample"],
+                                    ],
+                                    data[1],
+                                    data[2],
+                                )
                                 self.display_queue.put(data)
-                initialized = True
 
+                    # Check if we dropped any frames
+                    delta_t = (camera_timestamp - prev_timestamp) / 1e6
+                    if (
+                        self.acq_config["dropped_frame_warnings"]
+                        and delta_t > (timeout) * 1.25
+                    ):
+                        self.logger.warn(
+                            f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames (delta_t={delta_t} ms, threshold={timeout*1.25} ms)"
+                        )
+                    prev_timestamp = camera_timestamp
+
+            # Catch any frame timeouts
             except Exception as e:
-                # if a frame was dropped, log the lost frame and contiue
+
                 if type(e).__name__ == "SpinnakerException":
                     pass
-                elif type(e).__name__ == "TimeoutException":
-                    logging.log(logging.DEBUG, f"{self.brand}:{e}")
+                elif (
+                    type(e).__name__ == "TimeoutException"
+                    or type(e).__name__ == "K4ATimeoutException"
+                ):
+                    if self.acq_config["dropped_frame_warnings"]:
+                        self.logger.warn(
+                            f"Frame grabbing timed out, not nec. a dropped frame ( on iter {current_iter} after receiving {n_frames_received} frames)"
+                        )
                     pass
                 else:
+                    self.logger.error(traceback.format_exc())
                     raise e
-                if self.dropped_frame_warnings:
-                    warnings.warn(
-                        "Dropped {} frame on #{}: \n{}".format(
-                            current_frame,
-                            cam.serial_number,
-                            type(e).__name__,  # , str(e)
+
+            # Increment the iteration counter
+            current_iter += 1
+
+            # Check if we've reached the max frames to acquire
+            if self.acq_config["max_frames_to_acqure"] is not None:
+                if n_frames_received >= self.acq_config["max_frames_to_acqure"]:
+                    if not self.stopped.is_set():
+                        self.logger.debug(
+                            f"Reached max frames to acquire ({self.acq_config['max_frames_to_acqure']}), stopping."
                         )
-                    )
-            # logging.debug(
-            #    f"finished loop, {self.camera_params['name']}, current frame: {current_frame}, stopped: {self.stopped.is_set()}"
-            # )
-            current_frame += 1
+                        self.stopped.set()
+                    break
 
-        logging.debug(f"Writing empties to queue, {self.camera_params['name']}")
-
-        if self.brand == "azure":
+        # Once the stop signal is received, stop the writer and dispaly processes
+        self.logger.debug(
+            f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}"
+        )
+        self.logger.debug(
+            f"Writing empties to stop queue, {self.camera_config['name']}"
+        )
+        self.write_queue.put(tuple())  # empty tuple signals the writer to stop
+        if self.write_queue_depth is not None:
             self.write_queue_depth.put(tuple())
-
-        self.write_queue.put(tuple())
-        if self.display_frames:
+        if self.display_queue is not None:
             self.display_queue.put(tuple())
 
-        logging.log(logging.INFO, f"Closing camera {self.camera_params['name']}")
-        if cam is not None:
-            cam.close()
+        # Close the camera
+        self.logger.debug(f"Closing camera {self.camera_config['name']}")
+        cam.close()
+        self.logger.debug("Camera closed")
 
-        logging.debug(f"Acquisition run finished, {self.camera_params['name']}")
+        # Report that the process has stopped
+        self.logger.debug(f"Acq loop for {self.camera_config['name']} is finished.")
 
 
-def end_processes(acquisition_loops, writers, disp):
-    # end acquisition loops
+def generate_full_config(camera_lists):
+    full_config = {}
+    acquisition_config = AcquisitionLoop.default_acq_loop_config().copy()
+    microcontroller_config = Microcontroller.default_microcontroller_config().copy()
+    # camera, camera writer, camera display config
+    full_camera_config = create_full_camera_default_config(camera_lists)
+    full_config["acq_loop"] = acquisition_config
+    full_config["microcontroller"] = microcontroller_config
+    full_config["cameras"] = full_camera_config
+
+    # write to file
+    with open("full_config.yaml", "w") as f:
+        yaml.dump(full_config, f)
+    return full_config
+
+
+def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
+    """Use the stop() method to end the acquisition loops, writers, and display
+    processes, escalating to terminate() if necessary.
+    """
+
+    # Get the main logger
+    logger = logging.getLogger("main_acq_logger")
+
+    # End acquisition loop processes
     for acquisition_loop in acquisition_loops:
         if acquisition_loop.is_alive():
-            logging.log(
-                logging.DEBUG,
-                f"stopping acquisition loop ({acquisition_loop.camera_params['name']})",
+            logger.debug(
+                f"stopping acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            # stop writinacquire_videog
+
+            # Send a stop signal to the process
             acquisition_loop.stop()
-            # kill thread
-            logging.log(
-                logging.DEBUG,
-                f"joining acquisition loop ({acquisition_loop.camera_params['name']})",
+
+            # Wait for the process to finish
+            logger.debug(
+                f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            acquisition_loop.join(timeout=1)
-            # kill if necessary
+            # acquisition_loop.join(timeout=1)
+            acquisition_loop.join(timeout=60 * 60)
+
+            # If still alive, terminate it
             if acquisition_loop.is_alive():
+                # debug: notify user we had to terminate the acq loop
+                logger.warning(
+                    f"Terminating acquisition loop {acquisition_loop.camera_config['name']} (join timed out)"
+                )
                 acquisition_loop.terminate()
 
-    # end writers
+    # End writer processes
     for writer in writers:
         if writer.is_alive():
-            #     # wait to finish writing
-            #     while writer.queue.qsize() > 0:
-            #         print(writer.queue.qsize())
-            #         time.sleep(0.1)
-            writer.join(timeout=60)
+            writer.join(timeout=writer_timeout)
+        logger.debug(f"Writer exitcode: {writer.exitcode}")
 
-    # end display
+    # End display processes
     if disp is not None:
         # TODO figure out why display.join hangs when there is >1 azure
         if disp.is_alive():
@@ -214,368 +385,436 @@ def end_processes(acquisition_loops, writers, disp):
             disp.terminate()
 
 
-def acquire_video(
-    save_location,
-    camera_list,
-    recording_duration_s,
-    frame_timeout=None,
-    azure_recording=False,
-    framerate=30,
-    azure_framerate=30,
-    display_framerate=30,
-    serial_timeout_duration_s=0.1,
-    display_downsample=4,
-    overwrite=False,
-    append_datetime=True,
-    verbose=True,
-    dropped_frame_warnings=False,
-    n_input_trigger_states=4,
-    max_video_frames="default",  # after this many frames, a new video file will be created
-    ffmpeg_options={},
-    arduino_args=[],
-):
-    if azure_framerate != 30:
-        raise ValueError("Azure framerate must be 30")
+def resolve_device_indices(config):
+    """Resolve device indices for all cameras in the config.
 
-    if azure_recording:
-        # ensure that framerate is a multiple of azure_framerate
-        if framerate % azure_framerate != 0:
-            raise ValueError("Framerate must be a multiple of azure_framerate")
+    Parameters
+    ----------
+    config : dict
+        The recording config.
 
-    # ensure that framerate is a multiple of display_framerate
-    if framerate % display_framerate != 0:
-        raise ValueError("Framerate must be a multiple of display_framerate")
+    Returns
+    -------
+    device_index_dict : dict
+        A dict mapping camera names to device indices.
+    """
 
-    exp_times = [
-        cd["exposure_time"] for cd in camera_list if "exposure_time" in cd.keys()
-    ]
-    # if not all(exp <= 1000 for exp in exp_times):
-    #    raise ValueError("Max exposure time is 1000 microseconds")
+    device_index_dict = {}
 
-    if max_video_frames == "default":
-        # set max video frames to 1 hour
-        max_video_frames = framerate * 60 * 60
-
-    if "fps" not in ffmpeg_options:
-        ffmpeg_options["fps"] = framerate
-
-    if verbose:
-        logging.log(logging.INFO, "Checking cameras...")
-
-    camera_brands = np.array([i["brand"] for i in camera_list])
-    # if there are cameras that are not flir or basler, raise an error
-    for i in camera_brands:
-        if i not in ["flir", "basler", "azure"]:
-            raise ValueError(
-                "Camera brand must be either 'flir' or 'basler', azure, not {}".format(
-                    i
+    # Resolve any Basler cameras
+    serial_nos, _ = enumerate_basler_cameras(behav_on_none="pass")
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] not in ["basler", "basler_emulated"]:
+            continue
+        if camera_dict["id"] is None:
+            raise ValueError(f"Camera {camera_name} has no id specified.")
+        elif isinstance(camera_dict["id"], int):
+            dev_idx = camera_dict["id"]
+        elif isinstance(camera_dict["id"], str):
+            if camera_dict["id"] not in serial_nos:
+                raise CameraError(
+                    f"Camera with serial number {camera_dict['id']} not found."
                 )
-            )
-    # if there are both flir and basler cameras, make sure that the basler cameras are initialized after the flir cameras
-    if "flir" in camera_brands and "basler" in camera_brands:
-        if np.any(
-            np.where(camera_brands == "basler")[0][0]
-            < np.max(np.where(camera_brands == "flir")[0])
-        ):
-            warnings.warn(
-                """A bug in the code requies Basler cameras to be initialized after Flir cameras. Rearranging camera order.
-                """
-            )
-            # swap the order of the cameras so that flir cameras are before basler cameras
-            camera_list = [camera_list[i] for i in np.argsort(camera_brands)[::-1]]
+            else:
+                dev_idx = serial_nos.index(camera_dict["id"])
+        device_index_dict[camera_name] = dev_idx
 
-    # determine the frequency at which to output frames to the display
-    display_frequency = int(framerate / display_framerate)
-    if display_frequency < 1:
-        display_frequency = 1
+    # Resolve any Azure cameras
+    serial_nos_dict = enumerate_azure_cameras()
+    serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] not in ["azure"]:
+            continue
+        if camera_dict["id"] is None:
+            raise ValueError(f"Camera {camera_name} has no id specified.")
+        elif isinstance(camera_dict["id"], int):
+            dev_idx = camera_dict["id"]
+        elif isinstance(camera_dict["id"], str):
+            if camera_dict["id"] not in list(serial_nos_dict.keys()):
+                raise CameraError(
+                    f"Camera with serial number {camera_dict['id']} not found."
+                )
+            else:
+                dev_idx = serial_nos_dict[camera_dict["id"]]
+        device_index_dict[camera_name] = dev_idx
 
-    # get Path of save location
-    if type(save_location) != Path:
-        save_location = Path(save_location)
+    # Resolve any Lucid cameras
+    # TODO
 
-    # create a subfolder for the current datetime
-    if append_datetime:
-        date_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
-        save_location = save_location / date_str
+    return device_index_dict
 
-    # ensure that a directory exists to save data in
-    ensure_dir(save_location)
 
-    triggerdata_file = save_location / "triggerdata.csv"
-    if triggerdata_file.exists() and (overwrite == False):
-        raise FileExistsError(f"CSV file {triggerdata_file} already exists")
+def refactor_acquire_video(
+    save_location,
+    config,
+    recording_duration_s=60,
+    recording_name=None,
+    append_datetime=True,
+    append_camera_serial=False,
+    overwrite=False,
+    logging_level=logging.INFO,
+):
+    """Acquire video from multiple, synchronized cameras.
 
-    if verbose:
-        logging.log(logging.INFO, "Initializing cameras...")
-    # initialize cameras
+    Parameters
+    ----------
+    save_location : str or Path
+        The directory in which to save the recording.
+
+    config : dict or str or Path
+        A dict containing the recording config, or a filepath to a yaml file
+        containing the recording config.
+
+    recording_duration_s : int (default: 60)
+        The duration of the recording in seconds.
+
+    append_datetime : bool (default: True)
+        Whether to further nest the recording in a subfolder named with the
+        date and time.
+
+    append_camera_serial : bool (default: True)
+        Whether to append the camera serial number to the file name.
+
+    overwrite : bool (default: False)
+        Whether to overwrite the save location if it already exists.
+
+    logging_level : int (default: logging.INFO)
+        The logging level to use for the logger.
+
+    Returns
+    -------
+    save_location : Path
+        The directory in which the recording was saved.
+
+    video_file_name : Path
+        The path to the video file.
+
+    final_config: dict
+        The final recording config used.
+
+    Examples
+    --------
+    A full config file follows the following rough layout:
+
+        globals:
+            [list of global params]
+        cameras:
+            camera_1:
+                [list of attributes per camera]
+                [list of trigger-specific attributes]
+                [list of writer-specific attributes]
+            camera_2:
+                ...
+        acq_loop:
+            [list of acquisition loop params]
+        rt_display:
+            [list of rt display params]
+        microcontroller:
+            [list of microcontroller params]
+
+    For example, here is a minimal config file for a single camera without an microcontroller:
+
+        globals:
+            fps: 30
+            microcontroller_required: False  # since trigger short name is set to no_trigger
+        cameras:
+            top:
+                name: top
+                brand: basler
+                id: "12345678"  # ie the serial number, as a string
+                gain: 6
+                exposure: 1000
+                display:
+                    display_frames: True
+                    display_range: (0, 255)
+                roi: null  # or an roi to crop the image
+                trigger:
+                    trigger_type: no_trigger  # convenience attr for no-trigger acquisition
+                writer:
+                    codec: h264
+                    fmt: YUV420
+                    gpu: null
+                    max_video_frames: 2592000
+                    multipass: '0'
+                    pixel_format: gray8
+                    preset: P1
+                    profile: high
+                    tuning_info: ultra_low_latency
+        acq_loop:
+            display_every_n: 4
+            dropped_frame_warnings: False
+            max_frames_to_acqure: null
+        rt_display:
+            downsample: 4
+            range: [0, 1000]
+    """
+
+    # Set up the main logger for this process
+    logger = logging.getLogger("main_acq_logger")
+    logger.setLevel(logging_level)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.debug("Set up main logger.")
+    logger.info("Starting recording...")
+
+    # TODO: could set up a second logger for microcontroller messages
+
+    # Set up the mp logger to log across processes
+    logger_queue = mp.Queue()
+    queue_listener = QueueListener(logger_queue, StreamHandler())
+    queue_listener.start()
+    logger.debug("Started mp logging.")
+
+    # Create the recording directory
+    datetime_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+    if recording_name is None:
+        assert append_datetime, "Must append datetime if recording_name is None"
+        recording_name = datetime_str
+    elif append_datetime:
+        recording_name = f"{recording_name}_{datetime_str}"
+    full_save_location = Path(
+        join(save_location, recording_name)
+    )  # /path/to/my/recording_name
+
+    if exists(full_save_location) and len(glob(join(full_save_location, "*.mp4"))) > 0 and not overwrite:
+        raise ValueError(
+            f"Save location {full_save_location} already exists with at least one MP4. If you want save into this dir anyways and risk overwriting, set overwrite to True!"
+        )
+    os.makedirs(full_save_location, exist_ok=True)
+    basename = str(
+        full_save_location / recording_name
+    )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
+    
+    logger.debug(f"Have good save location {full_save_location}")
+
+    # Load the config file if it exists
+    if isinstance(config, str) or isinstance(config, Path):
+        config = load_config(config)
+    else:
+        assert isinstance(config, dict)
+
+    # Add the display params to the config
+    final_config = config
+
+    # Resolve camera device indices
+    device_index_dict = resolve_device_indices(final_config)
+
+    # Check that the config is valid
+    validate_recording_config(final_config, logging_level)
+
+    # Save the config file before starting the recording
+    config_filepath = Path(basename + ".recording_config.yaml")
+    save_config(config_filepath, final_config)
+
+    # Find the microcontroller to be used for triggering
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Finding microcontroller...")
+        microcontroller = Microcontroller(basename, final_config)
+        microcontroller.open_serial_connection()
+
+    # TODO: triggerdata file
+
+    # Create the various processes
+    # TODO: refactor these into one "running processes" dict or sth like that
+    logger.info("Opening subprocesses and cameras, this may take a moment...")
     writers = []
     acquisition_loops = []
     display_queues = []
-    camera_names = []
-    display_ranges = []  # range for displaying (for azure mm)
+    camera_list = []
+    display_ranges = []
 
-    num_azures = len([v for v in camera_list if "azure" in v["brand"]])
-    num_baslers = len(camera_list) - num_azures
+    try:
+        for camera_name, camera_dict in final_config["cameras"].items():
+            # Create a writer queue
+            write_queue = mp.Queue()
 
-    # create acquisition loops
-    for camera_dict in camera_list:
-        name = camera_dict["name"]
-        serial_number = camera_dict["serial"]
-
-        camera_framerate = (
-            azure_framerate if camera_dict["brand"] == "azure" else framerate
-        )
-
-        ffmpeg_options = {}
-        for key in ["gpu", "quality"]:
-            if key in camera_dict:
-                ffmpeg_options[key] = camera_dict[key]
-
-        if "display" in camera_dict.keys():
-            display_frames = camera_dict["display"]
-        else:
-            display_frames = False
-
-        if verbose:
-            logging.log(logging.INFO, f"Camera {name}...")
-
-        video_file = save_location / f"{name}.{serial_number}.mp4"
-        metadata_file = save_location / f"{name}.{serial_number}.metadata.csv"
-
-        if video_file.exists() and (overwrite == False):
-            raise FileExistsError(f"Video file {video_file} already exists")
-
-        # create a writer queue
-        write_queue = mp.Queue()
-        writer = Writer(
-            queue=write_queue,
-            video_file_name=video_file,
-            metadata_file_name=metadata_file,
-            camera_serial=serial_number,
-            fps=camera_framerate,
-            camera_name=name,
-            camera_brand=camera_dict["brand"],
-            max_video_frames=max_video_frames,
-            ffmpeg_options=ffmpeg_options,
-        )
-
-        if camera_dict["brand"] == "azure":
-            # create asecond write queue for the depth data
-            # create a writer queue
-            video_file_depth = save_location / f"{name}.{serial_number}.depth.avi"
-            metadata_file = save_location / f"{name}.{serial_number}.metadata.depth.csv"
-            write_queue_depth = mp.Queue()
-            writer_depth = Writer(
-                queue=write_queue_depth,
-                video_file_name=video_file_depth,
-                metadata_file_name=metadata_file,
-                camera_serial=serial_number,
-                camera_name=name,
-                fps=camera_framerate,
-                camera_brand=camera_dict["brand"],
-                max_video_frames=max_video_frames,
-                ffmpeg_options=ffmpeg_options,
-                depth=True,
+            # Generate file names
+            if append_camera_serial:
+                cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"
+            else:
+                cam_append_str = f".{camera_dict['name']}.mp4"
+            video_file_name = Path(basename + cam_append_str)
+            metadata_file_name = Path(
+                basename + cam_append_str.replace(".mp4", ".metadata.csv")
             )
 
-            cam = get_camera(**camera_dict)
+            # Get a writer process
+            writer = get_writer(
+                write_queue,
+                video_file_name,
+                metadata_file_name,
+                writer_type=camera_dict["writer"]["type"],
+                config=camera_dict["writer"],
+                process_name=f"{camera_name}_writer",
+                logger_queue=logger_queue,
+                logging_level=logging_level,
+            )
 
-        else:
-            write_queue_depth = None
-            cam = None
-
-        display_queue = None
-        if display_frames:
-            # create a writer queue
-            display_queue = mp.Queue()
-            camera_names.append(name)
-            if "display_range" in camera_dict:
-                display_ranges.append(camera_dict["display_range"])
+            # Get a second writer process for depth if needed
+            if camera_dict["brand"] == "azure":
+                write_queue_depth = mp.Queue()
+                if append_camera_serial:
+                    cam_append_str = (
+                        f".{camera_dict['name']}_depth.{camera_dict['id']}.avi"
+                    )
+                else:
+                    cam_append_str = f".{camera_dict['name']}_depth.avi"
+                video_file_name_depth = Path(basename + cam_append_str)
+                metadata_file_name_depth = Path(
+                    basename + cam_append_str.replace(".avi", ".metadata.csv")
+                )
+                writer_depth = get_writer(
+                    write_queue_depth,
+                    video_file_name_depth,
+                    metadata_file_name_depth,
+                    writer_type=camera_dict["writer"]["type"],
+                    config=camera_dict["writer_depth"],
+                    process_name=f"{camera_name}_writer_depth",
+                    logger_queue=logger_queue,
+                    logging_level=logging_level,
+                )
             else:
-                display_ranges.append(None)
-            display_queues.append(display_queue)
+                write_queue_depth = None
 
-        # prepare the acuqisition loop in a separate thread
-        acquisition_loop = AcquisitionLoop(
-            write_queue=write_queue,
-            write_queue_depth=write_queue_depth,
-            display_queue=display_queue,
-            display_frames=display_frames,
-            display_frequency=display_frequency,
-            dropped_frame_warnings=dropped_frame_warnings,
-            frame_timeout=frame_timeout,
-            cam=cam,
-            **camera_dict,
-        )
+            # Setup display queue for camera if requested
+            if camera_dict["display"]["display_frames"] is True:
+                display_queue = mp.Queue()
+                display_queues.append(display_queue)
+                camera_list.append(camera_name)
+                display_ranges.append(camera_dict["display"]["display_range"])
+            else:
+                display_queue = None
 
-        # initialize acquisition
-        writer.start()
-        writers.append(writer)
-        if camera_dict["brand"] == "azure":
-            writer_depth.start()
-            writers.append(writer_depth)
+            # Create an acquisition loop process
+            acquisition_loop = AcquisitionLoop(
+                write_queue=write_queue,
+                display_queue=display_queue,
+                camera_device_index=device_index_dict[camera_name],
+                camera_config=camera_dict,
+                write_queue_depth=write_queue_depth,
+                acq_loop_config=final_config["acq_loop"],
+                logger_queue=logger_queue,
+                logging_level=logging_level,
+                process_name=f"{camera_name}_acqLoop",
+                fps=final_config["globals"]["fps"],
+            )
 
-        acquisition_loop.start()
-        acquisition_loop.ready.wait()
-        acquisition_loops.append(acquisition_loop)
-        if verbose:
-            logging.info(f"Initialized {name} ({serial_number})")
+            # Start the writer and acquisition loop processes
+            writer.start()
+            writers.append(writer)
+            if camera_dict["brand"] == "azure":
+                writer_depth.start()
+                writers.append(writer_depth)
+            acquisition_loop.start()
+            acquisition_loops.append(acquisition_loop)
+
+            # Block until the acq loop process reports that it's initialized
+            logger.debug(
+                f"Waiting for acquisition loop ({camera_name}) to initialize..."
+            )
+            status = acquisition_loop.await_process.wait(3)
+            if not status:
+                raise CameraError(
+                    f"Acq loop for {acquisition_loop.camera_config['name']} failed to initialize."
+                )
+    except Exception as e:
+        end_processes(acquisition_loops, [], None)
+        microcontroller.close()
+        raise e
 
     if len(display_queues) > 0:
         # create a display process which recieves frames from the acquisition loops
-        disp = MultiDisplay(
+        display_proc = MultiDisplay(
             display_queues,
-            camera_names,
-            display_downsample=display_downsample,
+            camera_list=camera_list,
             display_ranges=display_ranges,
+            config=final_config["rt_display"],
         )
-        disp.start()
+        display_proc.start()
     else:
-        disp = None
+        display_proc = None
 
-    if verbose:
-        logging.log(logging.INFO, f"Initializing Arduino...")
-
-    # prepare communication with arduino
-    serial_ports = glob.glob("/dev/ttyACM*")
-    # check that there is an arduino available
-    if len(serial_ports) == 0:
-        raise ValueError("No serial device (i.e. Arduino) available to capture frames")
-    port = glob.glob("/dev/ttyACM*")[0]
-    arduino = serial.Serial(port=port, timeout=serial_timeout_duration_s)
-
-    # delay recording to allow serial connection to connect
-    sleep_duration = 2
-    logging.log(
-        logging.INFO, f"Waiting {sleep_duration}s to wait for arduino to connect..."
-    )
-    time.sleep(sleep_duration)
-
-    # create a triggerdata file
-    with open(triggerdata_file, "w") as triggerdata_f:
-        triggerdata_writer = csv.writer(triggerdata_f)
-        triggerdata_writer.writerow(
-            ["pulse_id", "arduino_ms"]
-            + [f"flag_{i}" for i in range(n_input_trigger_states)]
-        )
-
-    if verbose:
-        logging.log(logging.INFO, f"Preparing acquisition loops")
-
-    # prepare acquisition loops
+    # Wait for the acq loop processes to start their cameras
+    logger.info("Starting cameras...")
     for acquisition_loop in acquisition_loops:
-        # set camera state to ready and primed
-        acquisition_loop.prime()
-        # Don't initialize until all cameras are ready
-        acquisition_loop.ready.wait()
+        acquisition_loop._continue_from_main_thread()
+        status = acquisition_loop.await_process.wait(timeout=3)
+        if not status:
+            raise CameraError(
+                f"Camera {acquisition_loop.camera_config['name']} failed to initialize."
+            )
 
-    if verbose:
-        logging.log(logging.INFO, f"Telling arduino to start recording")
+    # Tell microcontroller to start the acquisition loop
+    if final_config["globals"]["microcontroller_required"]:
+        logger.info("Starting microcontroller...")
+        microcontroller.start_acquisition(recording_duration_s)
 
-    """ TODO 
-    We are currently hardcoding certain values in the arduino code that should instead be sent here.
-    In particular, the basler framerate, the number of basler cameras, and the number of azures. 
-    It would also be possible to send the pins that are used for the triggers instead of hardcoding them.
-    """
-    # Tell the arduino to start recording by sending along the recording parameters
-    inv_framerate = int(1e6 / framerate)
-    # TODO: 600 and 1575 hardcoded
-    # const_mult = np.ceil((inv_framerate - 600) / 1575).astype(int)
-    if azure_recording:
-        num_cycles = int(recording_duration_s * azure_framerate)
-    else:
-        num_cycles = int(recording_duration_s * framerate)
-
-    logging.log(
-        logging.DEBUG, f"Inverse framerate: {inv_framerate}; num cycles: {num_cycles}"
-    )
-    msg = b"".join(
-        map(
-            packIntAsLong,
-            (
-                num_cycles,
-                inv_framerate,
-                # const_mult,
-                # num_azures,
-                # num_baslers,
-                *arduino_args,
-            ),
-        )
-    )
-    arduino.write(msg)
-
-    # Run acquision
+    # Wait for the specified duration
     try:
-        confirmation = wait_for_serial_confirmation(
-            arduino, expected_confirmation="Start", seconds_to_wait=10
-        )
-    except:
-        # kill everything if we can't get confirmation
-        end_processes(acquisition_loops, writers, disp)
-        return save_location
+        print(f"\rRecording Progress: 0%", end="")
 
-    if verbose:
-        logging.log(logging.INFO, f"Starting Acquisition...")
-
-    try:
-        # while current time is less than initial time + recording_duration_s
-        pbar = tqdm(total=recording_duration_s, desc="recording progress (s)")
-        # how long to record
         datetime_prev = datetime.now()
+        datetime_rec_start = datetime_prev
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+
         while datetime.now() < endtime:
-            confirmation = arduino.readline().decode("utf-8").strip("\r\n")
-            if len(confirmation) > 0:
-                print(confirmation)
-            if confirmation == "Finished":
+            if final_config["globals"]["microcontroller_required"]:
+                # Tell the microcontroller to check for input trigger data or finish signal
+                finished = microcontroller.check_for_input()
+                if finished:
+                    logger.debug("Finished recieved from microcontroller")
+                    break
+            elif not any(
+                [acquisition_loop.is_alive() for acquisition_loop in acquisition_loops]
+            ):
+                # If no microcontroller, then there might be a frame limit on the acq loops
+                # (eg during testing), and they might all be stopped, in which case
+                # we can also just break.
+                logger.debug("All acquisition loops have stopped")
                 break
-            if (datetime.now() - datetime_prev).seconds > 0:
-                pbar.update((datetime.now() - datetime_prev).seconds)
-                datetime_prev = datetime.now()
-            # save input data flags
-            if len(confirmation) > 0:
-                # print(confirmation)
-                if confirmation[:7] == "input: ":
-                    with open(triggerdata_file, "a") as triggerdata_f:
-                        triggerdata_writer = csv.writer(triggerdata_f)
-                        states = confirmation[7:].split(",")[:-2]
-                        frame_num = confirmation[7:].split(",")[-2]
-                        arduino_clock = confirmation[7:].split(",")[-1]
-                        triggerdata_writer.writerow([frame_num, arduino_clock] + states)
-                if verbose:
-                    logging.log(logging.INFO, f"confirmation")
 
-        # wait for a confirmation of being finished
-        if confirmation == "Finished":
-            print("Confirmation recieved: {}".format(confirmation))
-        else:
-            logging.log(logging.LOG, "Waiting for finished confir mation")
-            try:
-                confirmation = wait_for_serial_confirmation(
-                    arduino, expected_confirmation="Finished", seconds_to_wait=10
+            # Update pbar
+            if (datetime.now() - datetime_prev).total_seconds() > 1:
+                pct_prog = np.round(
+                    (datetime.now() - datetime_rec_start).seconds
+                    / recording_duration_s
+                    * 100,
+                    2,
                 )
-            except ValueError as e:
-                logging.log(logging.WARN, e)
+                total_sec = (datetime.now() - datetime_rec_start).seconds
+                print(
+                    f"\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)",
+                    end="",
+                )
+                datetime_prev = datetime.now()
 
-        if verbose:
-            logging.log(logging.INFO, f"Closing")
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, stopping recording.")
 
-        # TODO wait until all acquisition loops are finished
-        #   the proper way to do this would be to use a event.wait()
-        #   for each camera, to wait until it has no more frames to grab
-        #   (except in the case of azure, where it will always be able) to
-        #   grab more frames because it is not locked to the arduino pulse.
-        #   for now, I've just added a 5 second sleep after the arduino is 'finished'
-        #   which should be enough time for the cameras to finish grabbing frames
-        time.sleep(5)
+    finally:
+        # End the processes and close the microcontroller serial connection
+        logger.info("Ending processes, this may take a moment...")
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+        logger.info("Processed ended")
+        print(f"\rRecording Progress: 100%", end="")
+        if final_config["globals"]["microcontroller_required"]:
+            if not finished:
+                microcontroller.interrupt_acquisition()
+            microcontroller.close()
+        logger.info("Done.")
 
-    # unless there is a keyboard interrupt, in which case we should catch the error and still
-    #   return the save location
-    except KeyboardInterrupt as e:
-        pass
+    return full_save_location, video_file_name, final_config
 
-    end_processes(acquisition_loops, writers, disp)
 
-    pbar.close()
+def reset_loggers():
+    # Remove handlers from all loggers
+    for logger in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger, logging.Logger):  # Guard against 'PlaceHolder' objects
+            logger.handlers.clear()
 
-    return save_location, camera_list
+    # Reset the root logger
+    logging.getLogger().handlers.clear()

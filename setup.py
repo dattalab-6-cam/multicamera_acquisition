@@ -1,15 +1,11 @@
-from setuptools import find_packages, setup
+import setuptools
+import versioneer
 
-setup(
+with open("README.md", "r", encoding="utf-8") as f:
+    long_description = f.read()
+
+setuptools.setup(
     name="multicamera_acquisition",
-    packages=find_packages(),
-    version="0.1.0",
-    description="Python packaamera acquisition with Flir and Basler cameras.",
-    author="dattalab",
-    license="MIT",
-    install_requires=["tqdm", "numpy", "pyserial", "pathlib2", "opencv-python", "av"],
-    extras_require={
-        "pypylon": ["pypylon"],
-        "pyspin": ["pyspin"],
-    },
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
 )
