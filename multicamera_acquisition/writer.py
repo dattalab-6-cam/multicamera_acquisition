@@ -236,6 +236,7 @@ class NVC_Writer(BaseWriter):
         self.img_dims = None
         self.nv12_placeholder = None  # placeholder for nv12 image
         self.frames_flushed = 0
+        self._current_vid_muxing = False
 
     @staticmethod
     def default_writer_config(fps, gpu=0):
