@@ -5,11 +5,8 @@ Python library for simultaneous video acquisition with Basler cameras (pypylon) 
 
 The custom library is necessary in order to interleave the Basler's frames betwee the Azure's sub-frame pulses. Acquisition is done in parallel using a microcontroller to trigger the cameras and IR lights. We use a [Teensy](https://www.pjrc.com/store/teensy41.html), with a [custom PCB](https://github.com/HMS-RIC/Datta-Open-Field-Arena) to control the lights and send triggers to the cameras, but in theory any microcontroller that can go fast enough will work. 
 
-<<<<<<< HEAD
-In addition, we record input GPIOs on the microcontroller to sync external data sources to the video frames. 
-=======
-Separate processes exist to capture frames and write the frames to a video for each camera. In addition, we record incoming GPIOs to the microcontroller, to allow syncing with external data sources.
->>>>>>> origin/versey-sherry-refactor_config
+Separate processes exist to capture frames and write the frames to a video for each camera. In addition, we record incoming GPIOs to the microcontroller, to sync external data sources to the video frames.
+
 
 Authors
 - Tim Sainburg
