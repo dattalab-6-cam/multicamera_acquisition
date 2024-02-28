@@ -168,13 +168,19 @@ def test_refactor_acquire_video_multiple_vids_muxing(
     full_config["acq_loop"] = acq_config
 
     # Run the func!
-    save_loc, first_video_file_name, full_config = refactor_acquire_video(
+    save_loc, video_file_name, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
+        # logging_level=logging.DEBUG,
     )
+
+    first_video_file_name = str(video_file_name).replace(".mp4", ".0.mp4")
+    second_video_file_name = str(video_file_name).replace(".mp4", f".{nvc_writer_config['max_video_frames']}.mp4")
+    # print(os.listdir(os.path.join(tmp_path, save_loc)))
+    # print("First vid: ", first_video_file_name)
 
     # Check that the videos exist
     for camera_name in full_config["cameras"].keys():
@@ -185,19 +191,20 @@ def test_refactor_acquire_video_multiple_vids_muxing(
         )
 
         # Check that the next video exists
-        next_video_file_name = str(first_video_file_name).replace(
+        second_video_file_name = str(first_video_file_name).replace(
             ".0", f".{nvc_writer_config['max_video_frames']}"
         )
-        assert os.path.exists(next_video_file_name)
+        # print("Second vid: ", second_video_file_name)
+        assert os.path.exists(second_video_file_name)
         assert os.path.exists(
-            str(next_video_file_name).replace(".mp4", ".metadata.csv")
+            str(second_video_file_name).replace(".mp4", ".metadata.csv")
         )
 
     # Check that the video has the right number of frames
     # NB: this won't work unless we mux the videos, so this also tests the muxing.
     for camera_name in full_config["cameras"].keys():
         assert count_frames(str(first_video_file_name)) == n_test_frames / 2
-        assert count_frames(str(next_video_file_name)) == n_test_frames / 2
+        assert count_frames(str(second_video_file_name)) == n_test_frames / 2
 
 
 def test_refactor_acquire_video_muxing(

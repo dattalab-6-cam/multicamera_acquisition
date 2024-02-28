@@ -468,6 +468,23 @@ def refactor_acquire_video(
     recording_duration_s : int (default: 60)
         The duration of the recording in seconds.
 
+    recording_name : str (default: None)
+        The name of the recording. If None, the recording will be named with 
+        the current date and time.
+            The final save location will be:
+                /path/to/my/[recording_name]/[recording_name].[camera_name].mp4
+            OR if append_camera_serial is True:
+                /path/to/my/[recording_name]/[recording_name].[camera_name].[camera_serial].mp4
+            OR if append_datetime is True:
+                /path/to/my/[recording_name]_[datetime]/[recording_name]_[datetime].[camera_name].mp4
+            OR if max_video_frames is set in the writer config, then the
+            final save location will be:
+                /path/to/my/[recording_name]/[recording_name].[camera_name].0.mp4
+                /path/to/my/[recording_name]/[recording_name].[camera_name].[max].mp4
+                /path/to/my/[recording_name]/[recording_name].[camera_name].[2*max].mp4
+                ...
+
+
     append_datetime : bool (default: True)
         Whether to further nest the recording in a subfolder named with the
         date and time.
@@ -580,6 +597,7 @@ def refactor_acquire_video(
         join(save_location, recording_name)
     )  # /path/to/my/recording_name
 
+    # print(full_save_location)
     if exists(full_save_location) and len(glob(join(full_save_location, "*.mp4"))) > 0 and not overwrite:
         raise ValueError(
             f"Save location {full_save_location} already exists with at least one MP4. If you want save into this dir anyways and risk overwriting, set overwrite to True!"
@@ -800,7 +818,7 @@ def refactor_acquire_video(
         logger.info("Ending processes, this may take a moment...")
         end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
         logger.info("Processed ended")
-        print(f"\rRecording Progress: 100%", end="")
+        print("\rRecording Progress: 100%", end="")
         if final_config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
