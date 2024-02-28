@@ -565,6 +565,10 @@ def refactor_acquire_video(
             downsample: 4
             range: [0, 1000]
     """
+    current_mp_start_method = mp.get_start_method()
+    if current_mp_start_method != "spawn":
+        mp.set_start_method("spawn", force=True)
+        
 
     # Set up the main logger for this process
     logger = logging.getLogger("main_acq_logger")
