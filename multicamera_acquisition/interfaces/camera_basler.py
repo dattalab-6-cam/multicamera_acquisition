@@ -194,9 +194,11 @@ class BaslerCamera(BaseCamera):
         self.logger.debug(f"Initializing camera {self.name}...")
 
         # Create the pypylon camera object
+        self.logger.debug(f"Creating cam")
         self._create_pylon_cam()
 
         # Open the connection to the camera
+        self.logger.debug(f"Opening connection to cam")
         self.cam.Open()
 
         # Sanity check on serial number
@@ -453,11 +455,13 @@ def enumerate_basler_cameras(behav_on_none="raise"):
         sn = camera.GetDeviceInfo().GetSerialNumber()
         model = camera.GetDeviceInfo().GetModelName()
         camera.Close()
+        del camera
         serial_nos.append(sn)
         models.append(model)
 
     # Destroy the devices instance to free them up (maybe not nec?)
     del devices
+    del tl_factory
 
     # Return a list of serial numbers
     return serial_nos, models
