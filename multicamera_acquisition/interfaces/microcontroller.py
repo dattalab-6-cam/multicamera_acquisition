@@ -204,11 +204,11 @@ def plot_trigger_schedule(
     ax.set_xlabel("Time (us)")
 
 
-def generate_output_schedule(config, n_azures, basler_fps):
+def generate_output_schedule(config, n_azures, basler_fps, suppress_plot=False):
     """
     Generate a schedule of output state changes for the microcontroller. The schedule specifies a
     set of state changes on a set of output pins at specific times, which will be performed once
-    per acquisition cycle. Acqusition cycles 33333 us long when using 1 or more Azure cameras,
+    per acquisition cycle. Acqusition cycles are 33333us long when using 1 or more Azure cameras,
     and otherwise defined by the target frame rate.
 
     Parameters:
@@ -256,6 +256,10 @@ def generate_output_schedule(config, n_azures, basler_fps):
     basler_fps : int
         Target rame rate of Basler cameras.
 
+    suppress_plot : bool, optional
+        If True, the trigger schedule will not be plotted (overrides "plot_trigger_schedule"
+        in the config).
+
     Returns:
     --------
     state_change_times : list
@@ -269,6 +273,13 @@ def generate_output_schedule(config, n_azures, basler_fps):
 
     cycle_duration : int
         Duration of each acquisition cycle in microseconds.
+
+    trigger_info : dict
+        Dictionary with trigger times for each type of camera.
+        - cycle_duration: Duration of each acquisition cycle in microseconds.
+        - azure_triggers: List of times at which the Azure trigger turns on per cycle.
+        - top_basler_triggers: List of times at which the top Basler trigger turns on per cycle.
+        - bottom_basler_triggers: List of times at which the bottom Basler trigger turns on per cycle.
     """
     if n_azures == 0:
         # one cycle per basler frame
@@ -394,8 +405,18 @@ def generate_output_schedule(config, n_azures, basler_fps):
             "Some state change times are greater than the acquisition cycle duration!"
         )
 
+    trigger_info = {
+        "cycle_duration": cycle_duration,
+        "top_basler": top_basler_trigger_ons,
+        "bottom_basler": bottom_basler_trigger_ons,
+        "azure": [
+            azure_state_change_times[0]
+            - AZURE_NUM_SUBFRAMES_BEFORE_TRIGGER * AZURE_INTERSUBFRAME_PERIOD
+        ],
+    }
+
     # plot trigger schedule if desired
-    if config["plot_trigger_schedule"]:
+    if config["plot_trigger_schedule"] and not suppress_plot:
         plot_trigger_schedule(
             cycle_duration,
             top_basler_trigger_ons,
@@ -409,7 +430,13 @@ def generate_output_schedule(config, n_azures, basler_fps):
             config["trigger_plot_figsize"],
         )
 
-    return state_change_times, state_change_pins, state_change_states, cycle_duration
+    return (
+        state_change_times,
+        state_change_pins,
+        state_change_states,
+        cycle_duration,
+        trigger_info,
+    )
 
 
 def find_serial_ports():
@@ -457,11 +484,12 @@ class Microcontroller(object):
 
     def __init__(
         self,
-        basename,
+        basename=None,
         config=None,
         basler_fps=120,
         n_azures=2,
         basler_exposure_time=950,
+        suppress_side_effects=False,
     ):
         """
         Save attributes, creates a triggerdata file, determines the schedule of output state changes
@@ -469,7 +497,7 @@ class Microcontroller(object):
 
         Parameters:
         -----------
-        basename : str
+        basename : str, optional
             Basename of the acquisition.
 
         config : dict, optional
@@ -485,6 +513,11 @@ class Microcontroller(object):
 
         basler_exposure_time : int, optional
             Exposure time of Basler cameras in microseconds. Used if `config` is None.
+
+        suppress_side_effects : bool, optional
+            If True, the following side-effects will be suppressed:
+            - Creating a triggerdata file.
+            - Plotting the trigger schedule.
         """
 
         # Try to find the main logger
@@ -527,16 +560,20 @@ class Microcontroller(object):
             self.state_change_pins,
             self.state_change_states,
             self.cycle_duration,
-        ) = generate_output_schedule(self.config, n_azures, basler_fps)
+            self.trigger_info,
+        ) = generate_output_schedule(
+            self.config, n_azures, basler_fps, suppress_plot=suppress_side_effects
+        )
 
         # initialize empty serial connection
         self.serial_connection = None
 
         # create triggerdata file
-        header = "time,pin,state\n"
-        self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
-        self.trigger_data_file.write(header)
-        self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
+        if not suppress_side_effects:
+            header = "time,pin,state\n"
+            self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
+            self.trigger_data_file.write(header)
+            self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
 
     def check_for_response(self, serial_connection, expected_response, port=""):
         """Check if the microcontroller sends an expected response within 5 seconds."""
