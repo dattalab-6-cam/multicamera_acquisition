@@ -64,8 +64,12 @@ class BaseWriter(mp.Process):
         # so that we can start new videos with the same stem + new frame number.
         if self.config["max_video_frames"] is not None:
             self.orig_stem = ".".join(self.video_file_name.stem.split("."))
-            self.video_file_name = self.video_file_name.parent / (self.orig_stem + ".0" + self.video_file_name.suffix)
-            self.metadata_file_name = str(self.video_file_name).replace(".mp4", ".metadata.csv")
+            self.video_file_name = self.video_file_name.parent / (
+                self.orig_stem + ".0" + self.video_file_name.suffix
+            )
+            self.metadata_file_name = str(self.video_file_name).replace(
+                ".mp4", ".metadata.csv"
+            )
 
         # Check user has passed at least an fps
         if config is None and fps is None:
@@ -127,7 +131,9 @@ class BaseWriter(mp.Process):
                     break
 
                 # Unpack the data
-                img, camera_timestamp, self.frames_received = data  # self.frames_received is taken directly from the acquisition process
+                img, camera_timestamp, self.frames_received = (
+                    data  # self.frames_received is taken directly from the acquisition process
+                )
 
                 # Get the metadata about the frame
                 frame_image_uid = str(round(time.time(), 5)).zfill(5)
@@ -168,7 +174,11 @@ class BaseWriter(mp.Process):
                 self.frames_written_to_current_video += 1
 
                 # If the current frame is greater than the max, create a new video and metadata file
-                if self.config["max_video_frames"] is not None and self.frames_written_to_current_video >= self.config["max_video_frames"]:
+                if (
+                    self.config["max_video_frames"] is not None
+                    and self.frames_written_to_current_video
+                    >= self.config["max_video_frames"]
+                ):
                     self.logger.info("Reached max vid frames, resetting writers")
                     self._reset_writers()
 
@@ -183,20 +193,26 @@ class BaseWriter(mp.Process):
         self.finish()
 
     def _reset_writers(self):
-        
+
         # Reset the video writer
         self.close_video()
         self.frames_written_to_current_video = 0
-        self.video_file_name = self.video_file_name.parent / (self.orig_stem + f".{self.frames_received}" + self.video_file_name.suffix)
+        self.video_file_name = self.video_file_name.parent / (
+            self.orig_stem + f".{self.frames_received}" + self.video_file_name.suffix
+        )
 
         # [new pipe will be created on next frame]
 
         # Reset the metadata writer
         self.metadata_file.close()
-        self.metadata_file_name = str(self.video_file_name).replace(".mp4", ".metadata.csv")
+        self.metadata_file_name = str(self.video_file_name).replace(
+            ".mp4", ".metadata.csv"
+        )
         self.initialize_metadata()
 
-        self.logger.debug(f"Reset writers for {self.config['camera_name']} with new video file {self.video_file_name} and total received frames {self.frames_received}")
+        self.logger.debug(
+            f"Reset writers for {self.config['camera_name']} with new video file {self.video_file_name} and total received frames {self.frames_received}"
+        )
 
     def append(self, data):
         pass
@@ -258,9 +274,12 @@ class NVC_Writer(BaseWriter):
             "tuning_info": "ultra_low_latency",
             "fmt": "YUV420",
             "gpu": gpu,
-            # additional params from CW
             "idrperiod": "256",
             "gop": "30",
+            "rc": "constqp",  # cbr, vbr, constqp
+            "bitrate": "10M",
+            "maxbitrate": "20M",
+            "constqp": "27",
         }
 
         return config
@@ -291,7 +310,11 @@ class NVC_Writer(BaseWriter):
             "fmt": self.config["fmt"],
             # "lookahead": "1", # how far to look ahead (more is slower but better quality)
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
-            "gop": self.config["gop"],  # larger = faster
+            "gop": self.config["gop"],  # larger = faster,
+            "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
+            "bitrate": self.config["bitrate"],  # target br (ignored for constqp)
+            "maxbitrate": self.config["maxbitrate"],  # max br (ignored for constqp)
+            "constqp": str(self.config["constqp"]),  # (only for rc=constqp)
         }
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
