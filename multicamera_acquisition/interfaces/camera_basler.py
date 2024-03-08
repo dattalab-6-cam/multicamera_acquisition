@@ -259,6 +259,11 @@ class BaslerCamera(BaseCamera):
         self.cam.GainAuto.SetValue("Off")
         self.cam.Gain.SetValue(self.config["gain"])
 
+        # enable reading GPIO states
+        self.cam.ChunkModeActive.Value = True
+        self.cam.ChunkSelector.Value = "LineStatusAll"
+        self.cam.ChunkEnable.Value = True
+
         # Set exposure time
         self.cam.ExposureAuto.SetValue("Off")
         self.cam.ExposureTime.SetValue(self.config["exposure"])
@@ -405,15 +410,17 @@ class BaslerCamera(BaseCamera):
 
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
+            line_status = img.ChunkLineStatusAll.Value
+            # self.logger.debug(f"{line_status}")
             if get_timestamp:
                 tstamp = img.GetTimeStamp()
 
         img.Release()
 
         if get_timestamp:
-            return img_array, tstamp
+            return img_array, line_status, tstamp
         else:
-            return img_array
+            return img_array, line_status
 
 
 def enumerate_basler_cameras(behav_on_none="raise"):

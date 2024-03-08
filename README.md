@@ -61,6 +61,7 @@ The metadata.csv files are created for each individual camera.
 - **`frame_timestamp`**: The is the timestamp of the frame, according to the camera. 
 - **`frame_image_uid`**: frame_image_uid is the computer time that the frame is being written (within the writer thread). It is computed as `str(round(time.time(), 5)).zfill(5)`
 - **`queue_size`**: To allow frames to be written in a separate thread a `multiprocessing.Queue()` is created for each camera. `queue_size` represents the number of frames currently waiting to be written in the queue when the current frame is being written. 
+- **`line_status`**: For synchronization, we read the AUX line. Currently only supported for Basler cameras, but can be added for other cameras. 
 
 
 
@@ -72,6 +73,7 @@ The metadata.csv files are created for each individual camera.
       <th>frame_timestamp</th>
       <th>frame_image_uid</th>
       <th>queue_size</th>
+      <th>line_status</th>
     </tr>
   </thead>
   <tbody>
@@ -81,6 +83,7 @@ The metadata.csv files are created for each individual camera.
       <td>287107751173672</td>
       <td>1.682741e+09</td>
       <td>0</td>
+      <td>1</td>
     </tr>
     <tr>
       <th>1</th>
@@ -88,6 +91,7 @@ The metadata.csv files are created for each individual camera.
       <td>287107760205712</td>
       <td>1.682741e+09</td>
       <td>0</td>
+      <td>1</td>
     </tr>
     <tr>
       <th>2</th>
@@ -95,12 +99,14 @@ The metadata.csv files are created for each individual camera.
       <td>287108770139128</td>
       <td>1.682741e+09</td>
       <td>0</td>
+      <td>0</td>
     </tr>
     <tr>
       <th>3</th>
       <td>4</td>
       <td>287108780126528</td>
       <td>1.682741e+09</td>
+      <td>0</td>
       <td>0</td>
     </tr>
   </tbody>
