@@ -84,7 +84,13 @@ class BaseWriter(mp.Process):
         with open(self.metadata_file_name, "w", newline="") as metadata_f:
             metadata_writer = csv.writer(metadata_f)
             metadata_writer.writerow(
-                ["frames_received", "frame_timestamp", "frame_image_uid", "queue_size"]
+                [
+                    "frames_received",
+                    "frame_timestamp",
+                    "frame_image_uid",
+                    "queue_size",
+                    "line_status",
+                ]
             )
         self.metadata_file = open(self.metadata_file_name, "a", newline="")
         self.metadata_writer = csv.writer(self.metadata_file)
@@ -123,7 +129,7 @@ class BaseWriter(mp.Process):
                     break
 
                 # Unpack the data
-                img, camera_timestamp, self.frames_received = data
+                img, line_status, camera_timestamp, self.frames_received = data
 
                 # Get the metadata about the frame
                 frame_image_uid = str(round(time.time(), 5)).zfill(5)
@@ -145,6 +151,7 @@ class BaseWriter(mp.Process):
                             camera_timestamp,
                             frame_image_uid,
                             str(qsize),
+                            str(line_status),
                         ]
                     )
                 except ValueError as e:

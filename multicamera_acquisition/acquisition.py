@@ -220,10 +220,10 @@ class AcquisitionLoop(mp.Process):
                         depth, ir, camera_timestamp = data
 
                         self.write_queue.put(
-                            tuple([ir, camera_timestamp, n_frames_received])
+                            tuple([ir, None, camera_timestamp, n_frames_received])
                         )
                         self.write_queue_depth.put(
-                            tuple([depth, camera_timestamp, n_frames_received])
+                            tuple([depth, None, camera_timestamp, n_frames_received])
                         )
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.display_every_n == 0:
@@ -626,7 +626,11 @@ def refactor_acquire_video(
         join(save_location, recording_name)
     )  # /path/to/my/recording_name
 
-    if exists(full_save_location) and len(glob(join(full_save_location, "*.mp4"))) > 0 and not overwrite:
+    if (
+        exists(full_save_location)
+        and len(glob(join(full_save_location, "*.mp4"))) > 0
+        and not overwrite
+    ):
         raise ValueError(
             f"Save location {full_save_location} already exists with at least one MP4. If you want save into this dir anyways and risk overwriting, set overwrite to True!"
         )
@@ -634,7 +638,7 @@ def refactor_acquire_video(
     basename = str(
         full_save_location / recording_name
     )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
-    
+
     logger.debug(f"Have good save location {full_save_location}")
 
 
