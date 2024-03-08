@@ -121,14 +121,15 @@ class AcquisitionLoop(mp.Process):
         }
 
     def _create_mp_events(self):
-        """Create multiprocessing events."""
-        self.await_process = mp.Event()  # was previously "ready"
-        self.await_main_thread = mp.Event()  # was previously "primed"
-        self.stopped = mp.Event()
+        """Create multiprocessing events for coordination with the main acquisition function.
+        
+        """
+        self.await_process = mp.Event()  # the main thread calls this and waits for it to be set from the acq loop process 
+        self.await_main_thread = mp.Event()  # the acq loop process calls this and waits for it to be set from the main thread
+        self.stopped = mp.Event()  #  the main thread can interrupt acquisition by setting this event with the .stop() method.
 
     def _continue_from_main_thread(self):
-        """Tell the acquisition loop to continue
-        (Called from the main thread)
+        """Tell the acquisition loop to continue (called from the main thread).
         """
         self.await_main_thread.set()
         self.await_process.clear()  # reset this event so we can use it again
@@ -456,6 +457,19 @@ def refactor_acquire_video(
 ):
     """Acquire video from multiple, synchronized cameras.
 
+    This is the "main" function that controls the acquisition of the videos.
+    
+    The basic flow for this function is as follows:
+
+    1. Set up the recording. This involves creating the save location, loading the
+        recording config, communicating with the Arduino to set the intended 
+        frame rate + lighting schedule, and setting up the main logger.
+    2. Prepare to launch separate sub-processes to acquire frames from each camera,
+        to write the frames to disk, and optionally, to display the frames in real-time.
+    3. Start the sub-processes (see lines 803 - 809, where writer.start() and acquisition_loop.start() are called).
+    4. Wait for the specified duration
+    5. End the sub-processes and close the microcontroller serial connection.
+
     Parameters
     ----------
     save_location : str or Path
@@ -549,6 +563,19 @@ def refactor_acquire_video(
             range: [0, 1000]
     """
 
+    """
+    LOGGING INFO
+    Recall that we use subprocesses to acquire and write frames. There is no way to
+    directly share a logger across processes. Instead, we use a QueueListener to
+    send log messages from the subprocesses to the main process, where they are
+    handled by a StreamHandler. This is set up in the main process, and the QueueListener
+    is started before the subprocesses are created. The subprocesses are then created
+    with a logger_queue argument, which is a Queue that they use to send log messages.
+
+    References:
+    https://superfastpython.com/multiprocessing-logging-in-python/
+    https://docs.python.org/3/howto/logging-cookbook.html
+    """
     # Set up the main logger for this process
     logger = logging.getLogger("main_acq_logger")
     logger.setLevel(logging_level)
@@ -569,6 +596,25 @@ def refactor_acquire_video(
     queue_listener.start()
     logger.debug("Started mp logging.")
 
+
+    """
+    RECORDING NAME / PATH INFO
+    We have agreed on the following basic structure for the name of the recordings:
+        recording_name = [recording base name].[camera info].[video info]
+
+    Where:
+        recording base name: the name of the recording, eg "test_recording". 
+            This MUST NOT contain any dots.
+            This may or may not include the date and time, depending on the append_datetime flag.
+            Valid examples: "20240101_my_mouse", "test_recording", "test_recording_21-03-01-12-00-00-000000"
+
+        camera info: the name of the camera, eg "top", "bottom", "side". This may also include the serial number of the camera.
+            Valid examples: "top", "bottom", "side3", "top.12345678", "azure_top", "azure_top_depth"
+
+        video info: the type of video, and, if max_video_frames is set in the config, the first frame number of the video.
+            Valid examples: ".mp4", "0.mp4" [i.e. the first video from this Writer], "1000.mp4" [i.e. a video starting with the 1000th frame from this Writer]
+        
+    """
     # Create the recording directory
     datetime_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
     if recording_name is None:
@@ -591,17 +637,31 @@ def refactor_acquire_video(
     
     logger.debug(f"Have good save location {full_save_location}")
 
+
+    """
+    CONFIG INFO
+    We have agreed on the following principles for using config files to structure our recordings:
+        
+        1. At run-time, WYSIWYG [what you see is what you get] — the config that you pass to refactor_acquire_video IS EXACTLY the config that gets run. 
+            No defaults will be auto-populated. You must pass a config, and a copy will get saved into the recording directory.
+            The config file can be specified as a dict, or as a path (string or Path) to a yaml file.
+            The code will automatically distribute the config parameters to the appropriate classes (Camera, Writer, MultiDisplay, etc.) 
+        
+        2. However, when **testing** the code, it is desireable to not provide configs every time.
+            So, each class (Camera, Writer, MultiDisplay, etc.) has a default config as a static method. The test suite relies extensively on this default config.
+            Additionally, these defaults are instructive to users who are looking to understand what parameters each class takes, 
+            although the defaults are not always exhaustive.
+
+    """
+
     # Load the config file if it exists
     if isinstance(config, str) or isinstance(config, Path):
         config = load_config(config)
     else:
         assert isinstance(config, dict)
 
-    # Add the display params to the config
+    # Add the display params to the config  # TODO: cleanup
     final_config = config
-
-    # Resolve camera device indices
-    device_index_dict = resolve_device_indices(final_config)
 
     # Check that the config is valid
     validate_recording_config(final_config, logging_level)
@@ -610,14 +670,50 @@ def refactor_acquire_video(
     config_filepath = Path(basename + ".recording_config.yaml")
     save_config(config_filepath, final_config)
 
+    """
+    CAMERA INFO
+    
+    The Basler cameras that we use are easily human-identifiable by their serial numbers, e.g. "12345678".
+    However, the software that we use to control the cameras (Pylon) uses device indices, e.g. 0, 1, 2, etc.
+    The mapping from serial number to device index can change if cameras are added or removed, so it is safest to 
+    provide serial numbers, and then resolve the device indices at runtime. This is done by the resolve_device_indices function.
+    
+    During testing, it is desireable to not have to provide serial numbers every time. Therefore, it is possible
+    to simply provide device indices as camera id's in the config (i.e. use camera 0, camera 1, etc.).
+
+    NB: in the config, there is only one spot for a camera "id" — this can be either an integer (device index) or a string (serial number).
+    """
+    # Resolve camera device indices
+    device_index_dict = resolve_device_indices(final_config)
+
+
+    """
+    ARDUINO INFO
+    
+    TODO: CW write block comment about the arduino
+        -- explain triggerdata file, otherwise that file is "silent" from the perspective of the main function
+    """
+
     # Find the microcontroller to be used for triggering
     if final_config["globals"]["microcontroller_required"]:
         logger.info("Finding microcontroller...")
         microcontroller = Microcontroller(basename, final_config)
         microcontroller.open_serial_connection()
 
-    # TODO: triggerdata file
 
+    """
+    SUBPROCESS INFO
+    
+    In order to acquire frames from multiple cameras at once, we use subprocesses. Each camera has its own AcquisitionLoop and Writer processes.
+    This is necessary in order to record at the highest speeds possible, since Python can't otherwise 
+    do multi-threading.
+
+    In this module, each subprocess is subclassed from mp.Process, and has a run() method that is called when the .start() method is called on the class.
+    The code in the run() method lives in its own subprocess. Importantly, all of the subprocesses are "spawned" not "forked",
+    which means that they are completely independent of the main process, and do not share memory with the main process (this 
+    is critical for how the Basler API works on the backend; see https://github.com/basler/pypylon/issues/659#issuecomment-1970761941.)
+
+    """
     # Create the various processes
     # TODO: refactor these into one "running processes" dict or sth like that
     logger.info("Opening subprocesses and cameras, this may take a moment...")
@@ -630,11 +726,11 @@ def refactor_acquire_video(
     try:
         for camera_name, camera_dict in final_config["cameras"].items():
             # Create a writer queue
-            write_queue = mp.Queue()
+            write_queue = mp.Queue()  # This queue is used to send frames from the AcuqisitionLoop process to the Writer process
 
             # Generate file names
             if append_camera_serial:
-                cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"
+                cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"  # TODO: using camera_dict["id"] here will not always append the serial, since ID can alternatively be an integer
             else:
                 cam_append_str = f".{camera_dict['name']}.mp4"
             video_file_name = Path(basename + cam_append_str)
@@ -643,6 +739,8 @@ def refactor_acquire_video(
             )
 
             # Get a writer process
+            # TODO: this is a pretty thin wrapper around the class init's, and maybe
+            # we could just call the class init's directly here for clarity.
             writer = get_writer(
                 write_queue,
                 video_file_name,
@@ -682,7 +780,7 @@ def refactor_acquire_video(
 
             # Setup display queue for camera if requested
             if camera_dict["display"]["display_frames"] is True:
-                display_queue = mp.Queue()
+                display_queue = mp.Queue()  # This queue is used to send frames from the AcuqisitionLoop process to the MultiDisplay process
                 display_queues.append(display_queue)
                 camera_list.append(camera_name)
                 display_ranges.append(camera_dict["display"]["display_range"])
@@ -738,6 +836,17 @@ def refactor_acquire_video(
     else:
         display_proc = None
 
+    """
+    AWAITING INFO
+    At this point, the acquisition loops and writers are running, and the display process is running if needed.
+    However, no frames have been acquired because the acqisition loops are waiting for the main thread to tell them to continue,
+    and also for the arduino to start sending triggers (assuming you're acquiring in trigger mode).
+    
+    Here, the main thread tells them to go ahead and start their cameras. Usually this is only a few 100 ms per camera,
+    so we wait up to 3 seconds per camera, and after that, if any camera fails to start, we raise an error.
+
+    Then once the cameras have been successfully started, we tell the microcontroller to start sending triggers.
+    """
     # Wait for the acq loop processes to start their cameras
     logger.info("Starting cameras...")
     for acquisition_loop in acquisition_loops:
@@ -753,6 +862,18 @@ def refactor_acquire_video(
         logger.info("Starting microcontroller...")
         microcontroller.start_acquisition(recording_duration_s)
 
+    """
+    RECORDING MONITORING INFO
+    Now we wait for the specified duration for the recording to finish. The microcontroller 
+    checks for any incoming triggers, and records them, for post-hoc synchronization of other data streams.
+
+    This is all done in a try/except/finally block because even if an error comes up, we want to end all the sub-proceses
+    gracefully and close the microcontroller connection.
+
+    Sometimes (eg during testing) it is useful to put a limit on the total number of frames that are acquired
+    by the acquisition loops; if the acquisition loops reach this limit, then acquisition_loop.is_alive() will return False,
+    and we can break out of the loop early.
+    """
     # Wait for the specified duration
     try:
         print(f"\rRecording Progress: 0%", end="")
@@ -793,12 +914,13 @@ def refactor_acquire_video(
                 datetime_prev = datetime.now()
 
     except KeyboardInterrupt:
+        # This feels redundant, probably don't really need it
         logger.info("Keyboard interrupt received, stopping recording.")
 
     finally:
         # End the processes and close the microcontroller serial connection
         logger.info("Ending processes, this may take a moment...")
-        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)  # TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, and this has no timeout, it will never close gracefully.
         logger.info("Processed ended")
         print(f"\rRecording Progress: 100%", end="")
         if final_config["globals"]["microcontroller_required"]:
@@ -811,6 +933,11 @@ def refactor_acquire_video(
 
 
 def reset_loggers():
+    """ Remove all handlers from all loggers and reset the root logger.
+    
+    This should be called right before the refactor_acquire_video function whenever
+    the same python kernel is being used for more than one acquisition, e.g. in a notebook context.
+    """
     # Remove handlers from all loggers
     for logger in logging.Logger.manager.loggerDict.values():
         if isinstance(logger, logging.Logger):  # Guard against 'PlaceHolder' objects
