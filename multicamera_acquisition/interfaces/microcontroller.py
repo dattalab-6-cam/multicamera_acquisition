@@ -6,6 +6,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import serial
+from datetime import datetime, timedelta
 
 STX = b"\x02"
 ETX = b"\x03"
@@ -457,7 +458,7 @@ class Microcontroller(object):
 
     def __init__(
         self,
-        basename,
+        basename=None,
         config=None,
         basler_fps=120,
         n_azures=2,
@@ -469,8 +470,8 @@ class Microcontroller(object):
 
         Parameters:
         -----------
-        basename : str
-            Basename of the acquisition.
+        basename : str, optional
+            Basename of the acquisition. If None then no triggerdata file is created.
 
         config : dict, optional
             Configuration dictionary for the whole acquisition, which should contain a
@@ -533,10 +534,13 @@ class Microcontroller(object):
         self.serial_connection = None
 
         # create triggerdata file
-        header = "time,pin,state\n"
-        self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
-        self.trigger_data_file.write(header)
-        self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
+        if basename is None:
+            self.trigger_data_file = None
+        else:
+            header = "time,pin,state\n"
+            self.trigger_data_file = open(f"{basename}.triggerdata.csv", "w")
+            self.trigger_data_file.write(header)
+            self.logger.debug(f"Created triggerdata file: {basename}.triggerdata.csv")
 
     def check_for_response(self, serial_connection, expected_response, port=""):
         """Check if the microcontroller sends an expected response within 5 seconds."""
@@ -596,7 +600,8 @@ class Microcontroller(object):
         Close the serial connection and the triggerdata file.
         """
         self.serial_connection.close()
-        self.trigger_data_file.close()
+        if self.trigger_data_file is not None:
+            self.trigger_data_file.close()
 
     def start_acquisition(self, recording_duration_s):
         """
@@ -675,9 +680,10 @@ class Microcontroller(object):
                 return True
             elif char == STX:
                 data = self.serial_connection.read(12)
-                pin, state, micros, cycleIndex = struct.unpack("<HBLL", data[:-1])
-                time = cycleIndex * self.cycle_duration + micros
-                self.trigger_data_file.write(f"{time},{pin},{state}\n")
+                if self.trigger_data_file is not None:
+                    pin, state, micros, cycleIndex = struct.unpack("<HBLL", data[:-1])
+                    time = cycleIndex * self.cycle_duration + micros
+                    self.trigger_data_file.write(f"{time},{pin},{state}\n")
             else:
                 raise RuntimeError(f"Unexpected character from microcontroller: {char}")
         return False
@@ -706,3 +712,44 @@ class Microcontroller(object):
             "microcontroller_port": None,
             "cycles_per_random_bit_flip": 1,
         }
+
+
+def run_microcontroller_standalone(config, recording_duration_s):
+    """
+    Run the microcontroller in standalone mode. This emulates the microcontroller's behavior
+    during acquisition, but without any camera communication or logging of triggerdata.
+
+    Parameters:
+    -----------
+    config : dict, optional
+        Configuration dictionary for the whole acquisition, which should contain a
+        microcontroller-specific config under the key "microcontroller". If None
+        then a default config is used.
+
+    recording_duration_s : int
+        Duration of the recording in seconds. Recording can also be stopped using a
+        keyboard interrupt (ctrl+c).
+    """
+    microcontroller = Microcontroller(config=config)
+    microcontroller.open_serial_connection()
+    microcontroller.start_acquisition(recording_duration_s)
+
+    datetime_prev = datetime.now()
+    datetime_rec_start = datetime_prev
+    endtime = datetime_prev + timedelta(seconds=recording_duration_s)
+
+    try:
+        while not microcontroller.check_for_input():
+            if (datetime.now() - datetime_prev).total_seconds() > 1:
+                total_sec = (datetime.now() - datetime_rec_start).seconds
+                pct_prog = np.round(total_sec / recording_duration_s * 100, 2)
+
+                print(
+                    f"\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)",
+                    end="",
+                )
+                datetime_prev = datetime.now()
+    except KeyboardInterrupt:
+        microcontroller.interrupt_acquisition()
+    finally:
+        microcontroller.close()

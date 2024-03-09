@@ -92,6 +92,7 @@ class BaslerCamera(BaseCamera):
         config = {
             "roi": None,  # ie use the entire roi
             "gain": 6,
+            "gamma": 1.0,
             "exposure": 1000,
             "brand": "basler",
             "display": {
@@ -265,6 +266,9 @@ class BaslerCamera(BaseCamera):
         self.cam.ChunkModeActive.Value = True
         self.cam.ChunkSelector.Value = "LineStatusAll"
         self.cam.ChunkEnable.Value = True
+
+        # Set gamma
+        self.cam.Gamma.SetValue(self.config["gamma"])
 
         # Set exposure time
         self.cam.ExposureAuto.SetValue("Off")

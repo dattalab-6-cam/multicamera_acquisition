@@ -554,6 +554,7 @@ def refactor_acquire_video(
                 brand: basler
                 id: "12345678"  # ie the serial number, as a string
                 gain: 6
+                gamma: 1.0
                 exposure: 1000
                 display:
                     display_frames: True
@@ -924,13 +925,8 @@ def refactor_acquire_video(
 
             # Update pbar
             if (datetime.now() - datetime_prev).total_seconds() > 1:
-                pct_prog = np.round(
-                    (datetime.now() - datetime_rec_start).seconds
-                    / recording_duration_s
-                    * 100,
-                    2,
-                )
                 total_sec = (datetime.now() - datetime_rec_start).seconds
+                pct_prog = np.round(total_sec / recording_duration_s * 100, 2)
                 print(
                     f"\rRecording Progress: {pct_prog}% ({total_sec} / {recording_duration_s} sec)",
                     end="",
