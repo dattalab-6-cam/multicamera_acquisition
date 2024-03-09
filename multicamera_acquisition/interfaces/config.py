@@ -12,6 +12,7 @@ ALL_CAM_PARAMS = [
     "id",
     "roi",
     "gain",
+    "gamma",
     "exposure",
     "brand",
     "fps",
@@ -77,6 +78,8 @@ def partial_config_from_camera_list(camera_list):
                 Whether to display the camera's feed in real-time.
             gain: int
                 The gain for the camera, in (units?). (TODO: valid ranges?)
+            gamma: float
+                The gamma for the camera. (TODO: valid ranges?)
 
         Other optional parameters depend on the camera brand. It is also possible to control the Writer parameters for each camera. The syntax is
         flat (not nested) and follows the same rules as the camera params. For example, to set
