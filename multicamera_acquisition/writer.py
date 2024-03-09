@@ -50,7 +50,7 @@ class BaseWriter(mp.Process):
 
         # Store params
         self.queue = queue
-        self.video_file_name = video_file_name
+        self.video_file_name = Path(video_file_name)
         self.metadata_file_name = metadata_file_name
         self.config = config
         self.logger_queue = logger_queue
@@ -62,7 +62,14 @@ class BaseWriter(mp.Process):
 
         # We want the stem to be everything up to the first frame number,
         # so that we can start new videos with the same stem + new frame number.
-        self.orig_stem = ".".join(self.video_file_name.stem.split(".")[:-1])
+        if self.config["max_video_frames"] is not None:
+            self.orig_stem = ".".join(self.video_file_name.stem.split("."))
+            self.video_file_name = self.video_file_name.parent / (
+                self.orig_stem + ".0" + self.video_file_name.suffix
+            )
+            self.metadata_file_name = str(self.video_file_name).replace(
+                ".mp4", ".metadata.csv"
+            )
 
         # Check user has passed at least an fps
         if config is None and fps is None:
@@ -118,6 +125,7 @@ class BaseWriter(mp.Process):
         self.initialize_metadata()
 
         # Loop until we get a stop signal
+        self.frames_written_to_current_video = 0
         try:
             while True:
                 # Get data from the queue
@@ -161,19 +169,24 @@ class BaseWriter(mp.Process):
                     self.logger.error(e)
                     raise
 
-                # Reset the pipe if needed (at beginning, or after self._reset_writer())
+                # Create (at beginning) or reset (after self._reset_writer()) the pipe if needed
                 if self.pipe is None:
                     data_shape = img.shape
                     self._get_new_pipe(data_shape)
-                    self.logger.debug("Created new video pipe")
 
                 # Write the frame
                 self.append(img)
+                self.frames_written_to_current_video += 1
 
                 # If the current frame is greater than the max, create a new video and metadata file
-                if self.frames_received >= self.config["max_video_frames"]:
+                if (
+                    self.config["max_video_frames"] is not None
+                    and self.frames_written_to_current_video
+                    >= self.config["max_video_frames"]
+                ):
                     self.logger.info("Reached max vid frames, resetting writers")
                     self._reset_writers()
+
         except Exception as e:
             self.logger.error(traceback.format_exc())
             raise e
@@ -185,25 +198,26 @@ class BaseWriter(mp.Process):
         self.finish()
 
     def _reset_writers(self):
+
         # Reset the video writer
         self.close_video()
-        self.video_file_name = (
-            self.video_file_name.parent
-            / f"{self.orig_stem}.{self.frames_received}{self.video_file_name.suffix}"  # nb: no dot before suffix because it's already there
+        self.frames_written_to_current_video = 0
+        self.video_file_name = self.video_file_name.parent / (
+            self.orig_stem + f".{self.frames_received}" + self.video_file_name.suffix
         )
 
         # [new pipe will be created on next frame]
 
         # Reset the metadata writer
         self.metadata_file.close()
-        self.metadata_file_name = (
-            self.metadata_file_name.parent
-            / f"{self.orig_stem}.{self.frames_received}.metadata.csv"
+        self.metadata_file_name = str(self.video_file_name).replace(
+            ".mp4", ".metadata.csv"
         )
         self.initialize_metadata()
 
-        # Reset the frame id counter
-        self.frames_received = 0
+        self.logger.debug(
+            f"Reset writers for {self.config['camera_name']} with new video file {self.video_file_name} and total received frames {self.frames_received}"
+        )
 
     def append(self, data):
         pass
@@ -254,7 +268,7 @@ class NVC_Writer(BaseWriter):
             # pipeline params
             "fps": fps,
             "type": "nvc",
-            "max_video_frames": 60 * 60 * fps * 24,  # one day
+            "max_video_frames": None,  # None means no limit; otherwise, pass an int
             "auto_remux_videos": True,
             # encoder params
             "pixel_format": "gray8",
@@ -265,9 +279,12 @@ class NVC_Writer(BaseWriter):
             "tuning_info": "ultra_low_latency",
             "fmt": "YUV420",
             "gpu": gpu,
-            # additional params from CW
             "idrperiod": "256",
             "gop": "30",
+            "rc": "constqp",  # cbr, vbr, constqp
+            "bitrate": "10M",
+            "maxbitrate": "20M",
+            "constqp": "27",
         }
 
         return config
@@ -282,7 +299,8 @@ class NVC_Writer(BaseWriter):
         ), "VPF only supports gray8 pixel format"
 
     def _get_new_pipe(self, data_shape):
-        import PyNvCodec as nvc
+
+        import PyNvCodec as nvc  # TODO: this should happen before the recording starts
 
         # TODO: make part of the config be exactly the dictionary that is passed to the encoder,
         # so that we can pass in arbitrary params.
@@ -297,9 +315,13 @@ class NVC_Writer(BaseWriter):
             "fmt": self.config["fmt"],
             # "lookahead": "1", # how far to look ahead (more is slower but better quality)
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
-            "gop": self.config["gop"],  # larger = faster
+            "gop": self.config["gop"],  # larger = faster,
+            "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
+            "bitrate": self.config["bitrate"],  # target br (ignored for constqp)
+            "maxbitrate": self.config["maxbitrate"],  # max br (ignored for constqp)
+            "constqp": str(self.config["constqp"]),  # (only for rc=constqp)
         }
-        self.logger.debug(f"encoder dict ({encoder_dictionary}")
+        self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,
             gpu_id=self.config["gpu"],
@@ -540,10 +562,7 @@ class FFMPEG_Writer(BaseWriter):
         """
         config = {
             "fps": fps,
-            "max_video_frames": 60
-            * 60
-            * fps
-            * 24,  # one day  # TODO: do we really want to hardcode this?
+            "max_video_frames": None,  # None means no limit; otherwise, pass an int
             "quality": 15,
             "loglevel": "error",
             "type": "ffmpeg",
