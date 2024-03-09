@@ -469,7 +469,7 @@ def refactor_acquire_video(
         The duration of the recording in seconds.
 
     recording_name : str (default: None)
-        The name of the recording. If None, the recording will be named with 
+        The name of the recording. If None, the recording will be named with
         the current date and time.
             The final save location will be:
                 /path/to/my/[recording_name]/[recording_name].[camera_name].mp4
@@ -502,9 +502,6 @@ def refactor_acquire_video(
     -------
     save_location : Path
         The directory in which the recording was saved.
-
-    video_file_name : Path
-        The path to the video file.
 
     final_config: dict
         The final recording config used.
@@ -568,7 +565,6 @@ def refactor_acquire_video(
     current_mp_start_method = mp.get_start_method()
     if current_mp_start_method != "spawn":
         mp.set_start_method("spawn", force=True)
-        
 
     # Set up the main logger for this process
     logger = logging.getLogger("main_acq_logger")
@@ -602,7 +598,11 @@ def refactor_acquire_video(
     )  # /path/to/my/recording_name
 
     # print(full_save_location)
-    if exists(full_save_location) and len(glob(join(full_save_location, "*.mp4"))) > 0 and not overwrite:
+    if (
+        exists(full_save_location)
+        and len(glob(join(full_save_location, "*.mp4"))) > 0
+        and not overwrite
+    ):
         raise ValueError(
             f"Save location {full_save_location} already exists with at least one MP4. If you want save into this dir anyways and risk overwriting, set overwrite to True!"
         )
@@ -610,7 +610,7 @@ def refactor_acquire_video(
     basename = str(
         full_save_location / recording_name
     )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
-    
+
     logger.debug(f"Have good save location {full_save_location}")
 
     # Load the config file if it exists
@@ -829,7 +829,7 @@ def refactor_acquire_video(
             microcontroller.close()
         logger.info("Done.")
 
-    return full_save_location, video_file_name, final_config
+    return full_save_location, final_config
 
 
 def reset_loggers():
