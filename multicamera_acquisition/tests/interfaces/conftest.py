@@ -15,6 +15,12 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "mcu: requires attached mcu to run")
     config.addinivalue_line("markers", "pyk4a: requires pyk4a lib to run")
 
+    # validate passed camera type
+    # should be either basler_camera or basler_emulated
+    if config.getoption("--camera_type") not in ["basler_camera", "basler_emulated"]:
+        raise ValueError(
+            "Invalid camera type.  Must be one of: ['basler_camera', 'basler_emulated']"
+        )
 
 def pytest_collection_modifyitems(config, items):
 
