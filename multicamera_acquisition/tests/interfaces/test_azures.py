@@ -17,6 +17,7 @@ def trigger_type(pytestconfig):
     )  # default no_trigger (ie no trigger required), see conftest.py
 
 
+@pytest.mark.pyk4a
 @pytest.fixture(scope="function")
 def camera(trigger_type):
     config = AzureCamera.default_camera_config()
@@ -30,6 +31,7 @@ def camera(trigger_type):
     cam.close()
 
 
+@pytest.mark.pyk4a
 class Test_Camera_InitAndStart:
     """Test the ability of the camera to initialize and start without a trigger."""
 
@@ -46,6 +48,7 @@ class Test_Camera_InitAndStart:
         camera.stop()
 
 
+@pytest.mark.pyk4a
 def test_azure_acquire():
     """Test the ability of the Azure to acquire many images"""
 
@@ -61,6 +64,7 @@ def test_azure_acquire():
     cam.close()
 
 
+@pytest.mark.pyk4a
 def test_azure_ir_writer(tmp_path):
     """Test the ir writer for the Azures"""
     config = AzureCamera.default_camera_config()
@@ -106,6 +110,7 @@ def test_azure_ir_writer(tmp_path):
     cam.close()
 
 
+@pytest.mark.pyk4a
 def test_azure_depth_writer(tmp_path):
     """Test the depth writer for the Azures"""
     config = AzureCamera.default_camera_config()
