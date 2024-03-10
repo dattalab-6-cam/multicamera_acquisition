@@ -110,7 +110,7 @@ def test_refactor_acquire_video(
         logging_level=logging_level,
     )
 
-    saved_videos = os.listdir(os.path.join(tmp_path, save_loc))
+    saved_videos = [file for file in os.listdir(os.path.join(tmp_path, save_loc)) if ".mp4" in file or ".avi" in file]
     first_video_file_name = os.path.join(tmp_path, save_loc, saved_videos[0])
 
     # Check that the video exists
@@ -173,7 +173,7 @@ def test_refactor_acquire_video_multiple_vids_muxing(
     full_config["acq_loop"] = acq_config
 
     # Run the func!
-    save_loc, video_file_name, full_config = refactor_acquire_video(
+    save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=(n_test_frames / fps),
@@ -182,8 +182,11 @@ def test_refactor_acquire_video_multiple_vids_muxing(
         # logging_level=logging.DEBUG,
     )
 
-    first_video_file_name = str(video_file_name).replace(".mp4", ".0.mp4")
-    second_video_file_name = str(video_file_name).replace(".mp4", f".{nvc_writer_config['max_video_frames']}.mp4")
+    saved_videos = [file for file in os.listdir(os.path.join(tmp_path, save_loc)) if ".mp4" in file or ".avi" in file]
+    first_video_file_name = os.path.join(tmp_path, save_loc, saved_videos[0])
+
+    # first_video_file_name = str(video_file_name).replace(".mp4", ".0.mp4")
+    second_video_file_name = str(first_video_file_name).replace(".0.mp4", f".{nvc_writer_config['max_video_frames']}.mp4")
     # print(os.listdir(os.path.join(tmp_path, save_loc)))
     # print("First vid: ", first_video_file_name)
 
@@ -258,13 +261,16 @@ def test_refactor_acquire_video_muxing(
     full_config["rt_display"] = display_config
 
     # Run the func!
-    save_loc, first_video_file_name, full_config = refactor_acquire_video(
+    save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=int(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
     )
+
+    saved_videos = [file for file in os.listdir(os.path.join(tmp_path, save_loc)) if ".mp4" in file or ".avi" in file]
+    first_video_file_name = os.path.join(tmp_path, save_loc, saved_videos[0])
 
     # Check that the video exists
     for camera_name in full_config["cameras"].keys():

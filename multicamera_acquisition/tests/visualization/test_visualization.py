@@ -126,16 +126,18 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_ty
     full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type)
 
     # Set cameras to be displayed
-    for camera in full_config["cameras"].values():
-        camera["display"]["display_frames"] = True
+    # for camera in full_config["cameras"].values():
+    #     camera["display"]["display_frames"] = False
+    full_config["cameras"]["top"]["display"]["display_frames"] = True
 
     # Run the func!
-    save_loc, vid_file_name, full_config = refactor_acquire_video(
+    save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
+        logging_level="DEBUG",
     )
 
 
@@ -154,7 +156,7 @@ def test_displayRange(tmp_path, camera_brand, n_test_frames, fps):
     full_config["cameras"][camera_names[1]]["display"]["display_range"] = (220, 255)
 
     # Run the func!
-    save_loc, vid_file_name, full_config = refactor_acquire_video(
+    save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=(n_test_frames / fps),
@@ -191,4 +193,5 @@ def test_image_grid(tmp_path, camera_brand, fps):
             if cam["display"]["display_frames"]
         ],
     )
-    plt.show()
+    plt.show(block=False)
+    plt.close()

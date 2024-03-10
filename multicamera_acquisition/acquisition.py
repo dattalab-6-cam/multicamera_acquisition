@@ -433,8 +433,8 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             logger.debug(
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            # acquisition_loop.join(timeout=1)
-            acquisition_loop.join(timeout=60 * 60)
+            acquisition_loop.join(timeout=1)
+            # acquisition_loop.join(timeout=60 * 60)
 
             # If still alive, terminate it
             if acquisition_loop.is_alive():
@@ -927,6 +927,8 @@ def refactor_acquire_video(
             camera_list=camera_list,
             display_ranges=display_ranges,
             config=final_config["rt_display"],
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
         display_proc.start()
     else:

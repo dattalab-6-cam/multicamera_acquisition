@@ -119,7 +119,7 @@ class MultiDisplay(mp.Process):
             for qi, (queue, camera_name) in enumerate(
                 zip(self.queues, self.camera_list)
             ):
-                img = self._fetch_image(
+                data = self._fetch_image(
                     queue, camera_name, log_if_error=initialized[qi]
                 )
 
@@ -129,13 +129,14 @@ class MultiDisplay(mp.Process):
                     break
 
                 # retrieve frame
-                if data[0] is not None:
+                img = data[0]
+                if img is not None:
                     initialized[qi] = True
                     frame = format_frame(
-                        data[0],
+                        img,
                         display_size=self.config["display_size"],
                         display_range=self.display_ranges[qi],
-                        is_depth=data[0].dtype == np.uint16 or ("lucid" in camera_name),
+                        is_depth=img.dtype == np.uint16 or ("lucid" in camera_name),
                     )
 
                     # update label with new image
@@ -150,6 +151,8 @@ class MultiDisplay(mp.Process):
             # update tkinter window
             root.update()
         root.destroy()
+
+        self.logger.debug("MultiDisplay process finished")
 
     @staticmethod
     def default_MultiDisplay_config():
