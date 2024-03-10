@@ -74,11 +74,11 @@ class BaseCamera(object):
 
     Attributes
     ----------
-    elf.config = config
+    self.config = config
         self.name = name
         self.running = False
         self.initialized = False
-        self.model = None
+        self.model_name= None
         self.fps = fps
 
     config : dict
@@ -86,9 +86,6 @@ class BaseCamera(object):
 
     name : str
         The name of the camera in the experiment. For example, "top" or "side2".
-
-    model: str
-        The model of the camera.
 
     intialized : bool
         If True, init() has been called successfully.
@@ -163,7 +160,7 @@ class BaseCamera(object):
         self.name = name
         self.running = False
         self.initialized = False
-        self.model = None
+        self.model_name = None
 
         if (
             fps is None
