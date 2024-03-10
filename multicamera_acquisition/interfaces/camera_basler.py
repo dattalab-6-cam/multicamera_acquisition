@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import traceback
 
 import numpy as np
 from pypylon import pylon
@@ -194,25 +195,33 @@ class BaslerCamera(BaseCamera):
 
         self.logger.debug(f"Initializing camera {self.name}...")
 
-        # Create the pypylon camera object
-        self.logger.debug("Creating cam")
-        self._create_pylon_cam()
+        try:
+            # Create the pypylon camera object
+            self.logger.debug("Creating cam")
+            self._create_pylon_cam()
 
-        # Open the connection to the camera
-        self.logger.debug("Opening connection to cam")
-        self.cam.Open()
+            # Open the connection to the camera
+            self.logger.debug("Opening connection to cam...")
+            self.cam.Open()
+            self.logger.debug("Opened connection to cam.")
 
-        # Sanity check on serial number
-        _sn = self.cam.GetDeviceInfo().GetSerialNumber()
-        if self.serial_number is None:
-            self.serial_number = _sn
-        else:
-            assert (
-                self.serial_number == _sn
-            ), "Unexpected camera serial number mismatch."        
+            # Sanity check on serial number
+            _sn = self.cam.GetDeviceInfo().GetSerialNumber()
+            if self.serial_number is None:
+                self.serial_number = _sn
+            else:
+                assert (
+                    self.serial_number == _sn
+                ), "Unexpected camera serial number mismatch."        
 
-        # Configure the camera according to the config file
-        self._configure_basler()
+            # Configure the camera according to the config file
+                self.logger.debug("Configuring camera...")
+            self._configure_basler()
+        except Exception as e:
+            # show the entire traceback
+            self.logger.error(traceback.format_exc())
+            raise e
+
 
         self.initialized = True
 
