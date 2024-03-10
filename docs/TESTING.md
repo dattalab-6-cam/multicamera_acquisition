@@ -34,7 +34,7 @@ Testing code with subprocesses is a bit difficult, as subprocess output is not a
 * The GUI tests are somewhat slow, so there is a separate flag to enable those tests: `--rungui` (e.g. `pytest --rungui`)
 * The pyk4a library is not installable on Mac, where many of us do development. So there is a separate flag to enable pyk4a tests, `--runpyk4a' (e.g. `pytest --runpyk4a`).
 * There is a separate flag to enable microcontroller tests, `--runmcu' (e.g. `pytest --runmcu`).
-* [TODO] Finally, there is a `--runall` flag.
+* Finally, there is a `--runall` flag that will behave as if all three above flags were passed.
 
 ## Example pytest invocations
 * To run core development tests (emulated Baslers, no gui, no mcu): `pytest ./multicamera_acquisition/tests`
