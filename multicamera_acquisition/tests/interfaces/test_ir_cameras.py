@@ -145,8 +145,8 @@ class Test_FPSWithoutTrigger:
 
         # Capture two images and check that the time between them is close to the desired fps
         cam.start()
-        _, ts1, _ = cam.get_array(get_timestamp=True)
-        _, ts2, _ = cam.get_array(get_timestamp=True)
+        _, _, ts1 = cam.get_array(get_timestamp=True)
+        _, _, ts2 = cam.get_array(get_timestamp=True)
         cam.close()
 
         # Check that the time between the two images is close to the desired fps

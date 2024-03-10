@@ -100,8 +100,8 @@ def test_azure_ir_writer(tmp_path):
     writer.start()
     cam.start()
     for i in range(10):
-        _, ir, _, timestamp = camera.get_array(timeout=1000, get_timestamp=True)
-        write_queue.put(tuple([ir, timestamp, i]))
+        _, ir, _, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
+        write_queue.put(tuple([ir, None, timestamp, i]))
 
     cam.stop()
     write_queue.put(tuple())
@@ -145,7 +145,7 @@ def test_azure_depth_writer(tmp_path):
     cam.start()
     for i in range(10):
         depth, _, _, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
-        write_queue_depth.put(tuple([depth, timestamp, i]))
+        write_queue_depth.put(tuple([depth, None, timestamp, i]))
 
     cam.stop()
     write_queue_depth.put(tuple())
