@@ -263,9 +263,12 @@ class BaslerCamera(BaseCamera):
         self.cam.Gain.SetValue(self.config["gain"])
 
         # enable reading GPIO states
-        self.cam.ChunkModeActive.Value = True
-        self.cam.ChunkSelector.Value = "LineStatusAll"
-        self.cam.ChunkEnable.Value = True
+        if self.model_name != "Emulated":
+            self.cam.ChunkModeActive.Value = True
+            self.cam.ChunkSelector.Value = "LineStatusAll"
+            self.cam.ChunkEnable.Value = True
+        else:
+            self.logger.warn("Emulated camera does not support chunk data.")
 
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
