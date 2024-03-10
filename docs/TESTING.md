@@ -10,7 +10,7 @@ If you don't already have it, run `pip install pytest`. You can check by running
 ## Tests to run before pushing to `main`
 In lieu of setting up CI, we require the following tests to pass before pushing to main:
 * On any computer: `pytest ./multicamera_acquisition/tests`
-* On a 6 cam rig with cameras and an MCU: `pytest ./multicamera_acquisition/tests --camera_type camera_basler --runall`
+* On a 6 cam rig with cameras and an MCU: `pytest ./multicamera_acquisition/tests --camera_type basler_camera --runall`
 * On a 6 cam rig: run an acquisition notebook with a config that was previously known to work. If updates to the config are required, document them all and post the required changes in the PR for discussion.
 
 ## Running tests
