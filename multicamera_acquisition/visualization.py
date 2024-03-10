@@ -123,6 +123,7 @@ class MultiDisplay(mp.Process):
                     queue, camera_name, log_if_error=initialized[qi]
                 )
 
+                # If acq sends an empty tuple, it means it's done
                 if len(data) == 0:
                     quit = True
                     self.logger.debug("No data, quitting...")

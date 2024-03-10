@@ -27,3 +27,7 @@ def pytest_addoption(parser):
         action="store",
         default=30,
     )
+
+    parser.addoption(
+        "--runall", action="store_true", default=False, help="run all tests (defaults, plus gui, mcu, and pyk4a)",
+    )
