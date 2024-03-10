@@ -31,6 +31,7 @@ class BaseWriter(mp.Process):
         ----------
         queue : multiprocessing.Queue
             A multiprocessing queue from which to read frames.
+            The data should be a tuple of format: (img, line_status, camera_timestamp, self.frames_received)
 
         video_file_name : str or Path
             The name of the video file to write.

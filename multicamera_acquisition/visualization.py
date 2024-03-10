@@ -80,20 +80,20 @@ class MultiDisplay(mp.Process):
 
         return root, labels
 
-    def _fetch_images(self, queue, camera_name, log_if_error):
+    def _fetch_image(self, queue, camera_name, log_if_error):
         try:
             # Note: earlier code used queue.qsize() > 1; have not yet verified
             # that queue.empty performs the same
             if not queue.empty():
                 while not queue.empty():
-                    data = get_latest(queue, timeout=0.01)
+                    img = get_latest(queue, timeout=0.01)  # empties the queue in case we've fallen behind?
             else:
-                data = queue.get(timeout=0.01)
+                img = queue.get(timeout=0.01)
         except Exception as error:
             if log_if_error:
                 logging.info("{}: Timeout occurred {}".format(camera_name, str(error)))
             return [None]
-        return data
+        return img
 
     def run(self):
 
@@ -119,7 +119,7 @@ class MultiDisplay(mp.Process):
             for qi, (queue, camera_name) in enumerate(
                 zip(self.queues, self.camera_list)
             ):
-                data = self._fetch_images(
+                img = self._fetch_image(
                     queue, camera_name, log_if_error=initialized[qi]
                 )
 

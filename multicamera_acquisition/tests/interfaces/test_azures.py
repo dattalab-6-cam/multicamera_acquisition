@@ -17,7 +17,6 @@ def trigger_type(pytestconfig):
     )  # default no_trigger (ie no trigger required), see conftest.py
 
 
-@pytest.mark.pyk4a
 @pytest.fixture(scope="function")
 def camera(trigger_type):
     config = AzureCamera.default_camera_config()
@@ -41,7 +40,7 @@ class Test_Camera_InitAndStart:
 
     def test_grab_one(self, camera):
         camera.start()
-        _, ir = camera.get_array(timeout=1000)
+        _, ir, _, _ = camera.get_array(timeout=1000)
         print(ir)
         print(type(ir))
         assert isinstance(ir, np.ndarray)
@@ -58,7 +57,7 @@ def test_azure_acquire():
     cam.init()
     cam.start()
     for i in range(10):
-        _, ir = cam.get_array(timeout=1000)
+        _, ir, _, _ = cam.get_array(timeout=1000)
         assert isinstance(ir, np.ndarray)
     cam.stop()
     cam.close()
@@ -101,7 +100,7 @@ def test_azure_ir_writer(tmp_path):
     writer.start()
     cam.start()
     for i in range(10):
-        depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
+        _, ir, _, timestamp = camera.get_array(timeout=1000, get_timestamp=True)
         write_queue.put(tuple([ir, timestamp, i]))
 
     cam.stop()
@@ -145,7 +144,7 @@ def test_azure_depth_writer(tmp_path):
     writer_depth.start()
     cam.start()
     for i in range(10):
-        depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
+        depth, _, _, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
         write_queue_depth.put(tuple([depth, timestamp, i]))
 
     cam.stop()

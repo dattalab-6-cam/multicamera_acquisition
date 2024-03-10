@@ -172,7 +172,7 @@ def test_image_grid(tmp_path, camera_brand, fps):
         camera_brand, n_test_frames, fps, trigger_type="no_trigger"
     )
 
-    save_loc, vid_file_name, full_config = refactor_acquire_video(
+    save_loc, full_config = refactor_acquire_video(
         tmp_path,
         full_config,
         recording_duration_s=(n_test_frames / fps),
@@ -181,7 +181,7 @@ def test_image_grid(tmp_path, camera_brand, fps):
     )
     print(full_config)
     first_frames = load_first_frames(save_loc)
-    fig, ax = plot_image_grid(
+    _ = plot_image_grid(
         images=first_frames,
         display_config=full_config["rt_display"],
         camera_names=list(full_config["cameras"].keys()),
