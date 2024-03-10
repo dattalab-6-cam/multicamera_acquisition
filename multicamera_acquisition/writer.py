@@ -323,7 +323,7 @@ class NVC_Writer(BaseWriter):
 
         if self.config["rc"] == "constqp":
             encoder_dictionary["constqp"] = str(self.config["constqp"])
-        elif self.config["rc"] == "cbr":
+        elif self.config["rc"] == "vbr":
             encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
 
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
