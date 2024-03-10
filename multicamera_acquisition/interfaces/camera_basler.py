@@ -195,11 +195,11 @@ class BaslerCamera(BaseCamera):
         self.logger.debug(f"Initializing camera {self.name}...")
 
         # Create the pypylon camera object
-        self.logger.debug(f"Creating cam")
+        self.logger.debug("Creating cam")
         self._create_pylon_cam()
 
         # Open the connection to the camera
-        self.logger.debug(f"Opening connection to cam")
+        self.logger.debug("Opening connection to cam")
         self.cam.Open()
 
         # Sanity check on serial number
@@ -209,10 +209,7 @@ class BaslerCamera(BaseCamera):
         else:
             assert (
                 self.serial_number == _sn
-            ), "Unexpected camera serial number mismatch."
-
-        # Record camera model name
-        self.model = self.cam.GetDeviceInfo().GetModelName()
+            ), "Unexpected camera serial number mismatch."        
 
         # Configure the camera according to the config file
         self._configure_basler()
