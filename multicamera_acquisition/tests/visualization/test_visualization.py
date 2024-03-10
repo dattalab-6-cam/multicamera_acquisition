@@ -126,9 +126,8 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_ty
     full_config = create_twocam_config(camera_brand, n_test_frames, fps, trigger_type)
 
     # Set cameras to be displayed
-    # for camera in full_config["cameras"].values():
-    #     camera["display"]["display_frames"] = False
-    full_config["cameras"]["top"]["display"]["display_frames"] = True
+    for camera in full_config["cameras"].values():
+        camera["display"]["display_frames"] = True
 
     # Run the func!
     save_loc, full_config = refactor_acquire_video(
@@ -137,7 +136,6 @@ def test_acq_MultiDisplay(tmp_path, camera_brand, n_test_frames, fps, trigger_ty
         recording_duration_s=(n_test_frames / fps),
         append_datetime=True,
         overwrite=False,
-        logging_level="DEBUG",
     )
 
 

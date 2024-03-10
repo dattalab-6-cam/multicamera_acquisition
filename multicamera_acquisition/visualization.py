@@ -153,6 +153,16 @@ class MultiDisplay(mp.Process):
             root.update()
         root.destroy()
 
+        # Here, we empty the queues to make sure we don't leave any data in them.
+        # If there are images left in the queues, the main thread won't finish!
+        self.logger.debug("Emptying queues...")
+        for qi, (queue, camera_name) in enumerate(
+            zip(self.queues, self.camera_list)
+        ):
+            data = self._fetch_image(
+                queue, camera_name, log_if_error=initialized[qi]
+            )
+
         self.logger.debug("MultiDisplay process finished")
 
     @staticmethod
