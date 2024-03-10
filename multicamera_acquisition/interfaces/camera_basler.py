@@ -558,6 +558,7 @@ class EmulatedBaslerCamera(BaslerCamera):
         # TODO: is there a way to get this to inherit gracefully?
         config = {
             "roi": None,  # ie use the entire roi
+            "gamma": 1.0,
             "gain": 6,
             "exposure": 1000,
             "brand": "basler_emulated",
