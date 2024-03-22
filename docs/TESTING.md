@@ -48,4 +48,9 @@ Testing code with subprocesses is a bit difficult, as subprocess output is not a
 * Or even a specific function: `pytest ./multicamera_acquisition/tests/interfaces/test_ir_cameras.py::Test_FPSWithoutTrigger`
 
 ## Typical issues
+
+### Pytest issues
 * If pytest says a test passed but it hangs, it's most likely that either 1) a subprocess died, or 2) the main thread is hung. In the first case, pass `-s` to see the traceback printed from the subprocess. Worst case, go in and edit the logging level of the test to `DEBUG` for more informaiton. In the second case, sometimes if queues don't get fully emptied, the main thread can silently hang.
+
+### Azures
+* If no frames are collected from the Azures, it's most likely because they are still waiting for the first trigger to arrive. (We run them in "subordinate" mode which means they require an external trigger to truly start acquisition, even once you call .start()). Try running the Azure in a stand-alone notebook in master mode — if that works, then check your sync cable connection (solder joins, is it going into the "sync in" port).  
