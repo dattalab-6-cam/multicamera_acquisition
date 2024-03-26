@@ -1,10 +1,12 @@
 import os
 import time
-import numpy as np
+
+import pytest
 
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 
 
+@pytest.mark.mcu
 def test_microcontroller(tmp_path):
     """
     Test requires that the computer is connected to a microcontroller with the correct firmware.

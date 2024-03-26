@@ -2,8 +2,6 @@ import logging
 
 import yaml
 
-from multicamera_acquisition.interfaces.config import create_full_camera_default_config
-
 
 def load_config(config_filepath):
     """Load a recording config from a file."""

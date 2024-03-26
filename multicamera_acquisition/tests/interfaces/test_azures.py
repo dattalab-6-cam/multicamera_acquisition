@@ -30,6 +30,7 @@ def camera(trigger_type):
     cam.close()
 
 
+@pytest.mark.pyk4a
 class Test_Camera_InitAndStart:
     """Test the ability of the camera to initialize and start without a trigger."""
 
@@ -39,13 +40,14 @@ class Test_Camera_InitAndStart:
 
     def test_grab_one(self, camera):
         camera.start()
-        _, ir = camera.get_array(timeout=1000)
+        _, ir, _, _ = camera.get_array(timeout=1000)
         print(ir)
         print(type(ir))
         assert isinstance(ir, np.ndarray)
         camera.stop()
 
 
+@pytest.mark.pyk4a
 def test_azure_acquire():
     """Test the ability of the Azure to acquire many images"""
 
@@ -55,12 +57,13 @@ def test_azure_acquire():
     cam.init()
     cam.start()
     for i in range(10):
-        _, ir = cam.get_array(timeout=1000)
+        _, ir, _, _ = cam.get_array(timeout=1000)
         assert isinstance(ir, np.ndarray)
     cam.stop()
     cam.close()
 
 
+@pytest.mark.pyk4a
 def test_azure_ir_writer(tmp_path):
     """Test the ir writer for the Azures"""
     config = AzureCamera.default_camera_config()
@@ -97,8 +100,8 @@ def test_azure_ir_writer(tmp_path):
     writer.start()
     cam.start()
     for i in range(10):
-        depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
-        write_queue.put(tuple([ir, timestamp, i]))
+        _, ir, _, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
+        write_queue.put(tuple([ir, None, timestamp, i]))
 
     cam.stop()
     write_queue.put(tuple())
@@ -106,6 +109,7 @@ def test_azure_ir_writer(tmp_path):
     cam.close()
 
 
+@pytest.mark.pyk4a
 def test_azure_depth_writer(tmp_path):
     """Test the depth writer for the Azures"""
     config = AzureCamera.default_camera_config()
@@ -140,8 +144,8 @@ def test_azure_depth_writer(tmp_path):
     writer_depth.start()
     cam.start()
     for i in range(10):
-        depth, ir, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
-        write_queue_depth.put(tuple([depth, timestamp, i]))
+        depth, _, _, timestamp = cam.get_array(timeout=1000, get_timestamp=True)
+        write_queue_depth.put(tuple([depth, None, timestamp, i]))
 
     cam.stop()
     write_queue_depth.put(tuple())

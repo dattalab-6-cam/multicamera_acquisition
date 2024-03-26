@@ -74,11 +74,11 @@ class BaseCamera(object):
 
     Attributes
     ----------
-    elf.config = config
+    self.config = config
         self.name = name
         self.running = False
         self.initialized = False
-        self.model = None
+        self.model_name= None
         self.fps = fps
 
     config : dict
@@ -86,9 +86,6 @@ class BaseCamera(object):
 
     name : str
         The name of the camera in the experiment. For example, "top" or "side2".
-
-    model: str
-        The model of the camera.
 
     intialized : bool
         If True, init() has been called successfully.
@@ -146,7 +143,7 @@ class BaseCamera(object):
                 pass
                 # TODO: figure out how to pass these warnings even tho the logger isn't up yet
                 # or just set the logger up earlier
-                # self.logger.warn(
+                # self.logger.warning
                 #     "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
                 # )
         elif isinstance(id, str):
@@ -155,7 +152,7 @@ class BaseCamera(object):
         elif id is None:
             self.serial_number = None
             self.device_index = 0
-            # self.logger.warn("No camera ID provided.  Using device index 0.")
+            # self.logger.warning"No camera ID provided.  Using device index 0.")
         else:
             raise ValueError("Invalid camera ID, must be int or str.")
 
@@ -163,7 +160,7 @@ class BaseCamera(object):
         self.name = name
         self.running = False
         self.initialized = False
-        self.model = None
+        self.model_name = None
 
         if (
             fps is None
