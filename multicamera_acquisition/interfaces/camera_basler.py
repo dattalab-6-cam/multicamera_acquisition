@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import traceback
 
 import numpy as np
 from pypylon import pylon
@@ -67,7 +68,7 @@ class BaslerCamera(BaseCamera):
             "trigger_mode" in self.config.keys()
             and self.config["trigger_mode"] == "microcontroller"
         ):
-            self.logger.warn(
+            self.logger.warning(
                 "Providing fps for Baslers in triggered mode is deprecated and generally not necessary."
             )
 
@@ -194,25 +195,33 @@ class BaslerCamera(BaseCamera):
 
         self.logger.debug(f"Initializing camera {self.name}...")
 
-        # Create the pypylon camera object
-        self.logger.debug("Creating cam")
-        self._create_pylon_cam()
+        try:
+            # Create the pypylon camera object
+            self.logger.debug("Creating cam")
+            self._create_pylon_cam()
 
-        # Open the connection to the camera
-        self.logger.debug("Opening connection to cam")
-        self.cam.Open()
+            # Open the connection to the camera
+            self.logger.debug("Opening connection to cam...")
+            self.cam.Open()
+            self.logger.debug("Opened connection to cam.")
 
-        # Sanity check on serial number
-        _sn = self.cam.GetDeviceInfo().GetSerialNumber()
-        if self.serial_number is None:
-            self.serial_number = _sn
-        else:
-            assert (
-                self.serial_number == _sn
-            ), "Unexpected camera serial number mismatch."        
+            # Sanity check on serial number
+            _sn = self.cam.GetDeviceInfo().GetSerialNumber()
+            if self.serial_number is None:
+                self.serial_number = _sn
+            else:
+                assert (
+                    self.serial_number == _sn
+                ), "Unexpected camera serial number mismatch."        
 
-        # Configure the camera according to the config file
-        self._configure_basler()
+            # Configure the camera according to the config file
+                self.logger.debug("Configuring camera...")
+            self._configure_basler()
+        except Exception as e:
+            # show the entire traceback
+            self.logger.error(traceback.format_exc())
+            raise e
+
 
         self.initialized = True
 
@@ -238,6 +247,8 @@ class BaslerCamera(BaseCamera):
             raise RuntimeError(
                 f"(Real) Basler camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
             )
+
+        self.model_name = self.cam.GetDeviceInfo().GetModelName()
 
     def _configure_basler(self):
         """Given the loaded config, set up the basler for acquisition with the config therein."""
@@ -265,7 +276,7 @@ class BaslerCamera(BaseCamera):
             self.cam.ChunkSelector.Value = "LineStatusAll"
             self.cam.ChunkEnable.Value = True
         else:
-            self.logger.warn("Emulated camera does not support chunk data.")
+            pass
 
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
@@ -339,7 +350,7 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerMode.SetValue("On")
         elif mode == "no_trigger":
             if not hasattr(self, "fps") or self.fps is None:
-                self.logger.warn(
+                self.logger.warning(
                     "No fps specified for Basler camera running in no_trigger mode. Defaulting to 30 fps."
                 )
                 self.fps = 30
@@ -386,7 +397,7 @@ class BaslerCamera(BaseCamera):
             timeout = 10000
         return self.cam.RetrieveResult(timeout, pylon.TimeoutHandling_ThrowException)
 
-    def get_array(self, timeout=None, get_timestamp=False):
+    def get_array(self, timeout=None, get_timestamp=False, get_linestatus=False):
         """Get an image from the camera.
 
         Parameters
@@ -397,14 +408,22 @@ class BaslerCamera(BaseCamera):
 
         get_timestamp : bool (default: False)
             If True, returns timestamp of frame (from the camera's clock, in microseconds).
+            If False, this value is None.
+
+        get_linestatus : bool (default: False)
+            If True, returns the line status of the camera.
+            If False, this value is None.
 
         Returns
         -------
         img : Numpy array
             The image as a numpy array.
 
-        tstamp : int
-            The timestamp of the frame, if get_timestamp=True.
+        line_status : int
+            The line status of the camera, if get_linestatus=True; else, None.
+
+        tstamp : int ()
+            The timestamp of the frame, if get_timestamp=True; else, None.
         """
         if self.cam.IsGrabbing() is False:
             raise ValueError("Camera is not set up to grab frames.")
@@ -412,21 +431,19 @@ class BaslerCamera(BaseCamera):
         img = self.get_image(timeout)
 
         img_array = None
-        tstamp = None
+        timestamp = None
+        line_status = None
 
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
-            line_status = img.ChunkLineStatusAll.Value
-            # self.logger.debug(f"{line_status}")
+            if get_linestatus:
+                line_status = img.ChunkLineStatusAll.Value
             if get_timestamp:
-                tstamp = img.GetTimeStamp()
+                timestamp = img.GetTimeStamp()
 
         img.Release()
 
-        if get_timestamp:
-            return img_array, line_status, tstamp
-        else:
-            return img_array, line_status
+        return img_array, line_status, timestamp
 
 
 def enumerate_basler_cameras(behav_on_none="raise"):

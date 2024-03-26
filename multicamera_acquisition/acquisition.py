@@ -221,8 +221,21 @@ class AcquisitionLoop(mp.Process):
         FRAME ACQUISITION INFO
         Here, we acquire frames from the camera! Hurray, this is the fun part!
 
-        During acquisition, we loop over calls of cam.get_array() to get the image,
-        while sending the images out for writing to disk and keep track of the following
+        During acquisition, we loop over calls of cam.get_array() to get the image.
+
+        cam.get_array() returns the following information for Basler cameras:
+            -- img: the image data
+            -- linestatus: the line status of the image (if get_linestatus=True, else None)
+            -- camera_timestamp: the device camera_timestamp of the image (if get_timestamp=True, else None)
+
+        cam.get_array() returns the following information for Azure cameras:
+            -- depth: the depth data
+            -- ir: the ir data
+            -- color: the color data (if get_color=True, else None)
+            -- camera_timestamp: the device camera_timestamp of the image (if get_timestamp=True, else None)
+
+
+        We then send the images out for writing to disk and keep track of the following
         information:
             -- n_frames_received: how many total frames have been successfully received
               from the camera). This value is compared with max_frames_to_acqure to see if 
@@ -234,13 +247,13 @@ class AcquisitionLoop(mp.Process):
             -- current_iter: the current iteration of the loop. With no dropped frames, this should match 1:1
               with n_frames_received.
 
-            -- prev_timestamp: the device timestamp of the most recently acquire frame. This is used
-              to compare to the current frame timestamp to determine if a frame has been dropped.
+            -- prev_timestamp: the device camera_timestamp of the most recently acquire frame. This is used
+              to compare to the current frame camera_timestamp to determine if a frame has been dropped.
               Currently, the threshold for dropping a frame is a difference larger than 1.25x the expected
               inter-frame period. There is no strong reason for this value, it just works decently.
-        
+
         Once a frame is received, we unpack the data. If the camera is an azure, then the data consists of 
-        (depth, ir, timestamp). If the camera is a basler, then the data consists of (image, timestamp) (assuming
+        (depth, ir, camera_timestamp). If the camera is a basler, then the data consists of (image, camera_timestamp) (assuming
         that get_timestamp was True in the call to get_array, which it is always here). Then we write the data
         to the Writer queue. If the camera is an azure, we also write the depth data to the depth writer queue.
         """
@@ -256,26 +269,28 @@ class AcquisitionLoop(mp.Process):
         while not self.stopped.is_set():
             try:
                 if first_frame:
-                    data = cam.get_array(
+                    _cam_data = cam.get_array(
                         timeout=1000 * 60, get_timestamp=True
                     )  # increase timeout of first frame
                     first_frame = False
                     self.logger.debug("First frame received")
-                    prev_timestamp = data[1]
+                    prev_timestamp = _cam_data[-1]  # camera_timestamp is always the final element of the _cam_data tuple
                 else:
-                    data = cam.get_array(timeout=timeout, get_timestamp=True)
+                    _cam_data = cam.get_array(timeout=timeout, get_timestamp=True)
 
                 # If we received a frame:
                 # TODO: this enqueueing code can be rewritten / simplified a bit.
-                if len(data) != 0:
+                if _cam_data[0].size > 0:
 
                     # Increment the frame counter (distinct from number of while loop iterations)
                     n_frames_received += 1
 
                     # If this is an azure camera, we write the depth data to a separate queue
                     if self.camera_config["brand"] == "azure":
-                        depth, ir, camera_timestamp = data
+                        depth, ir, _, camera_timestamp = _cam_data
 
+                        # writer expects (img, line_status, camera_timestamp, self.frames_received),
+                        # but Azure has no concept of line_status, so we just pass None.
                         self.write_queue.put(
                             tuple([ir, None, camera_timestamp, n_frames_received])
                         )
@@ -285,35 +300,25 @@ class AcquisitionLoop(mp.Process):
                         if self.camera_config["display"]["display_frames"]:
                             if n_frames_received % self.display_every_n == 0:
                                 self.display_queue.put(
-                                    tuple(
-                                        [
-                                            depth[
-                                                :: self.acq_config["downsample"],
-                                                :: self.acq_config["downsample"],
-                                            ],
-                                            camera_timestamp,
-                                            n_frames_received,
-                                        ]
-                                    )
+                                    depth[
+                                        :: self.acq_config["downsample"],
+                                        :: self.acq_config["downsample"],
+                                    ],
                                 )
                     else:
-                        camera_timestamp = data[1]
-                        data = data + tuple([n_frames_received])
-                        self.write_queue.put(data)
+                        img, linestatus, camera_timestamp = _cam_data
+                        self.write_queue.put((img, linestatus, camera_timestamp, n_frames_received))  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
                         if self.camera_config["display"]["display_frames"]:
                             if (
                                 n_frames_received % self.acq_config["display_every_n"]
                                 == 0
                             ):
-                                data = (
-                                    data[0][
+                                self.display_queue.put(
+                                    img[
                                         :: self.acq_config["downsample"],
                                         :: self.acq_config["downsample"],
-                                    ],
-                                    data[1],
-                                    data[2],
+                                    ]
                                 )
-                                self.display_queue.put(data)
 
                     # Check if we dropped any frames
                     delta_t = (camera_timestamp - prev_timestamp) / 1e6
@@ -321,7 +326,7 @@ class AcquisitionLoop(mp.Process):
                         self.acq_config["dropped_frame_warnings"]
                         and delta_t > (timeout) * 1.25
                     ):
-                        self.logger.warn(
+                        self.logger.warning(
                             f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames (delta_t={delta_t} ms, threshold={timeout*1.25} ms)"
                         )
                     prev_timestamp = camera_timestamp
@@ -336,7 +341,7 @@ class AcquisitionLoop(mp.Process):
                     or type(e).__name__ == "K4ATimeoutException"
                 ):
                     if self.acq_config["dropped_frame_warnings"]:
-                        self.logger.warn(
+                        self.logger.warning(
                             f"Frame grabbing timed out, not nec. a dropped frame ( on iter {current_iter} after receiving {n_frames_received} frames)"
                         )
                     pass
@@ -428,8 +433,8 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             logger.debug(
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            # acquisition_loop.join(timeout=1)
-            acquisition_loop.join(timeout=60 * 60)
+            acquisition_loop.join(timeout=1)
+            # acquisition_loop.join(timeout=60 * 60)
 
             # If still alive, terminate it
             if acquisition_loop.is_alive():
@@ -489,23 +494,24 @@ def resolve_device_indices(config):
         device_index_dict[camera_name] = dev_idx
 
     # Resolve any Azure cameras
-    serial_nos_dict = enumerate_azure_cameras()
-    serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
-    for camera_name, camera_dict in config["cameras"].items():
-        if camera_dict["brand"] not in ["azure"]:
-            continue
-        if camera_dict["id"] is None:
-            raise ValueError(f"Camera {camera_name} has no id specified.")
-        elif isinstance(camera_dict["id"], int):
-            dev_idx = camera_dict["id"]
-        elif isinstance(camera_dict["id"], str):
-            if camera_dict["id"] not in list(serial_nos_dict.keys()):
-                raise CameraError(
-                    f"Camera with serial number {camera_dict['id']} not found."
-                )
-            else:
-                dev_idx = serial_nos_dict[camera_dict["id"]]
-        device_index_dict[camera_name] = dev_idx
+    if any([camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]):
+        serial_nos_dict = enumerate_azure_cameras()
+        serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
+        for camera_name, camera_dict in config["cameras"].items():
+            if camera_dict["brand"] not in ["azure"]:
+                continue
+            if camera_dict["id"] is None:
+                raise ValueError(f"Camera {camera_name} has no id specified.")
+            elif isinstance(camera_dict["id"], int):
+                dev_idx = camera_dict["id"]
+            elif isinstance(camera_dict["id"], str):
+                if camera_dict["id"] not in list(serial_nos_dict.keys()):
+                    raise CameraError(
+                        f"Camera with serial number {camera_dict['id']} not found."
+                    )
+                else:
+                    dev_idx = serial_nos_dict[camera_dict["id"]]
+            device_index_dict[camera_name] = dev_idx
 
     # Resolve any Lucid cameras
     # TODO
@@ -921,6 +927,8 @@ def refactor_acquire_video(
             camera_list=camera_list,
             display_ranges=display_ranges,
             config=final_config["rt_display"],
+            logger_queue=logger_queue,
+            logging_level=logging_level,
         )
         display_proc.start()
     else:

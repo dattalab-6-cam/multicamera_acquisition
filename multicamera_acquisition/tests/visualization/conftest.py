@@ -12,10 +12,10 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--rungui"):
-        # --rungui given in cli: do not skip gui tests
+    if config.getoption("--rungui") or config.getoption("--runall"):
         return
-    skip_gui = pytest.mark.skip(reason="need --rungui option to run")
-    for item in items:
-        if "gui" in item.keywords:
-            item.add_marker(skip_gui)
+    else:
+        skip_gui = pytest.mark.skip(reason="need --rungui option to run")
+        for item in items:
+            if "gui" in item.keywords:
+                item.add_marker(skip_gui)

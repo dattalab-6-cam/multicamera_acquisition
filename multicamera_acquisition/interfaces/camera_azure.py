@@ -207,36 +207,41 @@ class AzureCamera(BaseCamera):
             Wait up to timeout milliseconds for an image if not None.
                 Otherwise, wait indefinitely.
         get_color : bool (default: False)
-            If True, returns color image
+            If True, returns color image; else, None.
         get_timestamp : bool (default: False)
-            If True, returns timestamp of frame f(camera timestamp)
+            If True, returns timestamp of frame f(camera timestamp); else, None.
+
         Returns
         -------
-        img : Numpy array
+        depth : np.ndarray
+            The depth image.
+        ir : np.ndarray
+            The ir image.
+        color : np.ndarray
+            The color image.
         tstamp : int
+            The timestamp of the frame.
         """
 
         def ir16_to_uint8(ir):
             return (np.clip(ir, 0, 1275) / 5).astype(np.uint8)
 
-        # grab image
+        # Grab image
         capture = self.get_image(timeout)
 
-        # grab depth and ir
+        # Grab depth and ir
         # TODO ensure depth and ir are actually captured
         depth = capture.depth.astype(np.uint16)
         ir = ir16_to_uint8(capture.ir)
 
+        timestamp = None
+        color = None
         if get_timestamp:
-            tstamp = capture._ir_timestamp_usec
-
+            timestamp = capture._ir_timestamp_usec
         if get_color:
             color = capture.color
-            return depth, ir, color, tstamp
-        elif get_timestamp:
-            return depth, ir, tstamp
-        else:
-            return depth, ir
+
+        return depth, ir, color, timestamp
 
     def get_info(self, name):
         """Gen information on a camera node (attribute or method).

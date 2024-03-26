@@ -143,7 +143,7 @@ class BaseCamera(object):
                 pass
                 # TODO: figure out how to pass these warnings even tho the logger isn't up yet
                 # or just set the logger up earlier
-                # self.logger.warn(
+                # self.logger.warning
                 #     "Camera index > 10.  Is this correct? Did you mean to use a serial number? If so, use a string instead of an int."
                 # )
         elif isinstance(id, str):
@@ -152,7 +152,7 @@ class BaseCamera(object):
         elif id is None:
             self.serial_number = None
             self.device_index = 0
-            # self.logger.warn("No camera ID provided.  Using device index 0.")
+            # self.logger.warning"No camera ID provided.  Using device index 0.")
         else:
             raise ValueError("Invalid camera ID, must be int or str.")
 

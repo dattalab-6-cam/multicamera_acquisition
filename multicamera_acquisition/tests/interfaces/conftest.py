@@ -15,10 +15,21 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "mcu: requires attached mcu to run")
     config.addinivalue_line("markers", "pyk4a: requires pyk4a lib to run")
 
+    # validate passed camera type
+    # should be either basler_camera or basler_emulated
+    if config.getoption("--camera_type") not in ["basler_camera", "basler_emulated"]:
+        raise ValueError(
+            "Invalid camera type.  Must be one of: ['basler_camera', 'basler_emulated']"
+        )
 
 def pytest_collection_modifyitems(config, items):
+
+    # If --runall is given in cli: do not skip any tests
+    if config.getoption("--runall"):
+        return
+
+    # Otherwise, skip tests depending on options
     if config.getoption("--runmcu"):
-        # --rungui given in cli: do not skip gui tests
         pass
     else:
         _skip = pytest.mark.skip(reason="need --runmcu option to run")
@@ -27,7 +38,6 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(_skip)
 
     if config.getoption("--runpyk4a"):
-        # --rungui given in cli: do not skip gui tests
         pass
     else:
         _skip = pytest.mark.skip(reason="need --runpyk4a option to run")
