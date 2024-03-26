@@ -31,6 +31,7 @@ class BaseWriter(mp.Process):
         ----------
         queue : multiprocessing.Queue
             A multiprocessing queue from which to read frames.
+            The data should be a tuple of format: (img, line_status, camera_timestamp, self.frames_received)
 
         video_file_name : str or Path
             The name of the video file to write.
@@ -282,9 +283,9 @@ class NVC_Writer(BaseWriter):
             "idrperiod": "256",
             "gop": "30",
             "rc": "constqp",  # cbr, vbr, constqp
-            "bitrate": "10M",
-            "maxbitrate": "20M",
-            "constqp": "27",
+            "bitrate": "10M",  # target br (ignored for constqp)
+            "maxbitrate": "20M",  # max br (ignored for constqp)
+            "constqp": "27",  # (only for rc=constqp)
         }
 
         return config
@@ -317,10 +318,14 @@ class NVC_Writer(BaseWriter):
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
             "gop": self.config["gop"],  # larger = faster,
             "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
-            "bitrate": self.config["bitrate"],  # target br (ignored for constqp)
-            "maxbitrate": self.config["maxbitrate"],  # max br (ignored for constqp)
-            "constqp": str(self.config["constqp"]),  # (only for rc=constqp)
+            "bitrate": self.config["bitrate"],
         }
+
+        if self.config["rc"] == "constqp":
+            encoder_dictionary["constqp"] = str(self.config["constqp"])
+        elif self.config["rc"] == "vbr":
+            encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
+
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,

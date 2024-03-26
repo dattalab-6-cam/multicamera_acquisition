@@ -36,7 +36,9 @@ def dummy_frames_func(fps, queue, n_test_frames):
         frame = cv2.putText(
             frame, str(i), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
         )
-        queue.put((frame[:, :, 0], i * 0.033, i))
+        timestamp = i * 0.033
+        n_received = i
+        queue.put((frame[:, :, 0], None, timestamp, n_received))  # writer expects img, line_status, camera_timestamp, self.frames_received
         time.sleep(1 / fps)
     queue.put(())
 

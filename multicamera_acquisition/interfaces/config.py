@@ -1,6 +1,6 @@
 import itertools
 
-from multicamera_acquisition.config_utils import dict_update_with_precedence
+from multicamera_acquisition.config import dict_update_with_precedence
 from multicamera_acquisition.interfaces.camera_basler import (
     BaslerCamera,
     EmulatedBaslerCamera,

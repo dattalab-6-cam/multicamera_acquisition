@@ -72,7 +72,7 @@ class Test_Camera_InitAndStart:
             "no_trigger"
         )  # allows real cameras to caquire without hardware triggers (emulated ones already do)
         camera.start()
-        img = camera.get_array(timeout=1000)
+        img, _, _ = camera.get_array(timeout=1000)
         assert isinstance(img, np.ndarray)
         camera.stop()
 
@@ -104,9 +104,12 @@ class Test_OpenMultipleCameras:
 class Test_CameraIDMethods:
     """Test passing the camera id to the camera class."""
 
-    def test_default_device_index(self, fps):
-        # should default to 0
-        cam = BaslerCamera()
+    def test_default_device_index(self, camera_type):
+        # id should default to 0
+        if camera_type == "basler_camera":
+            cam = BaslerCamera()
+        elif camera_type == "basler_emulated":
+            cam = EmulatedBaslerCamera()
         cam.init()
         assert cam.device_index == 0
         cam.close()
@@ -131,6 +134,7 @@ class Test_FPSWithoutTrigger:
 
     @pytest.mark.parametrize("_fps", [30, 60, 90, 120])
     def test_fps(self, _fps, camera_type):
+        print(camera_type)
         if camera_type == "basler_camera":
             cam = BaslerCamera(id=0, fps=_fps)
         elif camera_type == "basler_emulated":
@@ -141,8 +145,8 @@ class Test_FPSWithoutTrigger:
 
         # Capture two images and check that the time between them is close to the desired fps
         cam.start()
-        img1, ts1 = cam.get_array(get_timestamp=True)
-        img2, ts2 = cam.get_array(get_timestamp=True)
+        _, _, ts1 = cam.get_array(get_timestamp=True)
+        _, _, ts2 = cam.get_array(get_timestamp=True)
         cam.close()
 
         # Check that the time between the two images is close to the desired fps
