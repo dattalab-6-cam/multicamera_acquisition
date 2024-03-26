@@ -26,7 +26,7 @@ jobs:
     - name: Setup and cache FFmpeg 
       uses: federicocarboni/setup-ffmpeg@v3.1  # very fast!
       with:
-        ffmpeg-version: 6.1.1   # may also be "release" or a specific version. semver specifiers (i.e. >=6.1.0) are supported only on Windows.
+        ffmpeg-version: "6.1.1"   # may also be "release" or a specific version. semver specifiers (i.e. >=6.1.0) are supported only on Windows.
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip

@@ -1,26 +1,24 @@
 # from ..writer.test_writers import nvc_writer_processes, n_test_frames
 
 import multiprocessing as mp
+import time
+
 import pytest
 
+from multicamera_acquisition.acquisition import AcquisitionLoop
+from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
+from multicamera_acquisition.tests.acquisition.test_acq_video import (
+    writer_type,
+)
+from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
+    camera,
+    camera_type,
+)
 from multicamera_acquisition.tests.writer.test_writers import (
     fps,
     n_test_frames,
 )
-from multicamera_acquisition.tests.interfaces.test_ir_cameras import (
-    camera_type,
-    camera,
-)
-
-from multicamera_acquisition.acquisition import AcquisitionLoop
-
-from multicamera_acquisition.interfaces.camera_basler import BaslerCamera
-
 from multicamera_acquisition.video_utils import count_frames
-
-from multicamera_acquisition.tests.acquisition.test_acq_video import (
-    writer_type,
-)
 
 
 def test_acq_loop_init(fps):
@@ -114,6 +112,7 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
 
     # Check that the video exists
     assert writer.video_file_name.exists()
+    time.sleep(1)
     if writer_type == "ffmpeg":
         assert count_frames(str(writer.video_file_name)) == n_test_frames
     elif writer_type == "nvc":
