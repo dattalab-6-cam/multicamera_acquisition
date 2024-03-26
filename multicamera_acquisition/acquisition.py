@@ -23,6 +23,7 @@ from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 from multicamera_acquisition.logging_utils import setup_child_logger
 from multicamera_acquisition.visualization import MultiDisplay
 from multicamera_acquisition.writer import get_writer
+from multicamera_acquisition._version import get_versions
 
 
 class AcquisitionLoop(mp.Process):
@@ -746,6 +747,8 @@ def refactor_acquire_video(
             Additionally, these defaults are instructive to users who are looking to understand what parameters each class takes, 
             although the defaults are not always exhaustive.
 
+        3. The version of the software currently being used is saved into the config, for reproducibility.
+
     """
 
     # Load the config file if it exists
@@ -759,6 +762,10 @@ def refactor_acquire_video(
 
     # Check that the config is valid
     validate_recording_config(final_config, logging_level)
+
+    # Add version meta-data to the config. We don't save the entire pip list output, that seems excessive.
+    version_dict = get_versions()
+    final_config["globals"]["software_version_info"] = version_dict
 
     # Save the config file before starting the recording
     config_filepath = Path(basename + ".recording_config.yaml")
