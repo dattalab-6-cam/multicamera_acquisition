@@ -86,13 +86,16 @@ class MultiDisplay(mp.Process):
             # that queue.empty performs the same
             if not queue.empty():
                 while not queue.empty():
-                    img = get_latest(queue, timeout=0.01)  # empties the queue in case we've fallen behind?
+                    img = get_latest(
+                        queue, timeout=0.01
+                    )  # empties the queue in case we've fallen behind?
             else:
                 img = queue.get(timeout=0.01)
+
         except Exception as error:
             if log_if_error:
                 logging.info("{}: Timeout occurred {}".format(camera_name, str(error)))
-            return [None]
+            return None
         return img
 
     def run(self):
@@ -121,31 +124,32 @@ class MultiDisplay(mp.Process):
             for qi, (queue, camera_name) in enumerate(
                 zip(self.queues, self.camera_list)
             ):
-                data = self._fetch_image(
+                img = self._fetch_image(
                     queue, camera_name, log_if_error=initialized[qi]
                 )
 
-                # If acq sends an empty tuple, it means it's done
-                if len(data) == 0:
-                    quit = True
-                    self.logger.debug("No data, quitting...")
-                    break
-
-                # retrieve frame
-                img = data[0]
                 if img is not None:
-                    initialized[qi] = True
-                    frame = format_frame(
-                        img,
-                        display_size=self.config["display_size"],
-                        display_range=self.display_ranges[qi],
-                        is_depth=img.dtype == np.uint16 or ("lucid" in camera_name),
-                    )
 
-                    # update label with new image
-                    img = ImageTk.PhotoImage(frame)
-                    labels[qi].config(image=img)
-                    labels[qi].image = img
+                    # If acq sends an empty tuple, it means it's done
+                    if len(img) == 0:
+                        quit = True
+                        self.logger.debug("No data, quitting...")
+                        break
+
+                    # retrieve frame
+                    else:
+                        initialized[qi] = True
+                        frame = format_frame(
+                            img,
+                            display_size=self.config["display_size"],
+                            display_range=self.display_ranges[qi],
+                            is_depth=img.dtype == np.uint16 or ("lucid" in camera_name),
+                        )
+
+                        # update label with new image
+                        img = ImageTk.PhotoImage(frame)
+                        labels[qi].config(image=img)
+                        labels[qi].image = img
                 else:
                     continue
 
@@ -158,12 +162,8 @@ class MultiDisplay(mp.Process):
         # Here, we empty the queues to make sure we don't leave any data in them.
         # If there are images left in the queues, the main thread won't finish!
         self.logger.debug("Emptying queues...")
-        for qi, (queue, camera_name) in enumerate(
-            zip(self.queues, self.camera_list)
-        ):
-            data = self._fetch_image(
-                queue, camera_name, log_if_error=initialized[qi]
-            )
+        for qi, (queue, camera_name) in enumerate(zip(self.queues, self.camera_list)):
+            data = self._fetch_image(queue, camera_name, log_if_error=initialized[qi])
 
         self.logger.debug("MultiDisplay process finished")
 
