@@ -147,6 +147,9 @@ class AcquisitionLoop(mp.Process):
     def run(self):
         """Launch a separate subprocess to acquire frames."""
 
+        # Set the process group ID to to the process ID so it is affected by the main process's stop signal
+        os.setpgid(0, 0)
+
         # Set up logging. In the typical case, we set up a logger to communicate
         # with the main process via a Queue.
         if self.logger_queue is None:
@@ -419,7 +422,6 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     """Use the stop() method to end the acquisition loops, writers, and display
     processes, escalating to terminate() if necessary.
     """
-
     # Get the main logger
     logger = logging.getLogger("main_acq_logger")
 
@@ -1026,15 +1028,20 @@ def refactor_acquire_video(
     finally:
         # End the processes and close the microcontroller serial connection
         logger.info("Ending processes, this may take a moment...")
-        end_processes(
-            acquisition_loops, writers, display_proc, writer_timeout=300
-        )  # TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, and this has no timeout, it will never close gracefully.
-        logger.info("Processed ended")
-        print("\rRecording Progress: 100%", end="")
         if final_config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
             microcontroller.close()
+
+        """ 
+        TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. 
+        One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, 
+        and this has no timeout, it will never close gracefully. 
+        """
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+
+        logger.info("Processes ended")
+        print("\rRecording Progress: 100%", end="")
         logger.info("Done.")
 
     return full_save_location, final_config
