@@ -565,6 +565,12 @@ class FFMPEG_Writer(BaseWriter):
 
         Frame size tbd on the fly.
         """
+        assert vid_type in [
+            "ir",
+            "color",
+            "depth",
+        ], "vid_type must be one of ['color', 'depth', 'ir']"
+
         config = {
             "fps": fps,
             "max_video_frames": None,  # None means no limit; otherwise, pass an int
@@ -573,12 +579,19 @@ class FFMPEG_Writer(BaseWriter):
             "type": "ffmpeg",
         }
 
-        if vid_type == "ir":
-            # Use uint8 for ir vids
-            config["pixel_format"] = "gray8"
+        if vid_type == "depth":
+            # Use uint16 for depth vids
+            config["pixel_format"] = "gray16"
+            config["video_codec"] = "ffv1"  # lossless depth
+            config["depth"] = True
+            config["gpu"] = None
 
-            # Use a pixel format that is readable by most players
-            config["output_px_format"] = "yuv420p"  # Output pixel format
+        else:
+            # Use uint8 for ir vids
+            if vid_type == "ir":
+                config["pixel_format"] = "gray8"
+            elif vid_type == "color":
+                config["pixel_format"] = "rgb24"
 
             # Set codec and preset depending on whether we have a gpu
             if gpu is not None:
@@ -591,13 +604,6 @@ class FFMPEG_Writer(BaseWriter):
                 config["gpu"] = None
 
             config["depth"] = False
-
-        elif vid_type == "depth":
-            # Use uint16 for depth vids
-            config["pixel_format"] = "gray16"
-            config["video_codec"] = "ffv1"  # lossless depth
-            config["depth"] = True
-            config["gpu"] = None
 
         return config
 

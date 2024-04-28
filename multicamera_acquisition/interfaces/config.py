@@ -13,6 +13,7 @@ ALL_CAM_PARAMS = [
     "roi",
     "gain",
     "gamma",
+    "pixel_format",
     "exposure",
     "brand",
     "fps",

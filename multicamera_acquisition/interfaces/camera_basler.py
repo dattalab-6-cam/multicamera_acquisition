@@ -3,6 +3,7 @@ import os
 import time
 import traceback
 
+import cv2
 import numpy as np
 from pypylon import pylon
 from pypylon._genicam import RuntimeException
@@ -95,6 +96,7 @@ class BaslerCamera(BaseCamera):
             "gain": 6,
             "gamma": 1.0,
             "exposure": 1000,
+            "pixel_format": "Mono8",
             "brand": "basler",
             "display": {
                 "display_frames": False,
@@ -212,16 +214,15 @@ class BaslerCamera(BaseCamera):
             else:
                 assert (
                     self.serial_number == _sn
-                ), "Unexpected camera serial number mismatch."        
+                ), "Unexpected camera serial number mismatch."
 
-            # Configure the camera according to the config file
+                # Configure the camera according to the config file
                 self.logger.debug("Configuring camera...")
             self._configure_basler()
         except Exception as e:
             # show the entire traceback
             self.logger.error(traceback.format_exc())
             raise e
-
 
         self.initialized = True
 
@@ -278,6 +279,9 @@ class BaslerCamera(BaseCamera):
         else:
             pass
 
+        # Set pixel format
+        self.cam.PixelFormat.SetValue(self.config["pixel_format"])
+
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
 
@@ -330,6 +334,11 @@ class BaslerCamera(BaseCamera):
             raise ValueError(
                 "Cannot use microcontroller trigger with emulated cameras."
             )
+
+        # Check that pixel format is supported
+        supported_pixel_formats = ["Mono8", "BayerRG8", "RGB8"]
+        if not self.config["pixel_format"] in supported_pixel_formats:
+            raise ValueError(f"Pixel format must be one of {supported_pixel_formats}")
 
     def set_trigger_mode(self, mode):
         """Shortcut method to quickly change the camera's trigger settings.
@@ -436,6 +445,9 @@ class BaslerCamera(BaseCamera):
 
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
+            if self.config["pixel_format"] == "BayerRG8":
+                img_array = cv2.cvtColor(img_array, cv2.COLOR_BAYER_RG2RGB)
+
             if get_linestatus:
                 line_status = img.ChunkLineStatusAll.Value
             if get_timestamp:
