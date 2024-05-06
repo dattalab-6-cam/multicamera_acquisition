@@ -261,8 +261,13 @@ class NVC_Writer(BaseWriter):
         self._current_vid_muxing = False
 
     @staticmethod
-    def default_writer_config(fps, gpu=0):
+    def default_writer_config(fps, gpu=0, vid_type="ir"):
         """Generate a valid config for an NVC Writer."""
+        assert vid_type in [
+            "ir",
+            "color",
+        ], "vid_type must be one of ['color', 'ir']"
+
         if gpu is None:
             raise ValueError("GPU must be specified for NVC writer")
         config = {
@@ -287,10 +292,22 @@ class NVC_Writer(BaseWriter):
             "constqp": "27",  # (only for rc=constqp)
         }
 
+        if vid_type == "ir":
+            config["pixel_format"] = "gray8"
+        elif vid_type == "color":
+            config["pixel_format"] = "rgb8"
+        print(config["pixel_format"])
         return config
 
     def validate_config(self):
-        pass
+        # Check pixel format (only gray8 supported by VPF)
+        assert (
+            "pixel_format" in self.config
+        ), "VPF requires pixel_format to be specified"
+        assert self.config["pixel_format"] in [
+            "gray8",
+            "rgb8",
+        ], "VPF only supports gray8 or rgb8 pixel format"
 
     def _get_new_pipe(self, data_shape):
 
@@ -319,11 +336,16 @@ class NVC_Writer(BaseWriter):
         elif self.config["rc"] == "vbr":
             encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
 
+        if self.config["pixel_format"] == "gray8":
+            pixel_format = nvc.PixelFormat.NV12
+        elif self.config["pixel_format"] == "rgb8":
+            pixel_format = nvc.PixelFormat.RGB
+
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,
             gpu_id=self.config["gpu"],
-            format=nvc.PixelFormat.NV12,
+            format=pixel_format,
         )
         self.encFile = open(self.video_file_name, "wb")
         self._current_vid_muxing = False
@@ -333,17 +355,19 @@ class NVC_Writer(BaseWriter):
         # Cast to uint8
         data = data.astype(np.uint8)
 
-        # Convert to nv12, which is dims X by Y*1.5
-        if self.nv12_placeholder is None:
-            nv12_array = grey2nv12(data)
-            self.img_dims = data.shape
-            self.nv12_placeholder = nv12_array
-        else:
-            nv12_array = self.nv12_placeholder
-            nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
+        if self.config["pixel_format"] == "gray8":
+            # Convert to nv12, which is dims X by Y*1.5
+            if self.nv12_placeholder is None:
+                nv12_array = grey2nv12(data)
+                self.img_dims = data.shape
+                self.nv12_placeholder = nv12_array
+            else:
+                nv12_array = self.nv12_placeholder
+                nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
+            data = nv12_array
 
         try:
-            success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
+            success = self.pipe.EncodeSingleFrame(data, self.encFrame, sync=False)
         except Exception as e:
             success = False
             self.logger.debug(f"failed to create frame: {e}")
