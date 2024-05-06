@@ -2,6 +2,7 @@ import csv
 import logging
 import multiprocessing as mp
 import os
+import cv2
 import subprocess
 import time
 import traceback
@@ -296,7 +297,6 @@ class NVC_Writer(BaseWriter):
             config["pixel_format"] = "gray8"
         elif vid_type == "color":
             config["pixel_format"] = "rgb8"
-        print(config["pixel_format"])
         return config
 
     def validate_config(self):
@@ -339,7 +339,7 @@ class NVC_Writer(BaseWriter):
         if self.config["pixel_format"] == "gray8":
             pixel_format = nvc.PixelFormat.NV12
         elif self.config["pixel_format"] == "rgb8":
-            pixel_format = nvc.PixelFormat.RGB
+            pixel_format = nvc.PixelFormat.YUV444
 
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
@@ -364,10 +364,13 @@ class NVC_Writer(BaseWriter):
             else:
                 nv12_array = self.nv12_placeholder
                 nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
-            data = nv12_array
+            img_array = nv12_array
+
+        elif self.config["pixel_format"] == "rgb8":
+            img_array = cv2.cvtColor(data, cv2.COLOR_RGB2YUV)
 
         try:
-            success = self.pipe.EncodeSingleFrame(data, self.encFrame, sync=False)
+            success = self.pipe.EncodeSingleFrame(img_array, self.encFrame, sync=False)
         except Exception as e:
             success = False
             self.logger.debug(f"failed to create frame: {e}")
