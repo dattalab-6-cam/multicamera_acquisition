@@ -296,7 +296,7 @@ class NVC_Writer(BaseWriter):
         if vid_type == "ir":
             config["pixel_format"] = "gray8"
         elif vid_type == "color":
-            config["pixel_format"] = "rgb8"
+            config["pixel_format"] = "yuv444"
         return config
 
     def validate_config(self):
@@ -306,8 +306,8 @@ class NVC_Writer(BaseWriter):
         ), "VPF requires pixel_format to be specified"
         assert self.config["pixel_format"] in [
             "gray8",
-            "rgb8",
-        ], "VPF only supports gray8 or rgb8 pixel format"
+            "yuv444",
+        ], "VPF only supports gray8 or yuv444 pixel format"
 
     def _get_new_pipe(self, data_shape):
 
@@ -338,7 +338,7 @@ class NVC_Writer(BaseWriter):
 
         if self.config["pixel_format"] == "gray8":
             pixel_format = nvc.PixelFormat.NV12
-        elif self.config["pixel_format"] == "rgb8":
+        elif self.config["pixel_format"] == "yuv444":
             pixel_format = nvc.PixelFormat.YUV444
 
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
@@ -366,7 +366,7 @@ class NVC_Writer(BaseWriter):
                 nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
             img_array = nv12_array
 
-        elif self.config["pixel_format"] == "rgb8":
+        elif self.config["pixel_format"] == "yuv444":
             img_array = cv2.cvtColor(data, cv2.COLOR_RGB2YUV)
 
         try:
