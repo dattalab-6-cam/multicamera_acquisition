@@ -212,16 +212,15 @@ class BaslerCamera(BaseCamera):
             else:
                 assert (
                     self.serial_number == _sn
-                ), "Unexpected camera serial number mismatch."        
+                ), "Unexpected camera serial number mismatch."
 
-            # Configure the camera according to the config file
+                # Configure the camera according to the config file
                 self.logger.debug("Configuring camera...")
             self._configure_basler()
         except Exception as e:
             # show the entire traceback
             self.logger.error(traceback.format_exc())
             raise e
-
 
         self.initialized = True
 
@@ -317,7 +316,9 @@ class BaslerCamera(BaseCamera):
         elif trigger["trigger_type"] == "no_trigger":
             self.set_trigger_mode("no_trigger")
         else:
-            raise ValueError("Trigger must be 'microcontroller' or 'software'")
+            raise ValueError(
+                "Trigger must be one of ['microcontroller', 'software', 'no_trigger']"
+            )
 
     def check_config(self):
         """Check for some common issues with Basler configs."""
