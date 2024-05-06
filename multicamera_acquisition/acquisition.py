@@ -147,7 +147,7 @@ class AcquisitionLoop(mp.Process):
     def run(self):
         """Launch a separate subprocess to acquire frames."""
 
-        # Set the process group ID to to the process ID so it is affected by the main process's stop signal
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
         os.setpgid(0, 0)
 
         # Set up logging. In the typical case, we set up a logger to communicate

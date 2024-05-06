@@ -96,7 +96,7 @@ class MultiDisplay(mp.Process):
         return img
 
     def run(self):
-        # Set the process group ID to to the process ID so it is affected by the main process's stop signal
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
         os.setpgid(0, 0)
 
         # Set up the logger
