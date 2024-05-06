@@ -599,7 +599,7 @@ def refactor_acquire_video(
     save_location : Path
         The directory in which the recording was saved.
 
-    final_config: dict
+    config: dict
         The final recording config used.
 
     Examples
@@ -762,15 +762,12 @@ def refactor_acquire_video(
     else:
         assert isinstance(config, dict)
 
-    # Add the display params to the config  # TODO: cleanup
-    final_config = config
-
     # Check that the config is valid
-    validate_recording_config(final_config, logging_level)
+    validate_recording_config(config, logging_level)
 
     # Save the config file before starting the recording
     config_filepath = Path(basename + ".recording_config.yaml")
-    save_config(config_filepath, final_config)
+    save_config(config_filepath, config)
 
     """
     CAMERA INFO
@@ -786,7 +783,7 @@ def refactor_acquire_video(
     NB: in the config, there is only one spot for a camera "id" — this can be either an integer (device index) or a string (serial number).
     """
     # Resolve camera device indices
-    device_index_dict = resolve_device_indices(final_config)
+    device_index_dict = resolve_device_indices(config)
 
     """
     ARDUINO INFO
@@ -796,9 +793,9 @@ def refactor_acquire_video(
     """
 
     # Find the microcontroller to be used for triggering
-    if final_config["globals"]["microcontroller_required"]:
+    if config["globals"]["microcontroller_required"]:
         logger.info("Finding microcontroller...")
-        microcontroller = Microcontroller(basename, final_config)
+        microcontroller = Microcontroller(basename, config)
         microcontroller.open_serial_connection()
 
     """
@@ -824,7 +821,7 @@ def refactor_acquire_video(
     display_ranges = []
 
     try:
-        for camera_name, camera_dict in final_config["cameras"].items():
+        for camera_name, camera_dict in config["cameras"].items():
             # Create a writer queue
             write_queue = (
                 mp.Queue()
@@ -898,11 +895,11 @@ def refactor_acquire_video(
                 camera_device_index=device_index_dict[camera_name],
                 camera_config=camera_dict,
                 write_queue_depth=write_queue_depth,
-                acq_loop_config=final_config["acq_loop"],
+                acq_loop_config=config["acq_loop"],
                 logger_queue=logger_queue,
                 logging_level=logging_level,
                 process_name=f"{camera_name}_acqLoop",
-                fps=final_config["globals"]["fps"],
+                fps=config["globals"]["fps"],
             )
 
             # Start the writer and acquisition loop processes
@@ -934,7 +931,7 @@ def refactor_acquire_video(
             display_queues,
             camera_list=camera_list,
             display_ranges=display_ranges,
-            config=final_config["rt_display"],
+            config=config["rt_display"],
             logger_queue=logger_queue,
             logging_level=logging_level,
         )
@@ -964,7 +961,7 @@ def refactor_acquire_video(
             )
 
     # Tell microcontroller to start the acquisition loop
-    if final_config["globals"]["microcontroller_required"]:
+    if config["globals"]["microcontroller_required"]:
         logger.info("Starting microcontroller...")
         microcontroller.start_acquisition(recording_duration_s)
 
@@ -989,7 +986,7 @@ def refactor_acquire_video(
         endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
-            if final_config["globals"]["microcontroller_required"]:
+            if config["globals"]["microcontroller_required"]:
                 # Tell the microcontroller to check for input trigger data or finish signal
                 finished = microcontroller.check_for_input()
                 if finished:
@@ -1021,7 +1018,7 @@ def refactor_acquire_video(
     finally:
         # End the processes and close the microcontroller serial connection
         logger.info("Ending processes, this may take a moment...")
-        if final_config["globals"]["microcontroller_required"]:
+        if config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
             microcontroller.close()
@@ -1037,7 +1034,7 @@ def refactor_acquire_video(
         print("\rRecording Progress: 100%", end="")
         logger.info("Done.")
 
-    return full_save_location, final_config
+    return full_save_location, config
 
 
 def reset_loggers():
