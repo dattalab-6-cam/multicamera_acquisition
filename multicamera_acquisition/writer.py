@@ -272,7 +272,6 @@ class NVC_Writer(BaseWriter):
             "max_video_frames": None,  # None means no limit; otherwise, pass an int
             "auto_remux_videos": True,
             # encoder params
-            "pixel_format": "gray8",
             "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
             "codec": "h264",  # h264, hevc
             "profile": "high",  # high or baseline (?)
@@ -291,13 +290,7 @@ class NVC_Writer(BaseWriter):
         return config
 
     def validate_config(self):
-        # Check pixel format (only gray8 supported by VPF)
-        assert (
-            "pixel_format" in self.config
-        ), "VPF requires pixel_format to be specified"
-        assert (
-            self.config["pixel_format"] == "gray8"
-        ), "VPF only supports gray8 pixel format"
+        pass
 
     def _get_new_pipe(self, data_shape):
 
