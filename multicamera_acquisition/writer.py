@@ -586,11 +586,9 @@ class FFMPEG_Writer(BaseWriter):
 
             # Set codec and preset depending on whether we have a gpu
             if gpu is not None:
-                config["video_codec"] = "h264_nvenc"
                 config["gpu"] = gpu
                 config["preset"] = "p1"  # p1 - p7, p1 is fastest, p7 is slowest
             else:
-                config["video_codec"] = "libx264"
                 config["preset"] = "ultrafast"
                 config["gpu"] = None
 
@@ -599,7 +597,6 @@ class FFMPEG_Writer(BaseWriter):
         elif vid_type == "depth":
             # Use uint16 for depth vids
             config["pixel_format"] = "gray16"
-            config["video_codec"] = "ffv1"  # lossless depth
             config["depth"] = True
             config["gpu"] = None
 
