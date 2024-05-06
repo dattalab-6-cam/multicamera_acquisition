@@ -147,6 +147,9 @@ class AcquisitionLoop(mp.Process):
     def run(self):
         """Launch a separate subprocess to acquire frames."""
 
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
+        os.setpgid(0, 0)
+
         # Set up logging. In the typical case, we set up a logger to communicate
         # with the main process via a Queue.
         if self.logger_queue is None:
@@ -274,7 +277,9 @@ class AcquisitionLoop(mp.Process):
                     )  # increase timeout of first frame
                     first_frame = False
                     self.logger.debug("First frame received")
-                    prev_timestamp = _cam_data[-1]  # camera_timestamp is always the final element of the _cam_data tuple
+                    prev_timestamp = _cam_data[
+                        -1
+                    ]  # camera_timestamp is always the final element of the _cam_data tuple
                 else:
                     _cam_data = cam.get_array(timeout=timeout, get_timestamp=True)
 
@@ -307,7 +312,9 @@ class AcquisitionLoop(mp.Process):
                                 )
                     else:
                         img, linestatus, camera_timestamp = _cam_data
-                        self.write_queue.put((img, linestatus, camera_timestamp, n_frames_received))  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
+                        self.write_queue.put(
+                            (img, linestatus, camera_timestamp, n_frames_received)
+                        )  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
                         if self.camera_config["display"]["display_frames"]:
                             if (
                                 n_frames_received % self.acq_config["display_every_n"]
@@ -415,7 +422,6 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     """Use the stop() method to end the acquisition loops, writers, and display
     processes, escalating to terminate() if necessary.
     """
-
     # Get the main logger
     logger = logging.getLogger("main_acq_logger")
 
@@ -494,7 +500,9 @@ def resolve_device_indices(config):
         device_index_dict[camera_name] = dev_idx
 
     # Resolve any Azure cameras
-    if any([camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]):
+    if any(
+        [camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]
+    ):
         serial_nos_dict = enumerate_azure_cameras()
         serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
         for camera_name, camera_dict in config["cameras"].items():
@@ -1013,15 +1021,20 @@ def refactor_acquire_video(
     finally:
         # End the processes and close the microcontroller serial connection
         logger.info("Ending processes, this may take a moment...")
-        end_processes(
-            acquisition_loops, writers, display_proc, writer_timeout=300
-        )  # TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, and this has no timeout, it will never close gracefully.
-        logger.info("Processed ended")
-        print("\rRecording Progress: 100%", end="")
         if final_config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
             microcontroller.close()
+
+        """ 
+        TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. 
+        One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, 
+        and this has no timeout, it will never close gracefully. 
+        """
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+
+        logger.info("Processes ended")
+        print("\rRecording Progress: 100%", end="")
         logger.info("Done.")
 
     return full_save_location, final_config
