@@ -1,4 +1,5 @@
 import glob
+import itertools
 import logging
 import struct
 import sys
@@ -17,8 +18,12 @@ AZURE_NUM_SUBFRAMES_BEFORE_TRIGGER = 3
 AZURE_SUBFRAME_DURATION = 160
 
 
+def flatten(l):
+    return list(itertools.chain.from_iterable(l))
+
+
 def validate_microcontroller_configutation(
-    config, n_azures, basler_fps, basler_exposure_time
+    config, n_azures, capture_groups, basler_fps, basler_exposure_time
 ):
     """
     Validate the microcontroller configuration by ensuring that:
@@ -30,16 +35,32 @@ def validate_microcontroller_configutation(
       the time between azure subframes.
     - custom output times, pins and states must be the same length, and states must be 0 or 1.
     """
+
+    # check that each capture group has required keys
+    for group in capture_groups.keys():
+        if group + "_camera_pins" not in config:
+            raise ValueError(f"Missing {group}_camera_pins in microcontroller config!")
+        if group + "_light_pins" not in config:
+            raise ValueError(f"Missing {group}_light_pins in microcontroller config!")
+        if group + "_light_dur" not in config:
+            raise ValueError(f"Missing {group}_light_dur in microcontroller config!")
+
+    # Check that if capture keys are different than top/bottom, then
+    # no Azures are requested.
+    if set(capture_groups.keys()) != {"top", "bottom"} and n_azures > 0:
+        raise NotImplementedError(
+            "Azures with capture groups other than top+bottom not yet implemented."
+        )
+
     # check for repeated pins
     all_unique_pins = (
-        config["top_camera_pins"]
-        + config["top_light_pins"]
-        + config["bottom_camera_pins"]
-        + config["bottom_light_pins"]
-        + config["azure_trigger_pins"]
-        + config["random_output_pins"]
-        + config["input_pins"]
+        flatten([config[group + "_camera_pins"] for group in capture_groups.keys()]) + \
+        flatten([config[group + "_light_pins"] for group in capture_groups.keys()]) + \
+        config["azure_trigger_pins"] + \
+        config["random_output_pins"] + \
+        config["input_pins"]
     )
+
     if len(all_unique_pins) != len(set(all_unique_pins)):
         raise ValueError(
             "Some pins are repeated within or between the following lists: top_camera_pins, "
@@ -57,7 +78,7 @@ def validate_microcontroller_configutation(
 
     # check for azure trigger pins
     if n_azures > 0 and len(config["azure_trigger_pins"]) == 0:
-        raise ValueError("There must be at least one Azure trigger pin!")
+        raise ValueError("There must be at least one Azure trigger pin if n_azures > 0!")
 
     # check basler fps
     if n_azures > 0 and basler_fps not in [30, 60, 90, 120, 150]:
@@ -95,12 +116,7 @@ def validate_microcontroller_configutation(
 
 def plot_trigger_schedule(
     cycle_duration,
-    top_basler_trigger_ons,
-    top_basler_trigger_offs,
-    bottom_basler_trigger_ons,
-    bottom_basler_trigger_offs,
-    top_basler_light_offs,
-    bottom_basler_light_offs,
+    timing_dict,
     azure_state_change_times,
     n_azures,
     figsize,
@@ -113,23 +129,12 @@ def plot_trigger_schedule(
     cycle_duration : int
         Duration of each acquisition cycle in microseconds.
 
-    top_basler_trigger_ons : list
-        List of times at which the top Basler trigger turns on.
-
-    top_basler_trigger_offs : list
-        List of times at which the top Basler trigger turns off.
-
-    bottom_basler_trigger_ons : list
-        List of times at which the bottom Basler trigger turns on.
-
-    bottom_basler_trigger_offs : list
-        List of times at which the bottom Basler trigger turns off.
-
-    top_basler_light_offs : list
-        List of times at which the top Basler light turns off.
-
-    bottom_basler_light_offs : list
-        List of times at which the bottom Basler light turns off.
+    timing_dict: dict
+        Dictionary containing the timing information for each camera group.
+        Keys are: "top", "bottom", etc. Each value is a dictionary with the following keys:
+            - trigger_ons: List of times at which the camera triggers turn on.
+            - trigger_offs: List of times at which the camera triggers turn off.
+            - light_offs: List of times at which the lights turn off.
 
     azure_trigger : int
         Pair of times at which the Azure trigger turns on and off.
@@ -142,21 +147,21 @@ def plot_trigger_schedule(
     """
     fig, ax = plt.subplots(figsize=figsize)
 
-    top_trigger_on = np.zeros(cycle_duration)
-    for on, off in zip(top_basler_trigger_ons, top_basler_trigger_offs):
-        top_trigger_on[on:off] = 1
+    group_trigger_signals = []
+    group_light_signals = []
 
-    bottom_trigger_on = np.zeros(cycle_duration)
-    for on, off in zip(bottom_basler_trigger_ons, bottom_basler_trigger_offs):
-        bottom_trigger_on[on:off] = 1
+    for group in timing_dict.keys():
+        group_trigger_on = np.zeros(cycle_duration)
+        for on, off in zip(
+            timing_dict[group]["trigger_ons"], timing_dict[group]["trigger_offs"]
+        ):
+            group_trigger_on[on:off] = 1
+        group_trigger_signals.append(group_trigger_on)
 
-    top_light_on = np.zeros(cycle_duration)
-    for on, off in zip(top_basler_trigger_ons, top_basler_light_offs):
-        top_light_on[on:off] = 1
-
-    bottom_light_on = np.zeros(cycle_duration)
-    for on, off in zip(bottom_basler_trigger_ons, bottom_basler_light_offs):
-        bottom_light_on[on:off] = 1
+        group_light_on = np.zeros(cycle_duration)
+        for on, off in zip(timing_dict[group]["trigger_ons"], timing_dict[group]["light_offs"]):
+            group_light_on[on:off] = 1
+        group_light_signals.append(group_light_on)
 
     azure_trigger_on = np.zeros(cycle_duration)
     if n_azures > 0:
@@ -168,10 +173,8 @@ def plot_trigger_schedule(
 
     for i, signal in enumerate(
         [
-            top_trigger_on,
-            bottom_trigger_on,
-            top_light_on,
-            bottom_light_on,
+            *group_trigger_signals,
+            *group_light_signals,
             azure_trigger_on,
         ]
     ):
@@ -193,19 +196,18 @@ def plot_trigger_schedule(
             linewidth=0,
         )
 
-    labels = [
-        "Top Basler trigger",
-        "Bottom Basler trigger",
-        "Top lights",
-        "Bottom lights",
-        "Azure acquisition",
-    ]
+    labels = [f"{group} triggers" for group in timing_dict.keys()]
+    labels.extend([f"{group} lights" for group in timing_dict.keys()])
+    labels.extend(["Azure acquisition"])
+
     ax.set_yticks(np.arange(len(labels)) + 0.4)
     ax.set_yticklabels(labels)
     ax.set_xlabel("Time (us)")
 
+    plt.show()
 
-def generate_output_schedule(config, n_azures, basler_fps):
+
+def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
     """
     Generate a schedule of output state changes for the microcontroller. The schedule specifies a
     set of state changes on a set of output pins at specific times, which will be performed once
@@ -217,21 +219,16 @@ def generate_output_schedule(config, n_azures, basler_fps):
     config : dict
         Configuration dictionary. Must contain the following keys:
 
-        - top_camera_pins
-            List of pins connected to top cameras. Must be non-empty.
-        - top_light_pins:
-            List of pins connected to top lights.
-        - top_light_dur
-            Duration of top light pulses in microseconds.
-        - bottom_camera_pins
-            List of pins connected to bottom cameras.
-        - bottom_light_pins
-            List of pins connected to bottom lights.
-        - bottom_light_dur
-            Duration of bottom light pulses in microseconds.
-        - bottom_camera_offset
-            Gap between between shutoff of the top lights on onset of the bottom
-            camera trigger (ignored if `n_azures>0` and `basler_fps>30`).
+        - For at least one capture group (usually "top" and "bottom"):
+            - {group}_camera_pins
+                List of pins connected to {group} cameras. Must be non-empty.
+            - {group}_light_pins:
+                List of pins connected to {group} lights.
+            - {group}_light_dur
+                Duration of {group} light pulses in microseconds.
+        - inter_group_offset
+            Gap between between shutoff of the lights of one group, and the onset of the next
+            camera group's triggers (ignored if `n_azures>0` and `basler_fps>30`).
         - gap_between_azure_and_basler
             Gap between the end of an Azure acquisition subframe and start of Basler camera acquisition.
         - azure_trigger_pins
@@ -271,6 +268,9 @@ def generate_output_schedule(config, n_azures, basler_fps):
     cycle_duration : int
         Duration of each acquisition cycle in microseconds.
     """
+    timing_dict = {g: {"trigger_ons": [], "trigger_offs": [], "light_offs": []} for g in capture_groups.keys()}
+    first_group = list(capture_groups.keys())[0]
+
     if n_azures == 0:
         # one cycle per basler frame
         cycle_duration = int(1e6 / basler_fps)
@@ -280,10 +280,13 @@ def generate_output_schedule(config, n_azures, basler_fps):
         azure_state_change_states = []
 
         # basler triggers
-        top_basler_trigger_ons = [0]
-        bottom_delay = config["bottom_camera_offset"] + config["top_light_dur"]
+        timing_dict[first_group]["trigger_ons"] = [0]
+        inter_group_delay = config["inter_group_offset"] + config[f"{first_group}_light_dur"]
 
     else:
+
+        # TODO: refactor this code to match the new config structure, otherwise is broken
+
         # one cycle per azure frame
         cycle_duration = 33333
 
@@ -295,7 +298,7 @@ def generate_output_schedule(config, n_azures, basler_fps):
         # basler triggers
         if basler_fps == 30:
             top_basler_trigger_ons = [AZURE_INTERSUBFRAME_PERIOD * AZURE_NUM_SUBFRAMES]
-            bottom_delay = config["bottom_camera_offset"] + config["top_light_dur"]
+            bottom_delay = config["inter_group_offset"] + config["top_light_dur"]
 
         else:
             top_basler_first_trigger = (
@@ -331,53 +334,62 @@ def generate_output_schedule(config, n_azures, basler_fps):
                     top_basler_first_trigger + int(1e6 / 150 * 4),
                 ]
 
-    top_basler_trigger_ons = np.array(top_basler_trigger_ons)
-    bottom_basler_trigger_ons = top_basler_trigger_ons + bottom_delay
+    import pdb
+    # pdb.set_trace()
 
-    top_basler_trigger_offs = top_basler_trigger_ons + config["basler_pulse_dur"]
-    bottom_basler_trigger_offs = bottom_basler_trigger_ons + config["basler_pulse_dur"]
+    # Timings for the first group
+    timing_dict[first_group]["trigger_ons"] = np.array(timing_dict[first_group]["trigger_ons"])
+    timing_dict[first_group]["trigger_offs"] = timing_dict[first_group]["trigger_ons"] + config["basler_pulse_dur"]
+    timing_dict[first_group]["light_offs"] = timing_dict[first_group]["trigger_ons"] + config[f"{first_group}_light_dur"]
+    
+    # Add timings for the other groups
+    prev_group = first_group
+    for group in list(capture_groups.keys())[1:]:
+        timing_dict[group]["trigger_ons"] = timing_dict[prev_group]["trigger_ons"] + inter_group_delay
+        timing_dict[group]["trigger_offs"] = timing_dict[group]["trigger_ons"] + config["basler_pulse_dur"]
+        timing_dict[group]["light_offs"] = timing_dict[group]["trigger_ons"] + config[f"{group}_light_dur"]
+        prev_group = group
 
-    top_basler_light_offs = top_basler_trigger_ons + config["top_light_dur"]
-    bottom_basler_light_offs = bottom_basler_trigger_ons + config["bottom_light_dur"]
+    # Prepare to send the state timings to the arduino
+    state_change_times = []
+    for group in capture_groups.keys():
+        state_change_times.extend([
+            np.repeat(timing_dict[group]["trigger_ons"], len(config[f"{group}_camera_pins"])),
+            np.repeat(timing_dict[group]["trigger_offs"], len(config[f"{group}_camera_pins"])),
+            np.repeat(timing_dict[group]["trigger_ons"], len(config[f"{group}_light_pins"])),
+            np.repeat(timing_dict[group]["light_offs"], len(config[f"{group}_light_pins"])),
+        ])
+    if n_azures > 0:
+        state_change_times.extend([np.repeat(azure_state_change_times, len(config["azure_trigger_pins"]))])   
+    if len(config["custom_output_times"]) > 0:
+        state_change_times.extend(config["custom_output_times"])
 
-    state_change_times = [
-        np.repeat(top_basler_trigger_ons, len(config["top_camera_pins"])),
-        np.repeat(top_basler_trigger_offs, len(config["top_camera_pins"])),
-        np.repeat(bottom_basler_trigger_ons, len(config["bottom_camera_pins"])),
-        np.repeat(bottom_basler_trigger_offs, len(config["bottom_camera_pins"])),
-        np.repeat(top_basler_trigger_ons, len(config["top_light_pins"])),
-        np.repeat(top_basler_light_offs, len(config["top_light_pins"])),
-        np.repeat(bottom_basler_trigger_ons, len(config["bottom_light_pins"])),
-        np.repeat(bottom_basler_light_offs, len(config["bottom_light_pins"])),
-        np.repeat(azure_state_change_times, len(config["azure_trigger_pins"])),
-        config["custom_output_times"],
-    ]
+    state_change_pins = []
+    for group in capture_groups.keys():
+        state_change_pins.extend([
+            np.tile(config[f"{group}_camera_pins"], len(timing_dict[group]["trigger_ons"])),
+            np.tile(config[f"{group}_camera_pins"], len(timing_dict[group]["trigger_offs"])),
+            np.tile(config[f"{group}_light_pins"], len(timing_dict[group]["trigger_ons"])),
+            np.tile(config[f"{group}_light_pins"], len(timing_dict[group]["light_offs"])),
+        ])
+    if n_azures > 0:
+        state_change_pins.extend([np.tile(config["azure_trigger_pins"], len(azure_state_change_times))])
+    if len(config["custom_output_pins"]) > 0:
+        state_change_pins.extend(config["custom_output_pins"])
 
-    state_change_pins = [
-        np.tile(config["top_camera_pins"], len(top_basler_trigger_ons)),
-        np.tile(config["top_camera_pins"], len(top_basler_trigger_offs)),
-        np.tile(config["bottom_camera_pins"], len(bottom_basler_trigger_ons)),
-        np.tile(config["bottom_camera_pins"], len(bottom_basler_trigger_offs)),
-        np.tile(config["top_light_pins"], len(top_basler_trigger_ons)),  # top lights
-        np.tile(config["top_light_pins"], len(top_basler_light_offs)),
-        np.tile(config["bottom_light_pins"], len(bottom_basler_trigger_ons)),
-        np.tile(config["bottom_light_pins"], len(bottom_basler_light_offs)),
-        np.tile(config["azure_trigger_pins"], len(azure_state_change_times)),
-        config["custom_output_pins"],
-    ]
+    state_change_states = []
+    for group in capture_groups.keys():
+        state_change_states.extend([
+            np.ones(len(timing_dict[group]["trigger_ons"]) * len(config[f"{group}_camera_pins"])),
+            np.zeros(len(timing_dict[group]["trigger_offs"]) * len(config[f"{group}_camera_pins"])),
+            np.ones(len(timing_dict[group]["trigger_ons"]) * len(config[f"{group}_light_pins"])),
+            np.zeros(len(timing_dict[group]["light_offs"]) * len(config[f"{group}_light_pins"])),
+        ])
+    if n_azures > 0:
+        state_change_states.extend([np.repeat(azure_state_change_states, len(config["azure_trigger_pins"]))])
+    if len(config["custom_output_states"]) > 0:
+        state_change_states.extend(config["custom_output_states"])
 
-    state_change_states = [
-        np.ones(len(top_basler_trigger_ons) * len(config["top_camera_pins"])),
-        np.zeros(len(top_basler_trigger_offs) * len(config["top_camera_pins"])),
-        np.ones(len(bottom_basler_trigger_ons) * len(config["bottom_camera_pins"])),
-        np.zeros(len(bottom_basler_trigger_offs) * len(config["bottom_camera_pins"])),
-        np.ones(len(top_basler_trigger_ons) * len(config["top_light_pins"])),
-        np.zeros(len(top_basler_light_offs) * len(config["top_light_pins"])),
-        np.ones(len(bottom_basler_trigger_ons) * len(config["bottom_light_pins"])),
-        np.zeros(len(bottom_basler_light_offs) * len(config["bottom_light_pins"])),
-        np.repeat(azure_state_change_states, len(config["azure_trigger_pins"])),
-        config["custom_output_states"],
-    ]
 
     state_change_times = np.concatenate(state_change_times).astype(int)
     state_change_pins = np.concatenate(state_change_pins).astype(int)
@@ -399,12 +411,7 @@ def generate_output_schedule(config, n_azures, basler_fps):
     if config["plot_trigger_schedule"]:
         plot_trigger_schedule(
             cycle_duration,
-            top_basler_trigger_ons,
-            top_basler_trigger_offs,
-            bottom_basler_trigger_ons,
-            bottom_basler_trigger_offs,
-            top_basler_light_offs,
-            bottom_basler_light_offs,
+            timing_dict,
             azure_state_change_times,
             n_azures,
             config["trigger_plot_figsize"],
@@ -506,20 +513,24 @@ class Microcontroller(object):
                 for c in config["cameras"].values()
                 if c["brand"] in ["basler", "flir"]
             ]
-            basler_exposure_time = max(exposure_times)
+            basler_exposure_time = max(exposure_times)  # TODO: allow variable exposure times here
+
+            # dict of camera groups and cameras within them eg, {"top": ["top", "side1",...], "bottom": ["bottom"]}
+            capture_groups = config["microcontroller"]["capture_groups"]
+            
+
         else:
             # TODO: this needs to guess at an fps? might not really work..
             self.config = self.default_microcontroller_config()
 
         # set light durations if not specified
-        if self.config["top_light_dur"] is None:
-            self.config["top_light_dur"] = basler_exposure_time
-        if self.config["bottom_light_dur"] is None:
-            self.config["bottom_light_dur"] = basler_exposure_time
+        for group in capture_groups.keys():
+            if self.config[f"{group}_light_dur"] is None:
+                self.config[f"{group}_light_dur"] = basler_exposure_time
 
         # validate config
         validate_microcontroller_configutation(
-            self.config, n_azures, basler_fps, basler_exposure_time
+            self.config, n_azures, capture_groups, basler_fps, basler_exposure_time
         )
 
         # determine schedule of output state changes
@@ -528,7 +539,7 @@ class Microcontroller(object):
             self.state_change_pins,
             self.state_change_states,
             self.cycle_duration,
-        ) = generate_output_schedule(self.config, n_azures, basler_fps)
+        ) = generate_output_schedule(self.config, n_azures, capture_groups, basler_fps)
 
         # initialize empty serial connection
         self.serial_connection = None
