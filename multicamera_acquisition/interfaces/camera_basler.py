@@ -234,11 +234,7 @@ class BaslerCamera(BaseCamera):
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
         """
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices(
-            [
-                di,
-            ]
-        )
+        devices = self.system.EnumerateDevices([di])
 
         try:
             self.cam = pylon.InstantCamera(
@@ -445,9 +441,6 @@ class BaslerCamera(BaseCamera):
 
         if img.GrabSucceeded():
             img_array = img.Array.astype(np.uint8)
-            if self.config["pixel_format"] == "BayerRG8":
-                img_array = cv2.cvtColor(img_array, cv2.COLOR_BAYER_RG2RGB)
-
             if get_linestatus:
                 line_status = img.ChunkLineStatusAll.Value
             if get_timestamp:

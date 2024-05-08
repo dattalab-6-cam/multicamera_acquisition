@@ -20,6 +20,7 @@ class BaseWriter(mp.Process):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
@@ -40,6 +41,9 @@ class BaseWriter(mp.Process):
         metadata_file_name : str or Path
             The name of the metadata file to write.
 
+        camera_pixel_format : str
+            Format of image data passed to writer.
+
         config : dict
             A dictionary of configuration parameters for the writer.
             If None, a default config will be used.
@@ -54,6 +58,7 @@ class BaseWriter(mp.Process):
         self.queue = queue
         self.video_file_name = Path(video_file_name)
         self.metadata_file_name = metadata_file_name
+        self.camera_pixel_format = camera_pixel_format
         self.config = config
         self.logger_queue = logger_queue
         self.logging_level = logging_level
@@ -129,6 +134,7 @@ class BaseWriter(mp.Process):
         # Loop until we get a stop signal
         self.frames_written_to_current_video = 0
         try:
+
             while True:
                 # Get data from the queue
                 data = self.queue.get()
@@ -237,17 +243,21 @@ class NVC_Writer(BaseWriter):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
         logging_level=logging.DEBUG,
     ):
 
+        assert camera_pixel_format in ["Mono8", "BayerRG8"]
+
         super().__init__(
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
             config=config,
+            camera_pixel_format=camera_pixel_format,
             process_name=process_name,
             logger_queue=logger_queue,
             logging_level=logging_level,
@@ -262,13 +272,8 @@ class NVC_Writer(BaseWriter):
         self._current_vid_muxing = False
 
     @staticmethod
-    def default_writer_config(fps, gpu=0, vid_type="ir"):
+    def default_writer_config(fps, gpu=0):
         """Generate a valid config for an NVC Writer."""
-        assert vid_type in [
-            "ir",
-            "color",
-        ], "vid_type must be one of ['color', 'ir']"
-
         if gpu is None:
             raise ValueError("GPU must be specified for NVC writer")
         config = {
@@ -292,22 +297,10 @@ class NVC_Writer(BaseWriter):
             "maxbitrate": "20M",  # max br (ignored for constqp)
             "constqp": "27",  # (only for rc=constqp)
         }
-
-        if vid_type == "ir":
-            config["pixel_format"] = "gray8"
-        elif vid_type == "color":
-            config["pixel_format"] = "yuv444"
         return config
 
     def validate_config(self):
-        # Check pixel format (only gray8 supported by VPF)
-        assert (
-            "pixel_format" in self.config
-        ), "VPF requires pixel_format to be specified"
-        assert self.config["pixel_format"] in [
-            "gray8",
-            "yuv444",
-        ], "VPF only supports gray8 or yuv444 pixel format"
+        pass
 
     def _get_new_pipe(self, data_shape):
 
@@ -336,16 +329,11 @@ class NVC_Writer(BaseWriter):
         elif self.config["rc"] == "vbr":
             encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
 
-        if self.config["pixel_format"] == "gray8":
-            pixel_format = nvc.PixelFormat.NV12
-        elif self.config["pixel_format"] == "yuv444":
-            pixel_format = nvc.PixelFormat.YUV444
-
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
             encoder_dictionary,
             gpu_id=self.config["gpu"],
-            format=pixel_format,
+            format=nvc.PixelFormat.NV12,
         )
         self.encFile = open(self.video_file_name, "wb")
         self._current_vid_muxing = False
@@ -355,7 +343,7 @@ class NVC_Writer(BaseWriter):
         # Cast to uint8
         data = data.astype(np.uint8)
 
-        if self.config["pixel_format"] == "gray8":
+        if self.camera_pixel_format == "Mono8":
             # Convert to nv12, which is dims X by Y*1.5
             if self.nv12_placeholder is None:
                 nv12_array = grey2nv12(data)
@@ -366,11 +354,11 @@ class NVC_Writer(BaseWriter):
                 nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
             img_array = nv12_array
 
-        elif self.config["pixel_format"] == "yuv444":
-            img_array = cv2.cvtColor(data, cv2.COLOR_RGB2YUV)
+        elif self.camera_pixel_format == "BayerRG8":
+            nv12_array = bayer2nv12(data)
 
         try:
-            success = self.pipe.EncodeSingleFrame(img_array, self.encFrame, sync=False)
+            success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
         except Exception as e:
             success = False
             self.logger.debug(f"failed to create frame: {e}")
@@ -517,6 +505,7 @@ class FFMPEG_Writer(BaseWriter):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
@@ -527,6 +516,7 @@ class FFMPEG_Writer(BaseWriter):
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -541,20 +531,24 @@ class FFMPEG_Writer(BaseWriter):
 
     def validate_config(self):
         # Check pixel format
-        assert "pixel_format" in self.config, "pixel_format msut be specified"
+        assert "pixel_format" in self.config, "pixel_format must be specified"
 
     def append(self, data):
         # Convert to the correct data format
-        if self.config["pixel_format"] == "gray8":
-            data = data.astype(np.uint8)
-        elif self.config["pixel_format"] == "gray16":
+        if self.config["pixel_format"] == "gray16":
             data = data.astype(np.uint16)
+        else:
+            data = data.astype(np.uint8)
+
+        if self.camera_pixel_format == "BayerRG8":
+            data = cv2.cvtColor(data, cv2.COLOR_BAYER_RG2BGR)
 
         # Write it to the pipe
         self.pipe.stdin.write(data.tobytes())
 
     def _get_new_pipe(self, data_shape):
         # Generate the ffmpeg command
+
         command = FFMPEG_Writer.create_ffmpeg_pipe_command(
             self.video_file_name,
             data_shape,
@@ -731,6 +725,7 @@ def get_writer(
     queue,
     video_file_name,
     metadata_file_name,
+    camera_pixel_format="Mono8",
     writer_type="nvc",
     config=None,
     process_name=None,
@@ -743,6 +738,7 @@ def get_writer(
             queue,
             video_file_name,
             metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -753,6 +749,7 @@ def get_writer(
             queue,
             video_file_name,
             metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -779,5 +776,28 @@ def grey2nv12(frame):
 
     # Stack Y and UV to create the NV12 format
     nv12 = np.vstack((Y, UV))
+
+    return nv12
+
+
+def bayer2nv12(frame):
+    """Convert a BayerRG8 image to NV12 format"""
+    # Convert RGB to I420 (YUV420 planar)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BAYER_RG2BGR)
+    yuv_i420 = cv2.cvtColor(rgb, cv2.COLOR_RGB2YUV_I420)
+    height, width = frame.shape[:2]
+
+    # Extract Y, U, and V planes from the I420 format
+    Y_plane = yuv_i420[:height]
+    U_plane = yuv_i420[height : height + height // 4].reshape((height // 2, width // 2))
+    V_plane = yuv_i420[height + height // 4 :].reshape((height // 2, width // 2))
+
+    # Interleave U and V planes to create the UV plane in NV12 format
+    UV_plane = np.empty((height // 2, width), dtype=np.uint8)
+    UV_plane[:, 0::2] = U_plane
+    UV_plane[:, 1::2] = V_plane
+
+    # Combine Y and interleaved UV planes to create the final NV12 frame
+    nv12 = np.vstack((Y_plane, UV_plane))
 
     return nv12

@@ -274,7 +274,9 @@ class AcquisitionLoop(mp.Process):
                     )  # increase timeout of first frame
                     first_frame = False
                     self.logger.debug("First frame received")
-                    prev_timestamp = _cam_data[-1]  # camera_timestamp is always the final element of the _cam_data tuple
+                    prev_timestamp = _cam_data[
+                        -1
+                    ]  # camera_timestamp is always the final element of the _cam_data tuple
                 else:
                     _cam_data = cam.get_array(timeout=timeout, get_timestamp=True)
 
@@ -307,7 +309,9 @@ class AcquisitionLoop(mp.Process):
                                 )
                     else:
                         img, linestatus, camera_timestamp = _cam_data
-                        self.write_queue.put((img, linestatus, camera_timestamp, n_frames_received))  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
+                        self.write_queue.put(
+                            (img, linestatus, camera_timestamp, n_frames_received)
+                        )  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
                         if self.camera_config["display"]["display_frames"]:
                             if (
                                 n_frames_received % self.acq_config["display_every_n"]
@@ -364,7 +368,7 @@ class AcquisitionLoop(mp.Process):
 
         # Once the stop signal is received, stop the writer and dispaly processes
         self.logger.debug(
-            f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}"
+            f"Received {n_frames_received} frames over {current_iter} iterations, {self.camera_config['name']}"
         )
 
         # We use empty tuples to signal the writer that no more frames are coming, and it can safely close the video.
@@ -494,7 +498,9 @@ def resolve_device_indices(config):
         device_index_dict[camera_name] = dev_idx
 
     # Resolve any Azure cameras
-    if any([camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]):
+    if any(
+        [camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]
+    ):
         serial_nos_dict = enumerate_azure_cameras()
         serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
         for camera_name, camera_dict in config["cameras"].items():
@@ -835,10 +841,16 @@ def refactor_acquire_video(
             # Get a writer process
             # TODO: this is a pretty thin wrapper around the class init's, and maybe
             # we could just call the class init's directly here for clarity.
+            if camera_dict["brand"] == "basler":
+                camera_pixel_format = camera_dict["pixel_format"]
+            else:
+                camera_pixel_format = "Mono8"
+
             writer = get_writer(
                 write_queue,
                 video_file_name,
                 metadata_file_name,
+                camera_pixel_format=camera_pixel_format,
                 writer_type=camera_dict["writer"]["type"],
                 config=camera_dict["writer"],
                 process_name=f"{camera_name}_writer",
@@ -863,6 +875,7 @@ def refactor_acquire_video(
                     write_queue_depth,
                     video_file_name_depth,
                     metadata_file_name_depth,
+                    camera_pixel_format="Mono16",
                     writer_type=camera_dict["writer"]["type"],
                     config=camera_dict["writer_depth"],
                     process_name=f"{camera_name}_writer_depth",
