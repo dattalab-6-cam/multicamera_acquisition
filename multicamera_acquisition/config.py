@@ -13,7 +13,7 @@ def load_config(config_filepath):
 def save_config(config_filepath, recording_config):
     """Save a recording config to a file."""
     with open(config_filepath, "w") as f:
-        yaml.dump(recording_config, f)
+        yaml.dump(recording_config, f, sort_keys=False)
     return
 
 
