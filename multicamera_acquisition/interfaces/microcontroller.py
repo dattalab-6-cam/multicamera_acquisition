@@ -334,9 +334,6 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
                     top_basler_first_trigger + int(1e6 / 150 * 4),
                 ]
 
-    import pdb
-    # pdb.set_trace()
-
     # Timings for the first group
     timing_dict[first_group]["trigger_ons"] = np.array(timing_dict[first_group]["trigger_ons"])
     timing_dict[first_group]["trigger_offs"] = timing_dict[first_group]["trigger_ons"] + config["basler_pulse_dur"]
