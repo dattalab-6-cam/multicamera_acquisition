@@ -408,22 +408,6 @@ class AcquisitionLoop(mp.Process):
         self.logger.debug(f"Acq loop for {self.camera_config['name']} is finished.")
 
 
-# Never used?
-# def generate_full_config(camera_lists):
-#     full_config = {}
-#     acquisition_config = AcquisitionLoop.default_acq_loop_config().copy()
-#     microcontroller_config = Microcontroller.default_microcontroller_config().copy()
-#     full_camera_config = create_full_camera_default_config(camera_lists)
-#     full_config["acq_loop"] = acquisition_config
-#     full_config["microcontroller"] = microcontroller_config
-#     full_config["cameras"] = full_camera_config
-
-#     # write to file
-#     with open("full_config.yaml", "w") as f:
-#         yaml.dump(full_config, f)
-#     return full_config
-
-
 def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     """Use the stop() method to end the acquisition loops, writers, and display
     processes, escalating to terminate() if necessary.
