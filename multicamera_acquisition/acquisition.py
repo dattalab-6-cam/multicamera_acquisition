@@ -285,7 +285,7 @@ class AcquisitionLoop(mp.Process):
 
                 # If we received a frame:
                 # TODO: this enqueueing code can be rewritten / simplified a bit.
-                if _cam_data[0].size > 0:
+                if (_cam_data is not None) and (_cam_data[0].size > 0):
 
                     # Increment the frame counter (distinct from number of while loop iterations)
                     n_frames_received += 1
@@ -337,6 +337,12 @@ class AcquisitionLoop(mp.Process):
                             f"Dropped frame on iter {current_iter} after receiving {n_frames_received} frames (delta_t={delta_t} ms, threshold={timeout*1.25} ms)"
                         )
                     prev_timestamp = camera_timestamp
+                
+                # Seems to happen occasionally at the end of a recording, not really reproduceable. Maybe has to do with whether or not there's a queue built up?
+                elif _cam_data is None:
+                    self.logger.warning(
+                        f"Received None from camera on iter {current_iter} after receiving {n_frames_received} frames"
+                    )
 
             # Catch any frame timeouts
             except Exception as e:
