@@ -36,6 +36,12 @@ def validate_microcontroller_configutation(
     - custom output times, pins and states must be the same length, and states must be 0 or 1.
     """
 
+    # Try to find the main logger
+    try:
+        logger = logging.getLogger("main_acq_logger")
+    except:
+        logger = logging.getLogger("microcontroller_logger")
+
     # check that each capture group has required keys
     for group in capture_groups.keys():
         if group + "_camera_pins" not in config:
@@ -62,11 +68,10 @@ def validate_microcontroller_configutation(
     )
 
     if len(all_unique_pins) != len(set(all_unique_pins)):
-        raise ValueError(
-            "Some pins are repeated within or between the following lists: top_camera_pins, "
+        logger.warn("Some pins are repeated within or between the following lists: top_camera_pins, "
             "top_light_pins, bottom_camera_pins, bottom_light_pins, azure_trigger_pins, "
-            "random_output_pins, input_pins"
-        )
+            "random_output_pins, input_pins. \n This may be ok in some situations (eg sharing lights) but should be checked.")
+        
     if len(set(all_unique_pins).intersection(config["custom_output_pins"])) > 0:
         raise ValueError(
             "Some pins are shared between custom_output_pins and other lists of pins."
