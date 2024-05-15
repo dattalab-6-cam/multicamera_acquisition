@@ -3,6 +3,7 @@ import pytest
 import os
 
 from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
+from multicamera_acquisition.config import load_config
 
 from multicamera_acquisition.interfaces.config import (
     partial_config_from_camera_list,
@@ -123,6 +124,10 @@ def test_refactor_acquire_video(
     # Check that the video has the right number of frames
     for camera_name in full_config["cameras"].keys():
         assert count_frames(str(first_video_file_name)) == n_test_frames
+
+    # Check that software metadata is saved
+    version_info = full_config["globals"]["software_version_info"]
+    assert all(k in version_info.keys() for k in ["version", "full-revisionid", "dirty", "error", "date"])
 
 
 def test_refactor_acquire_video_multiple_vids_muxing(
