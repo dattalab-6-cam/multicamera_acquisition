@@ -285,7 +285,7 @@ class AcquisitionLoop(mp.Process):
 
                 # If we received a frame:
                 # TODO: this enqueueing code can be rewritten / simplified a bit.
-                if (_cam_data is not None) and (_cam_data[0].size > 0):
+                if (_cam_data[0] is not None) and (_cam_data[0].size > 0):
 
                     # Increment the frame counter (distinct from number of while loop iterations)
                     n_frames_received += 1
