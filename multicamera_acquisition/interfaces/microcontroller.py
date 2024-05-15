@@ -18,8 +18,8 @@ AZURE_NUM_SUBFRAMES_BEFORE_TRIGGER = 3
 AZURE_SUBFRAME_DURATION = 160
 
 
-def flatten(l):
-    return list(itertools.chain.from_iterable(l))
+def flatten(_list):
+    return list(itertools.chain.from_iterable(_list))
 
 
 def validate_microcontroller_configutation(
