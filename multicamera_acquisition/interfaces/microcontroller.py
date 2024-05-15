@@ -553,7 +553,10 @@ class Microcontroller(object):
     def check_for_response(self, serial_connection, expected_response, port=""):
         """Check if the microcontroller sends an expected response within 5 seconds."""
         for _ in range(50):  # connection has 0.1 second timeout
-            msg = serial_connection.readline().decode("utf-8").strip("\n")
+            try:
+                msg = serial_connection.readline().decode("utf-8").strip("\n")
+            except UnicodeDecodeError:
+                msg = "[unicode error]"
             self.logger.debug(
                 f"`check_for_response` on port {port}. Recieved: {msg} from microcontroller. Expected: {expected_response}"
             )
