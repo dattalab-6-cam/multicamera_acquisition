@@ -760,7 +760,7 @@ def refactor_acquire_video(
 
     # Add version meta-data to the config. We don't save the entire pip list output, that seems excessive.
     version_dict = get_versions()
-    final_config["globals"]["software_version_info"] = version_dict
+    config["globals"]["software_version_info"] = version_dict
 
     # Save the config file before starting the recording
     config_filepath = Path(basename + ".recording_config.yaml")
