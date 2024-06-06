@@ -3,6 +3,7 @@ import os
 import time
 import traceback
 
+import cv2
 import numpy as np
 from pypylon import pylon
 from pypylon._genicam import RuntimeException
@@ -95,6 +96,7 @@ class BaslerCamera(BaseCamera):
             "gain": 6,
             "gamma": 1.0,
             "exposure": 1000,
+            "pixel_format": "Mono8",
             "brand": "basler",
             "display": {
                 "display_frames": False,
@@ -232,11 +234,7 @@ class BaslerCamera(BaseCamera):
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
         """
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices(
-            [
-                di,
-            ]
-        )
+        devices = self.system.EnumerateDevices([di])
 
         try:
             self.cam = pylon.InstantCamera(
@@ -276,6 +274,9 @@ class BaslerCamera(BaseCamera):
             self.cam.ChunkEnable.Value = True
         else:
             pass
+
+        # Set pixel format
+        self.cam.PixelFormat.SetValue(self.config["pixel_format"])
 
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
@@ -332,6 +333,11 @@ class BaslerCamera(BaseCamera):
             raise ValueError(
                 "Cannot use microcontroller trigger with emulated cameras."
             )
+
+        # Check that pixel format is supported
+        supported_pixel_formats = ["Mono8", "BayerRG8", "RGB8"]
+        if not self.config["pixel_format"] in supported_pixel_formats:
+            raise ValueError(f"Pixel format must be one of {supported_pixel_formats}")
 
     def set_trigger_mode(self, mode):
         """Shortcut method to quickly change the camera's trigger settings.
