@@ -285,7 +285,8 @@ class BaslerCamera(BaseCamera):
         self.cam.ExposureTime.SetValue(self.config["exposure"])
 
         # Set readout mode
-        # self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
+        if "readout_mode" in self.config:
+            self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
 
         # Set roi
         roi = self.config["roi"]
