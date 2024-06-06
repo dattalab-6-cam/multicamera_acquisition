@@ -324,13 +324,14 @@ class NVC_Writer(BaseWriter):
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
             "gop": self.config["gop"],  # larger = faster,
             "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
-            "bitrate": self.config["bitrate"],
         }
-
+        
         if self.config["rc"] == "constqp":
             encoder_dictionary["constqp"] = str(self.config["constqp"])
         elif self.config["rc"] == "vbr":
             encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
+        elif self.config["rc"] == "cbr":
+            encoder_dictionary["bitrate"] = self.config["bitrate"]
 
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
