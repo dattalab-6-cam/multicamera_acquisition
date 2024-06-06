@@ -6,7 +6,7 @@ import traceback
 import cv2
 import numpy as np
 from pypylon import pylon
-from pypylon._genicam import RuntimeException
+from pypylon._genicam import RuntimeException, AccessException
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
@@ -276,7 +276,10 @@ class BaslerCamera(BaseCamera):
             pass
 
         # Set pixel format
-        self.cam.PixelFormat.SetValue(self.config["pixel_format"])
+        try:
+            self.cam.PixelFormat.SetValue(self.config["pixel_format"])
+        except AccessException:
+            self.logger.warn("Could not set pixel format -- may be ok.")
 
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
