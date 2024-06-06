@@ -114,7 +114,8 @@ class BaseWriter(mp.Process):
 
     def run(self):
         # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
-        os.setpgid(0, 0)
+        if os.name == "posix":
+            os.setpgid(0, 0)
 
         # Set up the logger
         if self.logger_queue is None:
@@ -461,7 +462,8 @@ class VideoMuxer(mp.Process):
         Ie the code right now allows you to create new videos every n frames so there will be 4 5 min vids instead of 1 20min
         """
         # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
-        os.setpgid(0, 0)
+        if os.name == "posix":
+            os.setpgid(0, 0)
 
         # Exit early if there's an issue detected
         if self.skip:

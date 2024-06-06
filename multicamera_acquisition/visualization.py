@@ -100,7 +100,8 @@ class MultiDisplay(mp.Process):
 
     def run(self):
         # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
-        os.setpgid(0, 0)
+        if os.name == "posix":
+            os.setpgid(0, 0)
 
         # Set up the logger
         if self.logger_queue is None:
