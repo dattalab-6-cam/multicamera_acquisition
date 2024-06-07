@@ -992,7 +992,7 @@ def refactor_acquire_video(
 
         datetime_prev = datetime.now()
         datetime_rec_start = datetime_prev
-        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 1)
 
         while datetime.now() < endtime:
             if config["globals"]["microcontroller_required"]:
@@ -1034,10 +1034,10 @@ def refactor_acquire_video(
 
         """ 
         TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. 
-        One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, 
+        One imagines 10 min is enough but you never know... The tradeoff is that if the writer process hangs, 
         and this has no timeout, it will never close gracefully. 
         """
-        end_processes(acquisition_loops, writers, display_proc, writer_timeout=300)
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=600)
 
         logger.info("Processes ended")
         print("\rRecording Progress: 100%", end="")
