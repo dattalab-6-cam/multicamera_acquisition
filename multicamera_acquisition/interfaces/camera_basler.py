@@ -288,9 +288,13 @@ class BaslerCamera(BaseCamera):
         self.cam.ExposureAuto.SetValue("Off")
         self.cam.ExposureTime.SetValue(self.config["exposure"])
 
-        # Set readout mode
+        # Set readout mode if needed
         if "readout_mode" in self.config:
             self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
+
+        # Set light source if needed
+        if "light_source_preset" in self.config:
+            self.cam.LightSourcePreset.SetValue(self.config["light_source_preset"])
 
         # Set roi
         roi = self.config["roi"]
@@ -344,6 +348,8 @@ class BaslerCamera(BaseCamera):
 
     def set_trigger_mode(self, mode):
         """Shortcut method to quickly change the camera's trigger settings.
+        Currently only used if config has "no_trigger", otherwise these shortcuts
+        are just for testing.
 
         Parameters
         ----------
