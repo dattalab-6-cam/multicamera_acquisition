@@ -655,11 +655,11 @@ def refactor_acquire_video(
                     profile: high
                     tuning_info: ultra_low_latency
         acq_loop:
+            downsample: 4
             display_every_n: 4
             dropped_frame_warnings: False
             max_frames_to_acqure: null
         rt_display:
-            downsample: 4
             range: [0, 1000]
     """
     current_mp_start_method = mp.get_start_method()
