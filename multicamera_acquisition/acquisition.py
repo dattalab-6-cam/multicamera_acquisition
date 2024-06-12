@@ -1,6 +1,7 @@
 import logging
 import multiprocessing as mp
 import os
+import cv2
 import traceback
 from datetime import datetime, timedelta
 from glob import glob
@@ -320,6 +321,8 @@ class AcquisitionLoop(mp.Process):
                                 n_frames_received % self.acq_config["display_every_n"]
                                 == 0
                             ):
+                                if self.camera_config["pixel_format"] == "BayerRG8":
+                                    img = cv2.cvtColor(img, cv2.COLOR_BAYER_RG2BGR)
                                 self.display_queue.put(
                                     img[
                                         :: self.acq_config["downsample"],
