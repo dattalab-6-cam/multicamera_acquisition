@@ -10,6 +10,7 @@ from os.path import exists, join
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from multicamera_acquisition.config import (
     load_config,
@@ -529,6 +530,148 @@ def resolve_device_indices(config):
     return device_index_dict
 
 
+def reset_loggers():
+    """Remove all handlers from all loggers and reset the root logger.
+
+    This should be called right before the refactor_acquire_video function whenever
+    the same python kernel is being used for more than one acquisition, e.g. in a notebook context.
+    """
+    # Remove handlers from all loggers
+    for logger in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger, logging.Logger):  # Guard against 'PlaceHolder' objects
+            logger.handlers.clear()
+
+    # Reset the root logger
+    logging.getLogger().handlers.clear()
+
+
+def align_frames_after_acquisition(
+    save_location, 
+    n_expected_videos=6, 
+    max_video_frames=None,
+    metadata_suffix="metadata.csv", 
+    logging_level=logging.INFO,
+    overwrite=False,
+):
+    """Align frames across videos, accounting for dropped frames by looking at inter-frame intervals.
+
+    Parameters
+    ----------
+    save_location : str or Path
+        The directory in which the recording was saved.
+
+    n_expected_videos : int (default: 6)
+        The number of videos expected in the save location. Ignored if max_video_frames is not None.
+
+    max_vido_frames : int (default: None)
+        The maximum number of frames in a video. If set, the videos + metadata files are saved as a 
+        series of CSVs, each with a maximum of max_video_frames frames. The names will be ...metadata.0.csv,
+        ...metadata.[max_video_frames].csv, ...metadata.[2*max_video_frames].csv, etc. So we also make 
+        an aligned frame number CSV for each of these sets of videos.
+
+    metadata_suffix : str (default: "metadata.csv")
+        The suffix of the metadata files.
+
+    logging_level : int (default: logging.INFO)
+        The logging level to use for the logger.
+
+    overwrite : bool (default: False)
+        Whether to overwrite the aligned frame CSV if it already exists.
+
+    """
+
+    outfiles = glob(join(save_location, "*aligned_frame_numbers*csv"))
+    if any([exists(f) for f in outfiles]) and not overwrite:
+        logging.warning("At least one aligned frame number CSV already exists, skipping.")
+        return
+
+    # Two cases. Either 1) max_video_frames is None, in which case there is only one set of videos.
+    # Or 2) max_video_frames is set, in which case there are multiple sets of videos.
+
+    # Set up for either case
+    if max_video_frames is None:
+
+        # Get the metadata files
+        metadata_list = glob(join(save_location, f"*{metadata_suffix}"))
+        if metadata_list is None or len(metadata_list) != n_expected_videos:
+            logging.warning(f"Expected {n_expected_videos} metadata files with suffix {metadata_suffix} in {save_location}, found {len(metadata_list)}. Align frames manually.")
+            return
+
+        # Make it a single set of videos
+        metadata_list_sets = [metadata_list]
+        metadata_short_name_sets = [[f.split(".")[1] for f in metadata_list]]
+        outfiles = [join(save_location, "aligned_frame_numbers.csv")]
+
+    elif max_video_frames is not None:
+
+        # Get *all* the metadata files, and find the unique frame start numbers
+        all_metadata_files = glob(join(save_location, f"*{metadata_suffix}"))
+        fr_split_idx = -3  # the index of the frame start number in the filename, (recording_name.camera.frame_start_num.metadata.csv)
+        frame_start_nums = np.sort(np.unique([f.split(".")[fr_split_idx] for f in all_metadata_files]))
+
+        # Make a list of metadata files for each set of videos
+        metadata_list_sets = [[f for f in all_metadata_files if f.split(".")[fr_split_idx] == frame_start_num] for frame_start_num in frame_start_nums]
+        metadata_short_name_sets = [[f.split(".")[1] for f in all_metadata_files if f.split(".")[fr_split_idx] == frame_start_num] for frame_start_num in frame_start_nums]
+        outfiles = [join(save_location, f"aligned_frame_numbers.{frame_start_num}.csv") for frame_start_num in frame_start_nums]
+
+    # For each set of videos, load the metadata files and align the frames
+    for metadata_list, short_names, outfile in zip(metadata_list_sets, metadata_short_name_sets, outfiles):
+        frame_vecs_by_vid = {}
+        for vid, metadata in zip(short_names, metadata_list):
+
+            # Load the metadata file
+            df = pd.read_csv(metadata, header=0)
+
+            # Calculate the frame differences
+            # total_n_frames = df.frames_received.iloc[-1]
+            total_n_frames = len(df)
+            diffs = np.diff(df.frame_timestamp)
+            median_diff = np.median(diffs)
+            frame_diffs = np.rint(diffs / median_diff).astype(int)  # sequence of integers representing the number of frames between each trigger
+            all_frames_vec = np.arange(df.frames_received.iloc[0] - 1, df.frames_received.iloc[0] - 1 + total_n_frames)
+
+            # Goal here is to create a df indexed by trigger number, with columns for each video
+            # that tell what frame number in the video corresponds to each trigger number.
+            # So if there are no dropped frames, the column will be a simple range from 0 to (nframes - 1).
+            # If there are dropped frames, we need to create a vector that looks like:
+            # [0, 1, 2, 3, np.nan, np.nan, 4, 5, ...] eg if the frames from triggers 4 and 5 were dropped.
+            if not (np.sum(frame_diffs) == (total_n_frames - 1)):
+                # Dropped frames
+                frame_vec = []
+                # ii = 0
+                ii = df.frames_received.iloc[0] - 1
+                for diff in frame_diffs:
+                    if diff == 1:
+                        frame_vec.append(ii)
+                    else:
+                        frame_vec.extend([pd.NA] * (diff - 1))  # use the integer null type, pd.NA
+                        frame_vec.append(ii)
+                    ii += 1
+                frame_vec.append(ii)  # add the last frame
+                assert total_n_frames == ((ii + 1) - (df.frames_received.iloc[0] - 1))  # since ii is zero-indexed
+                frame_vecs_by_vid[vid] = pd.Series(frame_vec, dtype="Int64")  # supports integer nulls
+            else:
+                # no dropped frames
+                frame_vecs_by_vid[vid] = pd.Series(
+                    index=all_frames_vec,
+                    data=all_frames_vec, 
+                    dtype="Int64"
+                )  # 0 to (nframes - 1)
+
+        # Now we have a dict of series, where each series is the frame number for each trigger number.
+        # This call to dataframe will raise an error if they're not all the same length
+        aligned_frs_df = pd.DataFrame(
+            index=all_frames_vec,
+            data=frame_vecs_by_vid,
+        )
+        aligned_frs_df.index.name = "trigger_number"
+
+        # Save the aligned frame numbers to a csv file
+        aligned_frs_df.to_csv(outfile)
+
+    return aligned_frs_df
+
+
 def refactor_acquire_video(
     save_location,
     config,
@@ -821,6 +964,7 @@ def refactor_acquire_video(
     display_queues = []
     camera_list = []
     display_ranges = []
+    metadata_name = "metadata.csv"
 
     try:
         for camera_name, camera_dict in config["cameras"].items():
@@ -836,7 +980,7 @@ def refactor_acquire_video(
                 cam_append_str = f".{camera_dict['name']}.mp4"
             video_file_name = Path(basename + cam_append_str)
             metadata_file_name = Path(
-                basename + cam_append_str.replace(".mp4", ".metadata.csv")
+                basename + cam_append_str.replace(".mp4", f".{metadata_name}")
             )
 
             # Get a writer process
@@ -1041,21 +1185,26 @@ def refactor_acquire_video(
 
         logger.info("Processes ended")
         print("\rRecording Progress: 100%", end="")
+
+        logger.info("Aligning videos using metadata...")
+        aligned_frs_df = align_frames_after_acquisition(
+            save_location,
+            n_expected_videos=len(config["cameras"]),
+            metadata_suffix=metadata_name,
+            logging_level=logging_level,
+            overwrite=overwrite,
+        )
+
+        # Print how many frames each vid had
+        for vid, frs in aligned_frs_df.iteritems():
+            logger.info(
+                f"Video {vid} had {len(frs)} frames."
+            )
+
+        # Warn if any dropped frames
+        if aligned_frs_df.isna().any().any():
+            logger.warning("Some frames appear to have been dropped during acquisition.")
+
         logger.info("Done.")
 
     return full_save_location, config
-
-
-def reset_loggers():
-    """Remove all handlers from all loggers and reset the root logger.
-
-    This should be called right before the refactor_acquire_video function whenever
-    the same python kernel is being used for more than one acquisition, e.g. in a notebook context.
-    """
-    # Remove handlers from all loggers
-    for logger in logging.Logger.manager.loggerDict.values():
-        if isinstance(logger, logging.Logger):  # Guard against 'PlaceHolder' objects
-            logger.handlers.clear()
-
-    # Reset the root logger
-    logging.getLogger().handlers.clear()
