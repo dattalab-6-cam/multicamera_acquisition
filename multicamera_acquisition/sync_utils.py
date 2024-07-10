@@ -73,15 +73,19 @@ def get_trigger_times(
         config=load_config(config_path), suppress_side_effects=True
     ).trigger_info
 
-    cycle_duration = trigger_info["cycle_duration"]
+    cycle_duration = trigger_info["cycle_duration"]  # in microsec
     cycle_triggers = np.array(trigger_info[camera_category])
 
     if num_triggers is None:
         assert (
             recording_duration_s is not None
         ), "Must provide `num_triggers` or `recording_duration_s`"
-        num_cycles = int(recording_duration_s / cycle_duration)
-        num_triggers = int(recording_duration_s / cycle_duration) * len(cycle_triggers)
+        
+        # num_cycles = int(recording_duration_s / cycle_duration)
+        # num_triggers = int(recording_duration_s / cycle_duration) * len(cycle_triggers)
+        recording_duration_us = recording_duration_s * 1e6
+        num_cycles = int(recording_duration_us / cycle_duration)
+        num_triggers = int(recording_duration_us / cycle_duration) * len(cycle_triggers)
 
     else:
         num_cycles = int(np.ceil(num_triggers / len(cycle_triggers)))
@@ -137,10 +141,9 @@ def estimate_timestamps(config_path, metadata_path, camera_category="top_basler"
     return timestamps, frame_indexes, dropped_frames
 
 
-def query_trigger_data(trigger_data_path, pin, query_times):
+def query_trigger_data(trigger_data_path, pin, query_times=None):
     """
-    Query the state of a microcontroller pin at specific times based on the record of
-    states in a trigger data file.
+    Query the state of a microcontroller pin based on the record of states in a trigger data file.
 
     Parameters
     ----------
@@ -150,8 +153,9 @@ def query_trigger_data(trigger_data_path, pin, query_times):
     pin : int
         Pin number to query.
 
-    query_times : np.ndarray
-        Array of times (in microseconds) at which to query the pin state.
+    query_times : np.ndarray or None, optional
+        If None (default): return the state of the pin at all times recorded in the file.
+        If np.ndarray: array of times (in microseconds) at which to query the pin state.
 
     Returns
     -------
@@ -161,10 +165,14 @@ def query_trigger_data(trigger_data_path, pin, query_times):
     times, pins, states = np.loadtxt(trigger_data_path, delimiter=",", skiprows=1).T
     assert np.any(pins == pin), f"Pin {pin} not found in trigger data file."
 
-    times, states = times[pins == pin], states[pins == pin]
-    assert (
-        query_times.min() >= times.min()
-    ), "Some query times are earlier than the first logged pin state."
+    if query_times is None:
+        return states[pins == pin], times[pins == pin]
+    
+    else:
+        times, states = times[pins == pin], states[pins == pin]
+        assert (
+            query_times.min() >= times.min()
+        ), "Some query times are earlier than the first logged pin state."
 
-    pin_states = states[times.searchsorted(query_times, side="right") - 1]
-    return pin_states
+        pin_states = states[times.searchsorted(query_times, side="right") - 1]
+        return pin_states
