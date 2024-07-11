@@ -64,6 +64,11 @@ def get_camera(
         raise NotImplementedError(
             "Lucid camera not yet implemented in refactored branch."
         )
+    
+    elif brand == "uvc":
+        from multicamera_acquisition.interfaces.camera_uvc import UVCCamera
+
+        cam = UVCCamera(id=id, name=name, config=config)
 
     return cam
 

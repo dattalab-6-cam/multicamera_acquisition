@@ -51,6 +51,7 @@ def validate_recording_config(recording_config, logging_level):
             "basler",
             "basler_emulated",
             "azure",
+            "uvc",
         ]:
             raise ValueError(
                 f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"

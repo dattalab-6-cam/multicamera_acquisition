@@ -19,6 +19,7 @@ from multicamera_acquisition.config import (
 from multicamera_acquisition.interfaces.camera_azure import enumerate_azure_cameras
 from multicamera_acquisition.interfaces.camera_base import CameraError, get_camera
 from multicamera_acquisition.interfaces.camera_basler import enumerate_basler_cameras
+from multicamera_acquisition.interfaces.camera_uvc import enumerate_uvc_cameras
 from multicamera_acquisition.interfaces.microcontroller import Microcontroller
 from multicamera_acquisition.logging_utils import setup_child_logger
 from multicamera_acquisition.visualization import MultiDisplay
@@ -516,6 +517,25 @@ def resolve_device_indices(config):
 
     # Resolve any Lucid cameras
     # TODO
+
+    # Resolve any uvc cameras
+    if any([camera_dict["brand"] == "uvc" for camera_dict in config["cameras"].values()]):
+        serial_nos, models = enumerate_uvc_cameras()
+        for camera_name, camera_dict in config["cameras"].items():
+            if camera_dict["brand"] not in ["uvc"]:
+                continue
+            if camera_dict["id"] is None:
+                dev_idx = 0
+            elif isinstance(camera_dict["id"], int):
+                dev_idx = camera_dict["id"]
+            elif isinstance(camera_dict["id"], str):
+                if camera_dict["id"] not in list(models):
+                    raise CameraError(
+                        f"Camera with serial number {camera_dict['id']} not found."
+                    )
+                else:
+                    dev_idx = camera_dict["id"]
+            device_index_dict[camera_name] = dev_idx
 
     return device_index_dict
 
