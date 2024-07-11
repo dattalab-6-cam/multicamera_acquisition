@@ -4,6 +4,7 @@ import uvc
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
+
 class UVCCamera(BaseCamera):
     def __init__(
         self,
@@ -302,52 +303,57 @@ class UVCCamera(BaseCamera):
         tstamp : int ()
             The timestamp of the frame, if get_timestamp=True; else, None.
         """
-        
+
         if timeout is None:
             timeout = 10000
-        
+
         frame = self.cam.get_frame_robust()
         # frame = self.cam.get_frame(timeout=timeout/1000.0) # timeout is in seconds for pyuvc
 
         if not frame.data_fully_received:
             self.logger.warning("Frame not fully received.")
 
+        # img_array = frame.gray.T
         img_array = frame.gray
         timestamp = frame.timestamp if get_timestamp else None
         line_status = None
 
+        # self.logger.debug(f"Frame shape: {img_array.shape} ")
+        # self.logger.debug(f"Frame img type: {type(img_array)}")
+
         return img_array, line_status, timestamp
 
+
 def enumerate_uvc_cameras(behav_on_none="raise"):
-        """Enumerate all UVC cameras connected to the system.
+    """Enumerate all UVC cameras connected to the system.
 
-        Parameters
-        ----------
-        behav_on_none : str (default: 'raise')
-            If 'raise', raises an error if no cameras are found.
-            If 'pass', returns None if no cameras are found.
+    Parameters
+    ----------
+    behav_on_none : str (default: 'raise')
+        If 'raise', raises an error if no cameras are found.
+        If 'pass', returns None if no cameras are found.
 
-        Returns
-        -------
-        (serial_nos, models) : tuple of list of strings
-            Lists of serial numbers and models of all connected cameras.
-        """
-        devices = uvc.device_list()
+    Returns
+    -------
+    (serial_nos, models) : tuple of list of strings
+        Lists of serial numbers and models of all connected cameras.
+    """
+    devices = uvc.device_list()
 
-        # If no camera is found
-        if len(devices) == 0 and behav_on_none == "raise":
-            raise RuntimeError("No cameras found.")
-        elif len(devices) == 0 and behav_on_none == "pass":
-            pass
+    # If no camera is found
+    if len(devices) == 0 and behav_on_none == "raise":
+        raise RuntimeError("No cameras found.")
+    elif len(devices) == 0 and behav_on_none == "pass":
+        pass
 
-        # Otherwise, loop through all found devices and get their sn's + model names
-        serial_nos = []
-        models = []
-        for device in devices:
-            serial_nos.append(device["serialNumber"])
-            models.append(device["idProduct"])
+    # Otherwise, loop through all found devices and get their sn's + model names
+    serial_nos = []
+    models = []
+    for device in devices:
+        serial_nos.append(device["serialNumber"])
+        models.append(device["idProduct"])
 
-        # Delete the devices instance to free them up (maybe not nec?)
-        del devices
+    # Delete the devices instance to free them up (maybe not nec?)
+    del devices
 
-        return serial_nos, models
+    return serial_nos, models
