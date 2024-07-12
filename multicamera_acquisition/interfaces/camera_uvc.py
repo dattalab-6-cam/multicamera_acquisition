@@ -87,7 +87,7 @@ class UVCCamera(BaseCamera):
             "brightness": 2,
             "contrast": 100,
             "frame_size": (640, 400),
-            "fps": 210,
+            "fps": 60,
             "display": {
                 "display_frames": False,
                 "display_range": (0, 255),
