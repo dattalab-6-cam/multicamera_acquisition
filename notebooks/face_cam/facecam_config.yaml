@@ -1,6 +1,6 @@
 acq_loop:
   display_every_n: 1
-  downsample: 12
+  downsample: 4
   dropped_frame_warnings: true
   max_frames_to_acqure: null
 cameras:
