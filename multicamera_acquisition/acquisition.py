@@ -944,7 +944,8 @@ def refactor_acquire_video(
                 )
     except Exception as e:
         end_processes(acquisition_loops, [], None)
-        microcontroller.close()
+        if final_config["globals"]["microcontroller_required"]:
+            microcontroller.close()
         raise e
 
     if len(display_queues) > 0:
@@ -1005,7 +1006,8 @@ def refactor_acquire_video(
 
         datetime_prev = datetime.now()
         datetime_rec_start = datetime_prev
-        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        # endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
+        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 1)
 
         while datetime.now() < endtime:
             if final_config["globals"]["microcontroller_required"]:
