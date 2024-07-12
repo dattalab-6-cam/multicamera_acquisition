@@ -140,7 +140,9 @@ class BaseWriter(mp.Process):
 
             while True:
                 # Get data from the queue
+                self.logger.debug("Getting data")
                 data = self.queue.get()
+                self.logger.debug("Got data")
 
                 # If we get an empty tuple, stop
                 if len(data) == 0:
@@ -148,14 +150,19 @@ class BaseWriter(mp.Process):
                     break
 
                 # Unpack the data
+                self.logger.debug("Unpacking data")
                 img, line_status, camera_timestamp, self.frames_received = data
+                self.logger.debug("Unpacked data")
 
                 # Get the metadata about the frame
+                self.logger.debug("Getting metadata")
                 frame_image_uid = str(round(time.time(), 5)).zfill(5)
                 try:
                     qsize = self.queue.qsize()
                 except NotImplementedError:
                     qsize = np.nan
+
+                self.logger.debug("Got metadata")
 
                 # If the frame is corrupted (TODO: how does this check for corruption?)
                 if img is None:
@@ -182,11 +189,17 @@ class BaseWriter(mp.Process):
 
                 # Create (at beginning) or reset (after self._reset_writer()) the pipe if needed
                 if self.pipe is None:
+                    self.logger.debug("Getting new pipe")
                     data_shape = img.shape
                     self._get_new_pipe(data_shape)
 
                 # Write the frame
+                self.logger.debug(
+                    f"Writing frame {self.frames_written_to_current_video}..."
+                )
+                # print(f"Writing frame {self.frames_written_to_current_video}...")
                 self.append(img)
+                self.logger.debug("Frame written")
                 self.frames_written_to_current_video += 1
 
                 # If the current frame is greater than the max, create a new video and metadata file
@@ -209,7 +222,6 @@ class BaseWriter(mp.Process):
         self.finish()
 
     def _reset_writers(self):
-
         # Reset the video writer
         self.close_video()
         self.frames_written_to_current_video = 0
@@ -306,7 +318,6 @@ class NVC_Writer(BaseWriter):
         pass
 
     def _get_new_pipe(self, data_shape):
-
         import PyNvCodec as nvc  # TODO: this should happen before the recording starts
 
         # TODO: make part of the config be exactly the dictionary that is passed to the encoder,
@@ -400,7 +411,6 @@ class NVC_Writer(BaseWriter):
                 break
 
     def _mux_video(self, video_file_name):
-
         # Create a muxer process
         self.logger.debug(f"Creating muxer process for {video_file_name}")
         success_event = mp.Event()
@@ -419,7 +429,6 @@ class NVC_Writer(BaseWriter):
         self._current_vid_muxing = True
 
     def finish(self):
-
         # Join the muxer processes and rename the videos
         if self.config["auto_remux_videos"] and hasattr(self, "muxer_processes"):
             self.logger.debug("Joining muxer processes")
@@ -518,7 +527,6 @@ class FFMPEG_Writer(BaseWriter):
         logger_queue=None,
         logging_level=logging.DEBUG,
     ):
-
         super().__init__(
             queue=queue,
             video_file_name=video_file_name,
@@ -541,6 +549,8 @@ class FFMPEG_Writer(BaseWriter):
         assert "pixel_format" in self.config, "pixel_format must be specified"
 
     def append(self, data):
+        self.logger.debug("Entered append")
+
         # Convert to the correct data format
         if self.config["pixel_format"] == "gray16":
             data = data.astype(np.uint16)
@@ -550,8 +560,27 @@ class FFMPEG_Writer(BaseWriter):
         if self.camera_pixel_format == "BayerRG8":
             data = cv2.cvtColor(data, cv2.COLOR_BAYER_RG2BGR)
 
+        self.logger.debug("Converted data to correct format")
+
         # Write it to the pipe
         self.pipe.stdin.write(data.tobytes())
+
+        # DEBUGGING
+        # try:
+        #     self.logger.debug("trying to convert to bytes...")
+        #     data.tobytes()
+        # except Exception as e:
+        #     self.logger.error(f"Failed to convert frame to bytes: {e}")
+        #     self.logger.error(traceback.format_exc())
+
+        # np.save(join("/Users/jonahpearl/Documents/PiN/Datta_lab/tmp/facecam_tests/raw_frames", f"frame_{self.frames_received}.npy"), data)
+
+        # try:
+        #     self.logger.debug("trying to write to pipe...")
+        #     self.pipe.stdin.write(data.tobytes())
+        # except Exception as e:
+        #     self.logger.error(f"Failed to write frame to pipe: {e}")
+        #     self.logger.error(traceback.format_exc())
 
     def _get_new_pipe(self, data_shape):
         # Generate the ffmpeg command
@@ -576,6 +605,7 @@ class FFMPEG_Writer(BaseWriter):
         )
 
     def close_video(self):
+        self.logger.debug("Closing video")
         if self.pipe is not None:
             self.pipe.stdin.close()
         self.pipe = None

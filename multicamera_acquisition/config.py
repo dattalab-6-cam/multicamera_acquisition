@@ -51,6 +51,7 @@ def validate_recording_config(recording_config, logging_level):
             "basler",
             "basler_emulated",
             "azure",
+            "uvc",
         ]:
             raise ValueError(
                 f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"
@@ -94,6 +95,14 @@ def validate_recording_config(recording_config, logging_level):
     # Warn user if global fps does not match fps in individual writers
     if recording_config["globals"]["fps"] != ir_fpses[0]:
         raise ValueError("Global fps must match fps in individual writers.")
+
+    # Raise error if user requests a loglevel of debug in the ffmpeg writer...seems to break, unsure why.
+    for camera_name in recording_config["cameras"].keys():
+        if "loglevel" in recording_config["cameras"][camera_name]["writer"].keys():
+            if recording_config["cameras"][camera_name]["writer"]["loglevel"] == "debug":
+                raise ValueError(
+                    "Cannot set loglevel to debug in ffmpeg writer.  This seems to break things."
+                )
 
 
 def recursive_update(old_dict, updates):

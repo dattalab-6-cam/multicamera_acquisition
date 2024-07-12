@@ -28,6 +28,8 @@ def camera_brand(camera_type):
         brand = "basler"
     elif camera_type == "basler_emulated":
         brand = "basler_emulated"
+    elif camera_type == "uvc":
+        brand = "uvc"
     else:
         raise ValueError("Invalid camera type")
     return brand

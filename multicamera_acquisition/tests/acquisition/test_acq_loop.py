@@ -55,12 +55,16 @@ def test_acq_loop(tmp_path, fps, n_test_frames, camera_type, writer_type):
         from multicamera_acquisition.interfaces.camera_basler import (
             EmulatedBaslerCamera as Camera,
         )
-
         id = 0
     elif camera_type == "azure":
         from multicamera_acquisition.interfaces.camera_azure import (
             AzureCamera as Camera,
         )
+    elif camera_type == "uvc":
+        from multicamera_acquisition.interfaces.camera_uvc import (
+            UVCCamera as Camera,
+        )
+        id = 0
     else:
         raise NotImplementedError
     camera_config = Camera.default_camera_config().copy()

@@ -3,6 +3,7 @@ import pytest
 import os
 
 from multicamera_acquisition.acquisition import refactor_acquire_video, AcquisitionLoop
+from multicamera_acquisition.config import load_config, save_config
 
 from multicamera_acquisition.interfaces.config import (
     partial_config_from_camera_list,
@@ -57,10 +58,17 @@ def test_refactor_acquire_video(
     if logging_level is None:
         logging_level = logging.INFO
 
-    camera_list = [
-        {"name": "top", "brand": camera_brand, "id": 0},
-        {"name": "bottom", "brand": camera_brand, "id": 1},
-    ]
+    if "basler" in camera_brand:
+        camera_list = [
+            {"name": "top", "brand": camera_brand, "id": 0},
+            {"name": "bottom", "brand": camera_brand, "id": 1},
+        ]
+    elif camera_brand == "uvc":
+        camera_list = [
+            {"name": "top", "brand": camera_brand, "id": 0, "fps": fps},
+        ]
+    else:
+        raise NotImplementedError
 
     # Set the trigger behavior
     for camera in camera_list:
@@ -100,6 +108,10 @@ def test_refactor_acquire_video(
     acq_config["max_frames_to_acqure"] = n_test_frames
     full_config["acq_loop"] = acq_config
 
+    # save the config used for testing
+    config_save_path = os.path.join("/Users/jonahpearl/Documents/PiN/Datta_lab/Local_code/multicamera_acquisition/notebooks/face_cam", "test_config.yaml")
+    save_config(config_save_path, full_config)
+
     # Run the func!
     save_loc, full_config = refactor_acquire_video(
         tmp_path,
@@ -123,6 +135,10 @@ def test_refactor_acquire_video(
     # Check that the video has the right number of frames
     for camera_name in full_config["cameras"].keys():
         assert count_frames(str(first_video_file_name)) == n_test_frames
+
+    # Check that software metadata is saved
+    version_info = full_config["globals"]["software_version_info"]
+    assert all(k in version_info.keys() for k in ["version", "full-revisionid", "dirty", "error", "date"])
 
 
 def test_refactor_acquire_video_multiple_vids_muxing(

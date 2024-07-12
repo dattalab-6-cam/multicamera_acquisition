@@ -596,6 +596,7 @@ class EmulatedBaslerCamera(BaslerCamera):
             "gain": 6,
             "exposure": 1000,
             "brand": "basler_emulated",
+            "pixel_format": "Mono8",
             "display": {"display_frames": False, "display_range": (0, 255)},
             "trigger": {
                 "trigger_type": "no_trigger",
