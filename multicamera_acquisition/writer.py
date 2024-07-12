@@ -2,6 +2,7 @@ import csv
 import logging
 import multiprocessing as mp
 import os
+import cv2
 import subprocess
 import time
 import traceback
@@ -19,6 +20,7 @@ class BaseWriter(mp.Process):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
@@ -39,6 +41,9 @@ class BaseWriter(mp.Process):
         metadata_file_name : str or Path
             The name of the metadata file to write.
 
+        camera_pixel_format : str
+            Format of image data passed to writer.
+
         config : dict
             A dictionary of configuration parameters for the writer.
             If None, a default config will be used.
@@ -53,6 +58,7 @@ class BaseWriter(mp.Process):
         self.queue = queue
         self.video_file_name = Path(video_file_name)
         self.metadata_file_name = metadata_file_name
+        self.camera_pixel_format = camera_pixel_format
         self.config = config
         self.logger_queue = logger_queue
         self.logging_level = logging_level
@@ -107,6 +113,10 @@ class BaseWriter(mp.Process):
         pass
 
     def run(self):
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
+        if os.name == "posix":
+            os.setpgid(0, 0)
+
         # Set up the logger
         if self.logger_queue is None:
             # Just use the root logger
@@ -127,6 +137,7 @@ class BaseWriter(mp.Process):
         # Loop until we get a stop signal
         self.frames_written_to_current_video = 0
         try:
+
             while True:
                 # Get data from the queue
                 self.logger.debug("Getting data")
@@ -247,16 +258,21 @@ class NVC_Writer(BaseWriter):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
         logging_level=logging.DEBUG,
     ):
+
+        assert camera_pixel_format in ["Mono8", "BayerRG8"]
+
         super().__init__(
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
             config=config,
+            camera_pixel_format=camera_pixel_format,
             process_name=process_name,
             logger_queue=logger_queue,
             logging_level=logging_level,
@@ -282,7 +298,6 @@ class NVC_Writer(BaseWriter):
             "max_video_frames": None,  # None means no limit; otherwise, pass an int
             "auto_remux_videos": True,
             # encoder params
-            "pixel_format": "gray8",
             "preset": "P1",  # P1 fastest, P7 slowest / x = set(('apple', 'banana', 'cherry'))
             "codec": "h264",  # h264, hevc
             "profile": "high",  # high or baseline (?)
@@ -297,17 +312,10 @@ class NVC_Writer(BaseWriter):
             "maxbitrate": "20M",  # max br (ignored for constqp)
             "constqp": "27",  # (only for rc=constqp)
         }
-
         return config
 
     def validate_config(self):
-        # Check pixel format (only gray8 supported by VPF)
-        assert (
-            "pixel_format" in self.config
-        ), "VPF requires pixel_format to be specified"
-        assert (
-            self.config["pixel_format"] == "gray8"
-        ), "VPF only supports gray8 pixel format"
+        pass
 
     def _get_new_pipe(self, data_shape):
         import PyNvCodec as nvc  # TODO: this should happen before the recording starts
@@ -327,13 +335,14 @@ class NVC_Writer(BaseWriter):
             "idrperiod": self.config["idrperiod"],  # "256", # distance between I frames
             "gop": self.config["gop"],  # larger = faster,
             "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
-            "bitrate": self.config["bitrate"],
         }
-
+        
         if self.config["rc"] == "constqp":
             encoder_dictionary["constqp"] = str(self.config["constqp"])
         elif self.config["rc"] == "vbr":
             encoder_dictionary["maxbitrate"] = self.config["maxbitrate"]
+        elif self.config["rc"] == "cbr":
+            encoder_dictionary["bitrate"] = self.config["bitrate"]
 
         self.logger.debug(f"Created new pipe with encoder dict ({encoder_dictionary}")
         self.pipe = nvc.PyNvEncoder(
@@ -349,14 +358,19 @@ class NVC_Writer(BaseWriter):
         # Cast to uint8
         data = data.astype(np.uint8)
 
-        # Convert to nv12, which is dims X by Y*1.5
-        if self.nv12_placeholder is None:
-            nv12_array = grey2nv12(data)
-            self.img_dims = data.shape
-            self.nv12_placeholder = nv12_array
-        else:
-            nv12_array = self.nv12_placeholder
-            nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
+        if self.camera_pixel_format == "Mono8":
+            # Convert to nv12, which is dims X by Y*1.5
+            if self.nv12_placeholder is None:
+                nv12_array = grey2nv12(data)
+                self.img_dims = data.shape
+                self.nv12_placeholder = nv12_array
+            else:
+                nv12_array = self.nv12_placeholder
+                nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
+            img_array = nv12_array
+
+        elif self.camera_pixel_format == "BayerRG8":
+            nv12_array = bayer2nv12(data)
 
         try:
             success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
@@ -457,6 +471,9 @@ class VideoMuxer(mp.Process):
         TODO:  make it a flag that can be ignored and also make sure it handles multiple videos for each camera elegantly
         Ie the code right now allows you to create new videos every n frames so there will be 4 5 min vids instead of 1 20min
         """
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
+        if os.name == "posix":
+            os.setpgid(0, 0)
 
         # Exit early if there's an issue detected
         if self.skip:
@@ -504,6 +521,7 @@ class FFMPEG_Writer(BaseWriter):
         queue,
         video_file_name,
         metadata_file_name,
+        camera_pixel_format="Mono8",
         config=None,
         process_name=None,
         logger_queue=None,
@@ -513,6 +531,7 @@ class FFMPEG_Writer(BaseWriter):
             queue=queue,
             video_file_name=video_file_name,
             metadata_file_name=metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -527,16 +546,19 @@ class FFMPEG_Writer(BaseWriter):
 
     def validate_config(self):
         # Check pixel format
-        assert "pixel_format" in self.config, "pixel_format msut be specified"
+        assert "pixel_format" in self.config, "pixel_format must be specified"
 
     def append(self, data):
         self.logger.debug("Entered append")
 
         # Convert to the correct data format
-        if self.config["pixel_format"] == "gray8":
-            data = data.astype(np.uint8)
-        elif self.config["pixel_format"] == "gray16":
+        if self.config["pixel_format"] == "gray16":
             data = data.astype(np.uint16)
+        else:
+            data = data.astype(np.uint8)
+
+        if self.camera_pixel_format == "BayerRG8":
+            data = cv2.cvtColor(data, cv2.COLOR_BAYER_RG2BGR)
 
         self.logger.debug("Converted data to correct format")
 
@@ -562,6 +584,7 @@ class FFMPEG_Writer(BaseWriter):
 
     def _get_new_pipe(self, data_shape):
         # Generate the ffmpeg command
+
         command = FFMPEG_Writer.create_ffmpeg_pipe_command(
             self.video_file_name,
             data_shape,
@@ -593,6 +616,12 @@ class FFMPEG_Writer(BaseWriter):
 
         Frame size tbd on the fly.
         """
+        assert vid_type in [
+            "ir",
+            "color",
+            "depth",
+        ], "vid_type must be one of ['color', 'depth', 'ir']"
+
         config = {
             "fps": fps,
             "max_video_frames": None,  # None means no limit; otherwise, pass an int
@@ -601,31 +630,29 @@ class FFMPEG_Writer(BaseWriter):
             "type": "ffmpeg",
         }
 
-        if vid_type == "ir":
-            # Use uint8 for ir vids
-            config["pixel_format"] = "gray8"
-
-            # Use a pixel format that is readable by most players
-            config["output_px_format"] = "yuv420p"  # Output pixel format
-
-            # Set codec and preset depending on whether we have a gpu
-            if gpu is not None:
-                config["video_codec"] = "h264_nvenc"
-                config["gpu"] = gpu
-                config["preset"] = "p1"  # p1 - p7, p1 is fastest, p7 is slowest
-            else:
-                config["video_codec"] = "libx264"
-                config["preset"] = "ultrafast"
-                config["gpu"] = None
-
-            config["depth"] = False
-
-        elif vid_type == "depth":
+        if vid_type == "depth":
             # Use uint16 for depth vids
             config["pixel_format"] = "gray16"
             config["video_codec"] = "ffv1"  # lossless depth
             config["depth"] = True
             config["gpu"] = None
+
+        else:
+            # Use uint8 for ir vids
+            if vid_type == "ir":
+                config["pixel_format"] = "gray8"
+            elif vid_type == "color":
+                config["pixel_format"] = "rgb24"
+
+            # Set codec and preset depending on whether we have a gpu
+            if gpu is not None:
+                config["gpu"] = gpu
+                config["preset"] = "p1"  # p1 - p7, p1 is fastest, p7 is slowest
+            else:
+                config["preset"] = "ultrafast"
+                config["gpu"] = None
+
+            config["depth"] = False
 
         return config
 
@@ -733,6 +760,7 @@ def get_writer(
     queue,
     video_file_name,
     metadata_file_name,
+    camera_pixel_format="Mono8",
     writer_type="nvc",
     config=None,
     process_name=None,
@@ -745,6 +773,7 @@ def get_writer(
             queue,
             video_file_name,
             metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -755,6 +784,7 @@ def get_writer(
             queue,
             video_file_name,
             metadata_file_name,
+            camera_pixel_format=camera_pixel_format,
             config=config,
             process_name=process_name,
             logger_queue=logger_queue,
@@ -781,5 +811,28 @@ def grey2nv12(frame):
 
     # Stack Y and UV to create the NV12 format
     nv12 = np.vstack((Y, UV))
+
+    return nv12
+
+
+def bayer2nv12(frame):
+    """Convert a BayerRG8 image to NV12 format"""
+    # Convert RGB to I420 (YUV420 planar)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BAYER_RG2BGR)
+    yuv_i420 = cv2.cvtColor(rgb, cv2.COLOR_RGB2YUV_I420)
+    height, width = frame.shape[:2]
+
+    # Extract Y, U, and V planes from the I420 format
+    Y_plane = yuv_i420[:height]
+    U_plane = yuv_i420[height : height + height // 4].reshape((height // 2, width // 2))
+    V_plane = yuv_i420[height + height // 4 :].reshape((height // 2, width // 2))
+
+    # Interleave U and V planes to create the UV plane in NV12 format
+    UV_plane = np.empty((height // 2, width), dtype=np.uint8)
+    UV_plane[:, 0::2] = U_plane
+    UV_plane[:, 1::2] = V_plane
+
+    # Combine Y and interleaved UV planes to create the final NV12 frame
+    nv12 = np.vstack((Y_plane, UV_plane))
 
     return nv12

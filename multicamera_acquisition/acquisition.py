@@ -149,6 +149,11 @@ class AcquisitionLoop(mp.Process):
     def run(self):
         """Launch a separate subprocess to acquire frames."""
 
+        # Set the process group ID to to the process ID so it isn't affected by the main process's stop signal
+        # But only if we're on Linux
+        if os.name == "posix":
+            os.setpgid(0, 0)
+
         # Set up logging. In the typical case, we set up a logger to communicate
         # with the main process via a Queue.
         if self.logger_queue is None:
@@ -276,7 +281,9 @@ class AcquisitionLoop(mp.Process):
                     )  # increase timeout of first frame
                     first_frame = False
                     self.logger.debug("First frame received")
-                    prev_timestamp = _cam_data[-1]  # camera_timestamp is always the final element of the _cam_data tuple
+                    prev_timestamp = _cam_data[
+                        -1
+                    ]  # camera_timestamp is always the final element of the _cam_data tuple
                 else:
                     _cam_data = cam.get_array(timeout=timeout, get_timestamp=True)
 
@@ -309,7 +316,9 @@ class AcquisitionLoop(mp.Process):
                                 )
                     else:
                         img, linestatus, camera_timestamp = _cam_data
-                        self.write_queue.put((img, linestatus, camera_timestamp, n_frames_received))  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
+                        self.write_queue.put(
+                            (img, linestatus, camera_timestamp, n_frames_received)
+                        )  # writer exepcts (img, line_status, camera_timestamp, self.frames_received)
                         if self.camera_config["display"]["display_frames"]:
                             if (
                                 n_frames_received % self.acq_config["display_every_n"]
@@ -366,7 +375,7 @@ class AcquisitionLoop(mp.Process):
 
         # Once the stop signal is received, stop the writer and dispaly processes
         self.logger.debug(
-            f"Received {n_frames_received} many frames over {current_iter} iterations, {self.camera_config['name']}"
+            f"Received {n_frames_received} frames over {current_iter} iterations, {self.camera_config['name']}"
         )
 
         # We use empty tuples to signal the writer that no more frames are coming, and it can safely close the video.
@@ -417,7 +426,6 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
     """Use the stop() method to end the acquisition loops, writers, and display
     processes, escalating to terminate() if necessary.
     """
-
     # Get the main logger
     logger = logging.getLogger("main_acq_logger")
 
@@ -496,7 +504,9 @@ def resolve_device_indices(config):
         device_index_dict[camera_name] = dev_idx
 
     # Resolve any Azure cameras
-    if any([camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]):
+    if any(
+        [camera_dict["brand"] == "azure" for camera_dict in config["cameras"].values()]
+    ):
         serial_nos_dict = enumerate_azure_cameras()
         serial_nos_dict = {v: k for k, v in serial_nos_dict.items()}
         for camera_name, camera_dict in config["cameras"].items():
@@ -612,7 +622,7 @@ def refactor_acquire_video(
     save_location : Path
         The directory in which the recording was saved.
 
-    final_config: dict
+    config: dict
         The final recording config used.
 
     Examples
@@ -777,11 +787,8 @@ def refactor_acquire_video(
     else:
         assert isinstance(config, dict)
 
-    # Add the display params to the config  # TODO: cleanup
-    final_config = config
-
     # Check that the config is valid
-    validate_recording_config(final_config, logging_level)
+    validate_recording_config(config, logging_level)
 
     # Add version meta-data to the config. We don't save the entire pip list output, that seems excessive.
     version_dict = get_versions()
@@ -789,7 +796,7 @@ def refactor_acquire_video(
 
     # Save the config file before starting the recording
     config_filepath = Path(basename + ".recording_config.yaml")
-    save_config(config_filepath, final_config)
+    save_config(config_filepath, config)
 
     """
     CAMERA INFO
@@ -805,7 +812,7 @@ def refactor_acquire_video(
     NB: in the config, there is only one spot for a camera "id" — this can be either an integer (device index) or a string (serial number).
     """
     # Resolve camera device indices
-    device_index_dict = resolve_device_indices(final_config)
+    device_index_dict = resolve_device_indices(config)
 
     """
     ARDUINO INFO
@@ -815,9 +822,9 @@ def refactor_acquire_video(
     """
 
     # Find the microcontroller to be used for triggering
-    if final_config["globals"]["microcontroller_required"]:
+    if config["globals"]["microcontroller_required"]:
         logger.info("Finding microcontroller...")
-        microcontroller = Microcontroller(basename, final_config)
+        microcontroller = Microcontroller(basename, config)
         microcontroller.open_serial_connection()
 
     """
@@ -843,7 +850,7 @@ def refactor_acquire_video(
     display_ranges = []
 
     try:
-        for camera_name, camera_dict in final_config["cameras"].items():
+        for camera_name, camera_dict in config["cameras"].items():
             # Create a writer queue
             write_queue = (
                 mp.Queue()
@@ -862,10 +869,16 @@ def refactor_acquire_video(
             # Get a writer process
             # TODO: this is a pretty thin wrapper around the class init's, and maybe
             # we could just call the class init's directly here for clarity.
+            if camera_dict["brand"] == "basler":
+                camera_pixel_format = camera_dict["pixel_format"]
+            else:
+                camera_pixel_format = "Mono8"
+
             writer = get_writer(
                 write_queue,
                 video_file_name,
                 metadata_file_name,
+                camera_pixel_format=camera_pixel_format,
                 writer_type=camera_dict["writer"]["type"],
                 config=camera_dict["writer"],
                 process_name=f"{camera_name}_writer",
@@ -890,6 +903,7 @@ def refactor_acquire_video(
                     write_queue_depth,
                     video_file_name_depth,
                     metadata_file_name_depth,
+                    camera_pixel_format="Mono16",
                     writer_type=camera_dict["writer"]["type"],
                     config=camera_dict["writer_depth"],
                     process_name=f"{camera_name}_writer_depth",
@@ -917,11 +931,11 @@ def refactor_acquire_video(
                 camera_device_index=device_index_dict[camera_name],
                 camera_config=camera_dict,
                 write_queue_depth=write_queue_depth,
-                acq_loop_config=final_config["acq_loop"],
+                acq_loop_config=config["acq_loop"],
                 logger_queue=logger_queue,
                 logging_level=logging_level,
                 process_name=f"{camera_name}_acqLoop",
-                fps=final_config["globals"]["fps"],
+                fps=config["globals"]["fps"],
             )
 
             # Start the writer and acquisition loop processes
@@ -954,7 +968,7 @@ def refactor_acquire_video(
             display_queues,
             camera_list=camera_list,
             display_ranges=display_ranges,
-            config=final_config["rt_display"],
+            config=config["rt_display"],
             logger_queue=logger_queue,
             logging_level=logging_level,
         )
@@ -984,7 +998,7 @@ def refactor_acquire_video(
             )
 
     # Tell microcontroller to start the acquisition loop
-    if final_config["globals"]["microcontroller_required"]:
+    if config["globals"]["microcontroller_required"]:
         logger.info("Starting microcontroller...")
         microcontroller.start_acquisition(recording_duration_s)
 
@@ -1006,11 +1020,14 @@ def refactor_acquire_video(
 
         datetime_prev = datetime.now()
         datetime_rec_start = datetime_prev
-        # endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
-        endtime = datetime_prev + timedelta(seconds=recording_duration_s + 1)
+
+        if recording_duration_s < 10:
+            endtime = datetime_prev + timedelta(seconds=recording_duration_s + 1)  # speed up testing
+        else:
+            endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
-            if final_config["globals"]["microcontroller_required"]:
+            if config["globals"]["microcontroller_required"]:
                 # Tell the microcontroller to check for input trigger data or finish signal
                 finished = microcontroller.check_for_input()
                 if finished:
@@ -1042,18 +1059,23 @@ def refactor_acquire_video(
     finally:
         # End the processes and close the microcontroller serial connection
         logger.info("Ending processes, this may take a moment...")
-        end_processes(
-            acquisition_loops, writers, display_proc, writer_timeout=300
-        )  # TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. One images 5 min is enough but you never know... The tradeoff is that if the writer process hangs, and this has no timeout, it will never close gracefully.
-        logger.info("Processed ended")
-        print("\rRecording Progress: 100%", end="")
-        if final_config["globals"]["microcontroller_required"]:
+        if config["globals"]["microcontroller_required"]:
             if not finished:
                 microcontroller.interrupt_acquisition()
             microcontroller.close()
+
+        """ 
+        TODO: This writer timeout is at risk of squashing the saving of videos if there's a huge buffer. 
+        One imagines 10 min is enough but you never know... The tradeoff is that if the writer process hangs, 
+        and this has no timeout, it will never close gracefully. 
+        """
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=600)
+
+        logger.info("Processes ended")
+        print("\rRecording Progress: 100%", end="")
         logger.info("Done.")
 
-    return full_save_location, final_config
+    return full_save_location, config
 
 
 def reset_loggers():

@@ -58,10 +58,14 @@ def validate_recording_config(recording_config, logging_level):
             )
 
     # Warn user that fps for baslers / azures is deprecated
-    for camera_name in recording_config["cameras"].keys():
-        if "fps" in recording_config["cameras"][camera_name].keys():
+    for camera_config in recording_config["cameras"].values():
+        if "fps" in camera_config.keys() and (
+            camera_config["brand"] == "azure"
+            or camera_config["trigger"]["trigger_type"] == "microcontroller"
+        ):
             logger.warning(
-                "WARNING: fps is deprecated for Basler camera configs (unecessary) and azure cameras (only 30 fps supported)."
+                "WARNING: fps is deprecated azure cameras (only 30 fps supported) and "
+                "for Basler cameras where 'trigger_type'=='microcontrolelr'"
             )
 
     # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate

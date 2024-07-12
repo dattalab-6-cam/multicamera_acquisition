@@ -3,9 +3,10 @@ import os
 import time
 import traceback
 
+import cv2
 import numpy as np
 from pypylon import pylon
-from pypylon._genicam import RuntimeException
+from pypylon._genicam import RuntimeException, AccessException
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
@@ -95,6 +96,7 @@ class BaslerCamera(BaseCamera):
             "gain": 6,
             "gamma": 1.0,
             "exposure": 1000,
+            "pixel_format": "Mono8",
             "brand": "basler",
             "display": {
                 "display_frames": False,
@@ -212,16 +214,15 @@ class BaslerCamera(BaseCamera):
             else:
                 assert (
                     self.serial_number == _sn
-                ), "Unexpected camera serial number mismatch."        
+                ), "Unexpected camera serial number mismatch."
 
-            # Configure the camera according to the config file
+                # Configure the camera according to the config file
                 self.logger.debug("Configuring camera...")
             self._configure_basler()
         except Exception as e:
             # show the entire traceback
             self.logger.error(traceback.format_exc())
             raise e
-
 
         self.initialized = True
 
@@ -233,11 +234,7 @@ class BaslerCamera(BaseCamera):
             - self.model_name: the model name of the camera (self.cam.GetDeviceInfo().GetModelName())
         """
         di = pylon.DeviceInfo()
-        devices = self.system.EnumerateDevices(
-            [
-                di,
-            ]
-        )
+        devices = self.system.EnumerateDevices([di])
 
         try:
             self.cam = pylon.InstantCamera(
@@ -278,6 +275,12 @@ class BaslerCamera(BaseCamera):
         else:
             pass
 
+        # Set pixel format
+        try:
+            self.cam.PixelFormat.SetValue(self.config["pixel_format"])
+        except AccessException:
+            self.logger.warn("Could not set pixel format -- may be ok.")
+
         # Set gamma
         self.cam.Gamma.SetValue(self.config["gamma"])
 
@@ -285,8 +288,13 @@ class BaslerCamera(BaseCamera):
         self.cam.ExposureAuto.SetValue("Off")
         self.cam.ExposureTime.SetValue(self.config["exposure"])
 
-        # Set readout mode
-        # self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
+        # Set readout mode if needed
+        if "readout_mode" in self.config:
+            self.cam.SensorReadoutMode.SetValue(self.config["readout_mode"])
+
+        # Set light source if needed
+        if "light_source_preset" in self.config:
+            self.cam.LightSourcePreset.SetValue(self.config["light_source_preset"])
 
         # Set roi
         roi = self.config["roi"]
@@ -317,7 +325,9 @@ class BaslerCamera(BaseCamera):
         elif trigger["trigger_type"] == "no_trigger":
             self.set_trigger_mode("no_trigger")
         else:
-            raise ValueError("Trigger must be 'microcontroller' or 'software'")
+            raise ValueError(
+                "Trigger must be one of ['microcontroller', 'software', 'no_trigger']"
+            )
 
     def check_config(self):
         """Check for some common issues with Basler configs."""
@@ -331,8 +341,15 @@ class BaslerCamera(BaseCamera):
                 "Cannot use microcontroller trigger with emulated cameras."
             )
 
+        # Check that pixel format is supported
+        supported_pixel_formats = ["Mono8", "BayerRG8", "RGB8"]
+        if not self.config["pixel_format"] in supported_pixel_formats:
+            raise ValueError(f"Pixel format must be one of {supported_pixel_formats}")
+
     def set_trigger_mode(self, mode):
         """Shortcut method to quickly change the camera's trigger settings.
+        Currently only used if config has "no_trigger", otherwise these shortcuts
+        are just for testing.
 
         Parameters
         ----------
