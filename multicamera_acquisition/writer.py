@@ -186,7 +186,7 @@ class BaseWriter(mp.Process):
                 self.logger.debug(
                     f"Writing frame {self.frames_written_to_current_video}..."
                 )
-                print(f"Writing frame {self.frames_written_to_current_video}...")
+                # print(f"Writing frame {self.frames_written_to_current_video}...")
                 self.append(img)
                 self.logger.debug("Frame written")
                 self.frames_written_to_current_video += 1
