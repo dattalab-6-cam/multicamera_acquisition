@@ -47,6 +47,8 @@ Testing code with subprocesses is a bit difficult, as subprocess output is not a
 * You can also pass a specific file directly to pytest: `pytest ./multicamera_acquisition/tests/interfaces/test_azures.py`
 * Or even a specific function: `pytest ./multicamera_acquisition/tests/interfaces/test_ir_cameras.py::Test_FPSWithoutTrigger`
 
+* The libusb / uvc camera often requires sudo permissions: `sudo pytest multicamera_acquisition/tests/acquisition --camera_type uvc  --writer_type ffmpeg --fps 60`
+
 ## Typical issues
 
 ### Pytest issues
