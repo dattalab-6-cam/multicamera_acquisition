@@ -81,6 +81,7 @@ def validate_recording_config(recording_config, logging_level):
         elif recording_config["cameras"][camera_name]["brand"] not in [
             "azure",
             "lucid",
+            "uvc",
         ]:
             ir_fpses.append(recording_config["cameras"][camera_name]["writer"]["fps"])
 

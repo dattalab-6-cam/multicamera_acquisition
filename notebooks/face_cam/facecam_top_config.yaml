@@ -1,0 +1,109 @@
+acq_loop:
+  display_every_n: 1
+  downsample: 4
+  dropped_frame_warnings: true
+  max_frames_to_acqure: null
+cameras:
+  face_cam:
+    brand: uvc
+    brightness: 32
+    contrast: 100
+    display:
+      display_frames: true
+      display_range: !!python/tuple
+      - 0
+      - 255
+    exposure: 50
+    exposure_mode: 1
+    exposure_priority: 0
+    fps: 210
+    frame_size: !!python/tuple
+    - 640
+    - 400
+    gain: 50
+    gamma: 340
+    id: 0
+    name: face_cam
+    roi: null
+    trigger:
+      trigger_type: no_trigger
+    writer:
+      auto_remux_videos: true
+      camera_name: face_cam
+      codec: h264
+      constqp: 18
+      depth: false
+      fmt: YUV420
+      fps: 210
+      gop: '30'
+      gpu: null
+      idrperiod: '256'
+      loglevel: info
+      max_video_frames: null
+      multipass: '0'
+      output_px_format: yuv420p
+      pixel_format: gray8
+      preset: ultrafast
+      profile: high
+      quality: 15
+      rc: constqp
+      tuning_info: ultra_low_latency
+      type: ffmpeg
+      video_codec: libx264
+  top:
+    brand: basler
+    constqp: 10
+    display:
+      display_frames: true
+      display_range: !!python/tuple
+      - 0
+      - 255
+    exposure: 1000
+    fps: 120
+    gain: 12
+    gamma: 1
+    id: '24510726'  # need to change this per rig
+    name: top
+    pixel_format: Mono8
+    roi: null
+    trigger:
+      trigger_type: no_trigger
+    writer:
+      auto_remux_videos: true
+      camera_name: top
+      codec: h264
+      constqp: 18
+      depth: false
+      fmt: YUV420
+      fps: 120
+      gop: '30'
+      gpu: null
+      idrperiod: '256'
+      loglevel: error
+      max_video_frames: 10368000
+      multipass: '0'
+      output_px_format: yuv420p
+      pixel_format: gray8
+      preset: P1
+      profile: high
+      quality: 15
+      rc: constqp
+      tuning_info: ultra_low_latency
+      type: ffmpeg
+      video_codec: libx264
+globals:
+  fps: 120
+  microcontroller_required: false
+  software_version_info:
+    date: null
+    dirty: null
+    error: unable to compute version
+    full-revisionid: null
+    version: 0+unknown
+rt_display:
+  cameras_per_row: 2
+  display_every_n: 6
+  display_size: !!python/tuple
+  - 640
+  - 400
+  downsample: 4
