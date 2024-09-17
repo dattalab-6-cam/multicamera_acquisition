@@ -608,7 +608,9 @@ class Microcontroller(object):
         Start acquisition by sending instructions to the microcontroller. Raise a RuntimeError if the
         microcontroller does not respond with the string "RECEIVED" within 2 seconds.
         """
-
+        print(self.state_change_times)
+        print(self.state_change_pins)
+        print(self.state_change_states)
         # calculate number of acquisition cycles
         num_cycles = int(recording_duration_s * 1e6 / self.cycle_duration)
 
