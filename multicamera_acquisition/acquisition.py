@@ -389,7 +389,7 @@ class AcquisitionLoop(mp.Process):
         )
         for queue in [self.write_queue, self.write_queue_ir, self.write_queue_depth]:
             if queue is not None:
-                queue.out(tuple())
+                queue.put(tuple())
 
         """ 
         CAMERA CLOSING INFO
