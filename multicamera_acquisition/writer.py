@@ -537,7 +537,6 @@ class FFMPEG_Writer(BaseWriter):
             logger_queue=logger_queue,
             logging_level=logging_level,
         )
-
         # FFMPEG-specific stuff
         pass
 
