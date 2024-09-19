@@ -122,7 +122,7 @@ class BaslerCamera(BaseCamera):
             from multicamera_acquisition.writer import FFMPEG_Writer
 
             writer_config = FFMPEG_Writer.default_writer_config(
-                fps, vid_type="ir", gpu=gpu
+                fps, vid_type="mono8", gpu=gpu
             ).copy()
         return writer_config
 

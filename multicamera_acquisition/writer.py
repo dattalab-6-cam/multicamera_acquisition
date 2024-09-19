@@ -336,7 +336,7 @@ class NVC_Writer(BaseWriter):
             "gop": self.config["gop"],  # larger = faster,
             "rc": self.config["rc"],  # "cbr",  # "vbr", "constqp",
         }
-        
+
         if self.config["rc"] == "constqp":
             encoder_dictionary["constqp"] = str(self.config["constqp"])
         elif self.config["rc"] == "vbr":
@@ -611,16 +611,16 @@ class FFMPEG_Writer(BaseWriter):
         self.pipe = None
 
     @staticmethod
-    def default_writer_config(fps, vid_type="ir", gpu=None):
+    def default_writer_config(fps, vid_type="mono8", gpu=None):
         """A default config dict for an ffmpeg writer.
 
         Frame size tbd on the fly.
         """
         assert vid_type in [
-            "ir",
+            "mono8",
+            "mono16",
             "color",
-            "depth",
-        ], "vid_type must be one of ['color', 'depth', 'ir']"
+        ], "vid_type must be one of ['color', 'mono8', 'mono16']"
 
         config = {
             "fps": fps,
@@ -630,19 +630,18 @@ class FFMPEG_Writer(BaseWriter):
             "type": "ffmpeg",
         }
 
-        if vid_type == "depth":
+        if vid_type == "mono16":
             # Use uint16 for depth vids
             config["pixel_format"] = "gray16"
             config["video_codec"] = "ffv1"  # lossless depth
             config["depth"] = True
             config["gpu"] = None
 
-        else:
-            # Use uint8 for ir vids
-            if vid_type == "ir":
-                config["pixel_format"] = "gray8"
-            elif vid_type == "color":
-                config["pixel_format"] = "rgb24"
+        elif vid_type == "mono8":
+            config["pixel_format"] = "gray8"
+
+        elif vid_type == "color":
+            config["pixel_format"] = "rgb24"
 
             # Set codec and preset depending on whether we have a gpu
             if gpu is not None:

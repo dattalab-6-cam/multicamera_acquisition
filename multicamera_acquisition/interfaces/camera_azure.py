@@ -82,7 +82,7 @@ class AzureCamera(BaseCamera):
     def default_writer_config(fps, writer_type="ffmpeg"):
         from multicamera_acquisition.writer import FFMPEG_Writer
 
-        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir")
+        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="mono8")
         return writer_config
 
     def init(self):
