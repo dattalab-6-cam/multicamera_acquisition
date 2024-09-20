@@ -82,7 +82,7 @@ class AzureCamera(BaseCamera):
     def default_writer_config(fps, writer_type="ffmpeg"):
         from multicamera_acquisition.writer import FFMPEG_Writer
 
-        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="ir")
+        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="mono8")
         return writer_config
 
     def init(self):
@@ -222,17 +222,13 @@ class AzureCamera(BaseCamera):
         tstamp : int
             The timestamp of the frame.
         """
-
-        def ir16_to_uint8(ir):
-            return (np.clip(ir, 0, 1275) / 5).astype(np.uint8)
-
         # Grab image
         capture = self.get_image(timeout)
 
         # Grab depth and ir
         # TODO ensure depth and ir are actually captured
         depth = capture.depth.astype(np.uint16)
-        ir = ir16_to_uint8(capture.ir)
+        ir = capture.ir.astype(np.uint16)
 
         timestamp = None
         color = None

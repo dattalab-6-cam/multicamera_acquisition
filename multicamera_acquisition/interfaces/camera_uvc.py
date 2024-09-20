@@ -80,10 +80,10 @@ class UVCCamera(BaseCamera):
             "roi": None,  # ie use the entire roi
             "gain": 50,
             "gamma": 340,
-            "exposure": 50, # 1/200*10000 at 200 Hz
+            "exposure": 50,  # 1/200*10000 at 200 Hz
             "brand": "uvc",
-            "exposure_mode": 1, # 1 is manual mode
-            "exposure_priority": 0, # 0 is fixed frame rate
+            "exposure_mode": 1,  # 1 is manual mode
+            "exposure_priority": 0,  # 0 is fixed frame rate
             "brightness": 2,
             "contrast": 100,
             "frame_size": (640, 400),
@@ -91,7 +91,7 @@ class UVCCamera(BaseCamera):
             "display": {
                 "display_frames": False,
                 "display_range": (0, 255),
-            }
+            },
         }
         return config
 
@@ -105,7 +105,7 @@ class UVCCamera(BaseCamera):
             from multicamera_acquisition.writer import FFMPEG_Writer
 
             writer_config = FFMPEG_Writer.default_writer_config(
-                fps, vid_type="ir", gpu=gpu
+                fps, vid_type="mono8", gpu=gpu
             ).copy()
         return writer_config
 
@@ -190,13 +190,13 @@ class UVCCamera(BaseCamera):
         devices = uvc.device_list()
 
         try:
-            self.cam = self.system.Capture(devices[self.device_index]['uid'])
+            self.cam = self.system.Capture(devices[self.device_index]["uid"])
         except Exception as e:
             raise RuntimeError(
                 f"(Real) UVC camera with id {self.device_index} and serial {self.serial_number} failed to open: {e}"
             )
 
-        self.model_name = devices[self.device_index]['idProduct']
+        self.model_name = devices[self.device_index]["idProduct"]
 
     def _configure_uvc(self):
         """Given the loaded config, set up the uvc for acquisition with the config therein."""
@@ -211,31 +211,34 @@ class UVCCamera(BaseCamera):
         ):  # TODO: actually implement telling user what was wrong with the config
             raise CameraError(status)
 
-        controls = {self.cam.controls[i].display_name: self.cam.controls[i] for i in range(len(self.cam.controls))}
+        controls = {
+            self.cam.controls[i].display_name: self.cam.controls[i]
+            for i in range(len(self.cam.controls))
+        }
 
         # Set gain
-        controls['Gain'].value = self.config["gain"]
+        controls["Gain"].value = self.config["gain"]
 
         # Set gamma
-        controls['Gamma'].value = self.config["gamma"]
+        controls["Gamma"].value = self.config["gamma"]
 
         # Set exposure
-        controls['Auto Exposure Mode'].value = self.config["exposure_mode"]
-        controls['Auto Exposure Priority'].value = self.config["exposure_priority"]
-        controls['Absolute Exposure Time'].value = self.config["exposure"]
+        controls["Auto Exposure Mode"].value = self.config["exposure_mode"]
+        controls["Auto Exposure Priority"].value = self.config["exposure_priority"]
+        controls["Absolute Exposure Time"].value = self.config["exposure"]
 
         # Set brightness
-        controls['Brightness'].value = self.config["brightness"]
+        controls["Brightness"].value = self.config["brightness"]
 
         # Set contrast
-        controls['Contrast'].value = self.config["contrast"]
+        controls["Contrast"].value = self.config["contrast"]
 
         # Set the frame size
         self.cam.frame_size = self.config["frame_size"]
 
         # Set the frame rate
         self.cam.frame_rate = self.config["fps"]
-    
+
     def start(self):
         "Start recording images."
         self.running = True
@@ -267,8 +270,10 @@ class UVCCamera(BaseCamera):
         """
         if timeout is None:
             timeout = 10000
-        
-        frame = self.cam.get_frame(timeout=timeout/1000.0) # timeout is in seconds for pyuvc
+
+        frame = self.cam.get_frame(
+            timeout=timeout / 1000.0
+        )  # timeout is in seconds for pyuvc
 
         if not frame.data_fully_received:
             self.logger.warning("Frame not fully received.")

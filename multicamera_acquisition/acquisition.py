@@ -39,6 +39,7 @@ class AcquisitionLoop(mp.Process):
         camera_device_index,
         camera_config,
         write_queue_depth=None,
+        write_queue_ir=None,
         acq_loop_config=None,
         logger_queue=None,
         logging_level=logging.DEBUG,
@@ -62,6 +63,9 @@ class AcquisitionLoop(mp.Process):
 
         write_queue_depth : multiprocessing.Queue (default: None)
             A queue to which depth frames will be written (azure only).
+
+        write_queue_ir : multiprocessing.Queue (default: None)
+            A queue to which ir frames will be written (azure only).
 
         acq_loop_config : dict (default: None)
             A config dict for the AcquisitionLoop.
@@ -91,6 +95,7 @@ class AcquisitionLoop(mp.Process):
         self.write_queue = write_queue
         self.display_queue = display_queue
         self.write_queue_depth = write_queue_depth
+        self.write_queue_ir = write_queue_ir
         self.camera_config = camera_config
         self.camera_device_index = camera_device_index
         self.logger_queue = logger_queue
@@ -294,13 +299,13 @@ class AcquisitionLoop(mp.Process):
                     # Increment the frame counter (distinct from number of while loop iterations)
                     n_frames_received += 1
 
-                    # If this is an azure camera, we write the depth data to a separate queue
+                    # If this is an azure camera, we write the depth and ir data to separate queues
                     if self.camera_config["brand"] == "azure":
                         depth, ir, _, camera_timestamp = _cam_data
 
                         # writer expects (img, line_status, camera_timestamp, self.frames_received),
                         # but Azure has no concept of line_status, so we just pass None.
-                        self.write_queue.put(
+                        self.write_queue_ir.put(
                             tuple([ir, None, camera_timestamp, n_frames_received])
                         )
                         self.write_queue_depth.put(
@@ -382,11 +387,9 @@ class AcquisitionLoop(mp.Process):
         self.logger.debug(
             f"Writing empties to stop queue, {self.camera_config['name']}"
         )
-        self.write_queue.put(tuple())
-        if self.write_queue_depth is not None:
-            self.write_queue_depth.put(tuple())
-        if self.display_queue is not None:
-            self.display_queue.put(tuple())
+        for queue in [self.write_queue, self.write_queue_ir, self.write_queue_depth]:
+            if queue is not None:
+                queue.put(tuple())
 
         """ 
         CAMERA CLOSING INFO
@@ -529,7 +532,9 @@ def resolve_device_indices(config):
     # TODO
 
     # Resolve any uvc cameras
-    if any([camera_dict["brand"] == "uvc" for camera_dict in config["cameras"].values()]):
+    if any(
+        [camera_dict["brand"] == "uvc" for camera_dict in config["cameras"].values()]
+    ):
         serial_nos, models = enumerate_uvc_cameras()
         for camera_name, camera_dict in config["cameras"].items():
             if camera_dict["brand"] not in ["uvc"]:
@@ -851,67 +856,79 @@ def refactor_acquire_video(
 
     try:
         for camera_name, camera_dict in config["cameras"].items():
-            # Create a writer queue
-            write_queue = (
-                mp.Queue()
-            )  # This queue is used to send frames from the AcuqisitionLoop process to the Writer process
 
-            # Generate file names
-            if append_camera_serial:
-                cam_append_str = f".{camera_dict['name']}.{camera_dict['id']}.mp4"  # TODO: using camera_dict["id"] here will not always append the serial, since ID can alternatively be an integer
-            else:
-                cam_append_str = f".{camera_dict['name']}.mp4"
-            video_file_name = Path(basename + cam_append_str)
-            metadata_file_name = Path(
-                basename + cam_append_str.replace(".mp4", ".metadata.csv")
-            )
+            # Generate camera-specific part of filename
+            cam_append_str = f".{camera_dict['name']}"
+            if (
+                append_camera_serial
+            ):  # TODO: using camera_dict["id"] here will not always append the serial, since ID can alternatively be an integer
+                cam_append_str += f".{camera_dict['id']}"
 
-            # Get a writer process
-            # TODO: this is a pretty thin wrapper around the class init's, and maybe
-            # we could just call the class init's directly here for clarity.
-            if camera_dict["brand"] == "basler":
-                camera_pixel_format = camera_dict["pixel_format"]
-            else:
-                camera_pixel_format = "Mono8"
+            # Get a writer process (TODO: this is a pretty thin wrapper around the class init's, and maybe we could just call the class init's directly here for clarity.)
+            if camera_dict["brand"] != "azure":
+                video_file_name = Path(basename + f"{cam_append_str}.mp4")
+                metadata_file_name = Path(basename + f"{cam_append_str}.metadata.csv")
 
-            writer = get_writer(
-                write_queue,
-                video_file_name,
-                metadata_file_name,
-                camera_pixel_format=camera_pixel_format,
-                writer_type=camera_dict["writer"]["type"],
-                config=camera_dict["writer"],
-                process_name=f"{camera_name}_writer",
-                logger_queue=logger_queue,
-                logging_level=logging_level,
-            )
+                # Create a writer queue (used to send frames from the AcuqisitionLoop process to the Writer process)
+                write_queue = mp.Queue()
+                write_queue_depth = None  # only used for Azure
+                write_queue_ir = None  # only used for Azure
 
-            # Get a second writer process for depth if needed
-            if camera_dict["brand"] == "azure":
-                write_queue_depth = mp.Queue()
-                if append_camera_serial:
-                    cam_append_str = (
-                        f".{camera_dict['name']}_depth.{camera_dict['id']}.avi"
-                    )
+                if camera_dict["brand"] == "basler":
+                    camera_pixel_format = camera_dict["pixel_format"]
                 else:
-                    cam_append_str = f".{camera_dict['name']}_depth.avi"
-                video_file_name_depth = Path(basename + cam_append_str)
-                metadata_file_name_depth = Path(
-                    basename + cam_append_str.replace(".avi", ".metadata.csv")
+                    camera_pixel_format = "Mono8"
+
+                writer = get_writer(
+                    write_queue,
+                    video_file_name,
+                    metadata_file_name,
+                    camera_pixel_format=camera_pixel_format,
+                    writer_type=camera_dict["writer"]["type"],
+                    config=camera_dict["writer"],
+                    process_name=f"{camera_name}_writer",
+                    logger_queue=logger_queue,
+                    logging_level=logging_level,
                 )
+
+            else:  # camera is an Azure, make two writers
+                video_file_name_ir = Path(basename + f"{cam_append_str}.ir.avi")
+                video_file_name_depth = Path(basename + f"{cam_append_str}.depth.avi")
+                metadata_file_name_ir = Path(
+                    basename + f"{cam_append_str}.ir.metadata.csv"
+                )
+                metadata_file_name_depth = Path(
+                    basename + f"{cam_append_str}.depth.metadata.csv"
+                )
+
+                # Create write queues for depth and ir
+                write_queue = None  # only used for non-Azure cameras
+                write_queue_depth = mp.Queue()
+                write_queue_ir = mp.Queue()
+
                 writer_depth = get_writer(
                     write_queue_depth,
                     video_file_name_depth,
                     metadata_file_name_depth,
                     camera_pixel_format="Mono16",
-                    writer_type=camera_dict["writer"]["type"],
+                    writer_type=camera_dict["writer_depth"]["type"],
                     config=camera_dict["writer_depth"],
                     process_name=f"{camera_name}_writer_depth",
                     logger_queue=logger_queue,
                     logging_level=logging_level,
                 )
-            else:
-                write_queue_depth = None
+
+                writer_ir = get_writer(
+                    write_queue_ir,
+                    video_file_name_ir,
+                    metadata_file_name_ir,
+                    camera_pixel_format="Mono16",
+                    writer_type=camera_dict["writer_ir"]["type"],
+                    config=camera_dict["writer_ir"],
+                    process_name=f"{camera_name}_writer_ir",
+                    logger_queue=logger_queue,
+                    logging_level=logging_level,
+                )
 
             # Setup display queue for camera if requested
             if camera_dict["display"]["display_frames"] is True:
@@ -931,6 +948,7 @@ def refactor_acquire_video(
                 camera_device_index=device_index_dict[camera_name],
                 camera_config=camera_dict,
                 write_queue_depth=write_queue_depth,
+                write_queue_ir=write_queue_ir,
                 acq_loop_config=config["acq_loop"],
                 logger_queue=logger_queue,
                 logging_level=logging_level,
@@ -939,11 +957,15 @@ def refactor_acquire_video(
             )
 
             # Start the writer and acquisition loop processes
-            writer.start()
-            writers.append(writer)
-            if camera_dict["brand"] == "azure":
+            if camera_dict["brand"] != "azure":
+                writer.start()
+                writers.append(writer)
+            else:
+                writer_ir.start()
+                writers.append(writer_ir)
                 writer_depth.start()
                 writers.append(writer_depth)
+
             acquisition_loop.start()
             acquisition_loops.append(acquisition_loop)
 
@@ -958,7 +980,7 @@ def refactor_acquire_video(
                 )
     except Exception as e:
         end_processes(acquisition_loops, [], None)
-        if final_config["globals"]["microcontroller_required"]:
+        if config["globals"]["microcontroller_required"]:
             microcontroller.close()
         raise e
 
@@ -1022,7 +1044,9 @@ def refactor_acquire_video(
         datetime_rec_start = datetime_prev
 
         if recording_duration_s < 10:
-            endtime = datetime_prev + timedelta(seconds=recording_duration_s + 1)  # speed up testing
+            endtime = datetime_prev + timedelta(
+                seconds=recording_duration_s + 1
+            )  # speed up testing
         else:
             endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
