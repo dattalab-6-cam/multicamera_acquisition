@@ -1,6 +1,14 @@
 import logging
 import traceback
-import uvc
+
+logger = logging.getLogger(__name__)
+
+try:
+    import uvc
+except ImportError:
+    logger.warning(
+        "Could not import uvc. Please install the pyuvc package to use UVC cameras."
+    )
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 
