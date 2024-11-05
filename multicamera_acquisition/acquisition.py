@@ -277,7 +277,7 @@ class AcquisitionLoop(mp.Process):
             try:
                 if first_frame:
                     _cam_data = cam.get_array(
-                        timeout=1000 * 60, get_timestamp=True
+                        timeout=1000 * 60, get_timestamp=True, get_linestatus=True
                     )  # increase timeout of first frame
                     first_frame = False
                     self.logger.debug("First frame received")
@@ -285,7 +285,7 @@ class AcquisitionLoop(mp.Process):
                         -1
                     ]  # camera_timestamp is always the final element of the _cam_data tuple
                 else:
-                    _cam_data = cam.get_array(timeout=timeout, get_timestamp=True)
+                    _cam_data = cam.get_array(timeout=timeout, get_timestamp=True, get_linestatus=True)
 
                 # If we received a frame:
                 # TODO: this enqueueing code can be rewritten / simplified a bit.
