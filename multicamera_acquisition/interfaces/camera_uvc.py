@@ -60,6 +60,9 @@ class UVCCamera(BaseCamera):
                 "Camera unexpectedly has no serial number or device index."
             )
 
+        self.consecutive_frame_lost = 0 # counter
+        self.restart_after_n = 50 # after n consecutive frames lost, restart the camera
+
         # Load a default config if needed (mostly for testing, least common)
         if self.config is None:
             self.config = (
@@ -86,6 +89,7 @@ class UVCCamera(BaseCamera):
         """Generate a default config for a UVC camera."""
         config = {
             "roi": None,  # ie use the entire roi
+            "restart_after_n_frame_lost": 20,
             "gain": 50,
             "gamma": 340,
             "exposure": 50, # 1/200*10000 at 200 Hz
@@ -243,6 +247,9 @@ class UVCCamera(BaseCamera):
 
         # Set the frame rate
         self.cam.frame_rate = self.config["fps"]
+
+        # restart camera after n frame lost
+        self.restart_after_n = self.config["restart_after_n_frame_lost"]
     
     def start(self):
         "Start recording images."
@@ -315,16 +322,34 @@ class UVCCamera(BaseCamera):
         if timeout is None:
             timeout = 10000
 
-        frame = self.cam.get_frame_robust()
-        # frame = self.cam.get_frame(timeout=timeout/1000.0) # timeout is in seconds for pyuvc
-
-        if not frame.data_fully_received:
-            self.logger.warning("Frame not fully received.")
-
-        # img_array = frame.gray.T
-        img_array = frame.gray
-        timestamp = frame.timestamp if get_timestamp else None
         line_status = None
+        img_array = None
+        timestamp = None
+
+        try:
+            # frame = self.cam.get_frame_robust()
+            frame = self.cam.get_frame(timeout=timeout/1000.0) # timeout is in seconds for pyuvc
+                                                                                       
+            if not frame.data_fully_received:
+                self.logger.warning("pyuvc frame not fully received.")
+
+            # img_array = frame.gray.T
+            img_array = frame.gray
+            timestamp = frame.timestamp if get_timestamp else None
+            self.consecutive_frame_lost = 0
+
+        except Exception as e:
+            self.consecutive_frame_lost += 1
+            self.logger.warning(f"pyuvc get_frame_robust() failed. {self.consecutive_frame_lost} frames lost.")
+
+            if self.consecutive_frame_lost >= self.restart_after_n:
+                self.logger.warning("pyuvc restarting...")
+                self.close()
+                self.init()
+                self.logger.warning("pyuvc restarted.")     
+                self.consecutive_frame_lost = 0
+
+            pass
 
         # self.logger.debug(f"Frame shape: {img_array.shape} ")
         # self.logger.debug(f"Frame img type: {type(img_array)}")

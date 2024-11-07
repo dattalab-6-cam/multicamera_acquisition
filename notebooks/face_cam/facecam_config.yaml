@@ -1,6 +1,6 @@
 acq_loop:
   display_every_n: 1
-  downsample: 4
+  downsample: 2
   dropped_frame_warnings: true
   max_frames_to_acqure: null
 cameras:
@@ -16,7 +16,7 @@ cameras:
     exposure: 50
     exposure_mode: 1
     exposure_priority: 0
-    fps: 90
+    fps: 210
     frame_size: !!python/tuple
     - 640
     - 400
@@ -34,7 +34,7 @@ cameras:
       constqp: 18
       depth: false
       fmt: YUV420
-      fps: 90
+      fps: 210
       gop: '30'
       gpu: null
       idrperiod: '256'
@@ -51,7 +51,7 @@ cameras:
       type: ffmpeg
       video_codec: libx264
 globals:
-  fps: 90
+  fps: 210
   microcontroller_required: false
   software_version_info:
     date: null
@@ -65,4 +65,4 @@ rt_display:
   display_size: !!python/tuple
   - 640
   - 400
-  downsample: 4
+  downsample: 2

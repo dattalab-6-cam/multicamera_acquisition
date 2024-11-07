@@ -7,6 +7,7 @@ cameras:
   face_cam:
     brand: uvc
     brightness: 32
+    restart_after_n_frame_lost: 50
     contrast: 100
     display:
       display_frames: true
@@ -106,4 +107,4 @@ rt_display:
   display_size: !!python/tuple
   - 640
   - 400
-  downsample: 4
+  downsample: 2
