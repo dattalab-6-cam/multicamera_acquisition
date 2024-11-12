@@ -62,6 +62,7 @@ class BaseWriter(mp.Process):
         self.config = config
         self.logger_queue = logger_queue
         self.logging_level = logging_level
+        self.log_all_steps = mp.Event()  # if this event is set, will log all steps in the writer
 
         # File naming stuff
         # File name format is {prefix}.{start_timestamp}.{camera_name}.{serial_num}.{first_frame_number}.{extension}
@@ -93,6 +94,12 @@ class BaseWriter(mp.Process):
 
         # Initialize frame counter
         self.frames_received = 0
+
+    def log_all_steps(self):
+        self.log_all_steps.set()
+
+    def dont_log_all_steps(self):
+        self.log_all_steps.clear()
 
     def initialize_metadata(self):
         with open(self.metadata_file_name, "w", newline="") as metadata_f:
@@ -218,6 +225,7 @@ class BaseWriter(mp.Process):
         self.logger.debug(f"Closing writer pipe ({self.config['camera_name']})")
         self.close_video()
 
+        self.finish()
         self.logger.debug(f"Writer run finished ({self.config['camera_name']})")
         self.finish()
 
@@ -249,6 +257,8 @@ class BaseWriter(mp.Process):
         pass
 
     def finish(self):
+        if not self.metadata_file.closed:
+            self.metadata_file.close()
         pass
 
 
