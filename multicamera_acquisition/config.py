@@ -90,11 +90,11 @@ def validate_recording_config(recording_config, logging_level):
         raise ValueError("All Basler camera fps must match.")
 
     # Raise error if no basler cameras, currently you need at least one
-    if len(ir_fpses) == 0:
-        raise ValueError("Must have at least one Basler camera.")
+    # if len(ir_fpses) == 0:
+    #     raise ValueError("Must have at least one Basler camera.")
 
     # Warn user if global fps does not match fps in individual writers
-    if recording_config["globals"]["fps"] != ir_fpses[0]:
+    if (len(ir_fpses) > 0) and recording_config["globals"]["fps"] != ir_fpses[0]:
         raise ValueError("Global fps must match fps in individual writers.")
 
     # Raise error if user requests a loglevel of debug in the ffmpeg writer...seems to break, unsure why.
