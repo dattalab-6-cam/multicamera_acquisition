@@ -147,8 +147,9 @@ class BaseWriter(mp.Process):
 
             while True:
                 # Get data from the queue
-                self.logger.debug("Getting data")
+                if self.log_all_steps.is_set(): self.logger.debug("Getting data")
                 data = self.queue.get()
+                if self.log_all_steps.is_set(): self.logger.debug("Got data")
                 self.logger.debug("Got data")
 
                 # If we get an empty tuple, stop
@@ -157,19 +158,19 @@ class BaseWriter(mp.Process):
                     break
 
                 # Unpack the data
-                self.logger.debug("Unpacking data")
+                if self.log_all_steps.is_set(): self.logger.debug("Unpacking data")
                 img, line_status, camera_timestamp, self.frames_received = data
-                self.logger.debug("Unpacked data")
+                if self.log_all_steps.is_set(): self.logger.debug("Unpacked data")
 
                 # Get the metadata about the frame
-                self.logger.debug("Getting metadata")
+                if self.log_all_steps.is_set(): self.logger.debug("Getting metadata")
                 frame_image_uid = str(round(time.time(), 5)).zfill(5)
                 try:
                     qsize = self.queue.qsize()
                 except NotImplementedError:
                     qsize = np.nan
 
-                self.logger.debug("Got metadata")
+                if self.log_all_steps.is_set(): self.logger.debug("Got metadata")
 
                 # If the frame is corrupted (TODO: how does this check for corruption?)
                 if img is None:
@@ -201,12 +202,13 @@ class BaseWriter(mp.Process):
                     self._get_new_pipe(data_shape)
 
                 # Write the frame
-                self.logger.debug(
-                    f"Writing frame {self.frames_written_to_current_video}..."
-                )
-                # print(f"Writing frame {self.frames_written_to_current_video}...")
+                if self.log_all_steps.is_set(): 
+                    self.logger.debug(
+                        f"Writing frame {self.frames_written_to_current_video}..."
+                    )
                 self.append(img)
-                self.logger.debug("Frame written")
+                if self.log_all_steps.is_set(): self.logger.debug("Frame written")
+
                 self.frames_written_to_current_video += 1
 
                 # If the current frame is greater than the max, create a new video and metadata file
@@ -224,10 +226,10 @@ class BaseWriter(mp.Process):
 
         self.logger.debug(f"Closing writer pipe ({self.config['camera_name']})")
         self.close_video()
+        self.logger.debug(f"Closed)")
 
         self.finish()
         self.logger.debug(f"Writer run finished ({self.config['camera_name']})")
-        self.finish()
 
     def _reset_writers(self):
         # Reset the video writer
@@ -559,7 +561,6 @@ class FFMPEG_Writer(BaseWriter):
         assert "pixel_format" in self.config, "pixel_format must be specified"
 
     def append(self, data):
-        self.logger.debug("Entered append")
 
         # Convert to the correct data format
         if self.config["pixel_format"] == "gray16":
@@ -569,8 +570,6 @@ class FFMPEG_Writer(BaseWriter):
 
         if self.camera_pixel_format == "BayerRG8":
             data = cv2.cvtColor(data, cv2.COLOR_BAYER_RG2BGR)
-
-        self.logger.debug("Converted data to correct format")
 
         # Write it to the pipe
         self.pipe.stdin.write(data.tobytes())

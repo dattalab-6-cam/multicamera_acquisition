@@ -1033,6 +1033,13 @@ def refactor_acquire_video(
             endtime = datetime_prev + timedelta(seconds=recording_duration_s + 10)
 
         while datetime.now() < endtime:
+            
+            # Useful for debugging writers at end of runs:
+            # # If recording_duration_s has gone by, turn on logging all steps from the writers
+            # if (datetime.now() - datetime_rec_start).total_seconds() > recording_duration_s:
+            #     for writer in writers:
+            #         writer.log_all_steps.set()
+
             if config["globals"]["microcontroller_required"]:
                 # Tell the microcontroller to check for input trigger data or finish signal
                 finished = microcontroller.check_for_input()
