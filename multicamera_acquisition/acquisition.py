@@ -705,13 +705,24 @@ def refactor_acquire_video(
     https://superfastpython.com/multiprocessing-logging-in-python/
     https://docs.python.org/3/howto/logging-cookbook.html
     """
+
+    # Parse recording name info
+    datetime_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
+    if recording_name is None:
+        assert append_datetime, "Must append datetime if recording_name is None"
+        recording_name = datetime_str
+    elif append_datetime:
+        recording_name = f"{recording_name}_{datetime_str}"
+
+
     # Set up the main logger for this process
     logger = logging.getLogger("main_acq_logger")
     logger.setLevel(logging_level)
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    handler = logging.StreamHandler()
+    # handler = logging.StreamHandler()
+    handler = logging.FileHandler(join(save_location, f"main_acq_logger_{recording_name}.log"))
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.debug("Set up main logger.")
@@ -721,9 +732,11 @@ def refactor_acquire_video(
 
     # Set up the mp logger to log across processes
     logger_queue = mp.Queue()
-    queue_listener = QueueListener(logger_queue, StreamHandler())
+    # queue_listener = QueueListener(logger_queue, StreamHandler())
+    queue_listener = QueueListener(logger_queue, handler)
     queue_listener.start()
     logger.debug("Started mp logging.")
+    # logger.debug(f"Have good save location {full_save_location}")
 
     """
     RECORDING NAME / PATH INFO
@@ -744,12 +757,6 @@ def refactor_acquire_video(
         
     """
     # Create the recording directory
-    datetime_str = datetime.now().strftime("%y-%m-%d-%H-%M-%S-%f")
-    if recording_name is None:
-        assert append_datetime, "Must append datetime if recording_name is None"
-        recording_name = datetime_str
-    elif append_datetime:
-        recording_name = f"{recording_name}_{datetime_str}"
     full_save_location = Path(
         join(save_location, recording_name)
     )  # /path/to/my/recording_name
@@ -766,8 +773,6 @@ def refactor_acquire_video(
     basename = str(
         full_save_location / recording_name
     )  # /path/to/my/recording_name/recording_name, which will have strings appended to become, eg, /path/to/my/recording_name/recording_name.top.mp4
-
-    logger.debug(f"Have good save location {full_save_location}")
 
     """
     CONFIG INFO
