@@ -267,29 +267,6 @@ class UVCCamera(BaseCamera):
         self.cam.close()
         del self.cam
 
-    def get_image(self, timeout=None):
-        """Get an image from the camera.
-
-        Parameters
-        ----------
-        timeout : int (default: None)
-            Wait up to timeout milliseconds for an image if not None.
-                Otherwise, wait indefinitely.
-
-        Returns
-        -------
-        img : image
-        """
-        if timeout is None:
-            timeout = 10000
-        
-        frame = self.cam.get_frame(timeout=timeout/1000.0) # timeout is in seconds for pyuvc
-
-        if not frame.data_fully_received:
-            self.logger.warning("Frame not fully received.")
-
-        return frame.gray
-
     def get_array(self, timeout=None, get_timestamp=False, get_linestatus=False):
         """Get an image from the camera.
 
