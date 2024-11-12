@@ -557,6 +557,7 @@ def refactor_acquire_video(
     recording_name=None,
     append_datetime=True,
     append_camera_serial=False,
+    final_writer_timeout=600,
     overwrite=False,
     logging_level=logging.INFO,
 ):
@@ -610,6 +611,11 @@ def refactor_acquire_video(
 
     append_camera_serial : bool (default: True)
         Whether to append the camera serial number to the file name.
+
+    final_writer_timeout : int (default: 600)
+        The timeout (in seconds) for ending the writer processes at the end of acquisition.
+        If you are recording very long videos, you may have to extend this.
+        Conversely, when debugging, it is nice to make this very short.
 
     overwrite : bool (default: False)
         Whether to overwrite the save location if it already exists.
@@ -1069,7 +1075,7 @@ def refactor_acquire_video(
         One imagines 10 min is enough but you never know... The tradeoff is that if the writer process hangs, 
         and this has no timeout, it will never close gracefully. 
         """
-        end_processes(acquisition_loops, writers, display_proc, writer_timeout=600)
+        end_processes(acquisition_loops, writers, display_proc, writer_timeout=final_writer_timeout)
 
         logger.info("Processes ended")
         print("\rRecording Progress: 100%", end="")
