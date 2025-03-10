@@ -316,9 +316,11 @@ class BaslerCamera(BaseCamera):
             )
         elif trigger["trigger_type"] == "no_trigger":
             self.set_trigger_mode("no_trigger")
+        elif trigger["trigger_type"] == "no_trigger_with_output":
+            self.set_trigger_mode("no_trigger_with_output")
         else:
             raise ValueError(
-                "Trigger must be one of ['microcontroller', 'software', 'no_trigger']"
+                "Trigger must be one of ['microcontroller', 'software', 'no_trigger', 'no_trigger_with_output']"
             )
 
     def check_config(self):
@@ -360,6 +362,21 @@ class BaslerCamera(BaseCamera):
             self.cam.TriggerMode.SetValue("Off")
             self.cam.AcquisitionFrameRateEnable.SetValue(True)
             self.cam.AcquisitionFrameRate.SetValue(float(self.fps))
+        elif mode == "no_trigger_with_output":
+            if (not hasattr(self, "fps") or self.fps is None) and ("fps" not in self.config.keys() or self.config["fps"] is None):
+                self.logger.warning(
+                    "No fps specified for Basler camera running in no_trigger_with_output mode. Defaulting to 30 fps."
+                )
+                self.fps = 30
+            elif "fps" in self.config.keys() and self.config["fps"] is not None:
+                self.fps = self.config["fps"]
+            self.cam.AcquisitionMode.SetValue("Continuous")
+            self.cam.TriggerMode.SetValue("Off")
+            self.cam.AcquisitionFrameRateEnable.SetValue(True)
+            self.cam.AcquisitionFrameRate.SetValue(float(self.fps))
+            self.cam.LineSelector.SetValue(self.config["trigger"]["line_selector"])
+            self.cam.LineMode.SetValue("Output")
+            self.cam.LineSource.SetValue(self.config["trigger"]["line_source"])
 
         else:
             raise ValueError("Trigger mode must be 'arduino' or 'no_trigger'")
