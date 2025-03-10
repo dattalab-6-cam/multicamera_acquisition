@@ -68,7 +68,7 @@ def validate_microcontroller_configutation(
     )
 
     if len(all_unique_pins) != len(set(all_unique_pins)):
-        logger.warn("Some pins are repeated within or between the following lists: top_camera_pins, "
+        logger.warning("Some pins are repeated within or between the following lists: top_camera_pins, "
             "top_light_pins, bottom_camera_pins, bottom_light_pins, azure_trigger_pins, "
             "random_output_pins, input_pins. \n This may be ok in some situations (eg sharing lights) but should be checked.")
         
@@ -78,8 +78,9 @@ def validate_microcontroller_configutation(
         )
 
     # check for at least one top camera trigger pin
-    if len(config["top_camera_pins"]) == 0:
-        raise ValueError("There must be at least one top camera trigger pin!")
+    if "top_camera_pins" not in config or len(config["top_camera_pins"]) == 0:
+        # raise ValueError("There must be at least one top camera trigger pin!")
+        logger.warning("There must (usually) be at least one top camera trigger pin!")
 
     # check for azure trigger pins
     if n_azures > 0 and len(config["azure_trigger_pins"]) == 0:
@@ -273,12 +274,20 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
     cycle_duration : int
         Duration of each acquisition cycle in microseconds.
     """
+    # Try to find the main logger
+    try:
+        logger = logging.getLogger("main_acq_logger")
+    except:
+        logger = logging.getLogger("microcontroller_logger")
+
+
     timing_dict = {g: {"trigger_ons": [], "trigger_offs": [], "light_offs": []} for g in capture_groups.keys()}
     first_group = list(capture_groups.keys())[0]
 
     if n_azures == 0:
         # one cycle per basler frame
         cycle_duration = int(1e6 / basler_fps)
+        logger.debug(f"Cycle duration: {cycle_duration}")
 
         # azure triggers
         azure_state_change_times = []
@@ -404,6 +413,7 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
     state_change_states = state_change_states[sort_inds]
 
     # confirm that times are within one cycle
+    logger.debug(f"State change times: {state_change_times}")
     if np.any(state_change_times >= cycle_duration):
         raise ValueError(
             "Some state change times are greater than the acquisition cycle duration!"
