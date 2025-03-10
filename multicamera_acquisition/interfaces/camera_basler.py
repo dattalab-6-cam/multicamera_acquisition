@@ -82,7 +82,7 @@ class BaslerCamera(BaseCamera):
         # Add camera-specific info
         attrs_to_list = ["name", "serial_number", "device_index", "model", "running"]
         cam_info = "Basler Camera: \n" + "\n\t".join(
-            [f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list]
+            [f"{attr}: {getattr(self, attr)}" for attr in attrs_to_list if hasattr(self, attr)]
         )
 
         return basic_info + "\n" + cam_info
