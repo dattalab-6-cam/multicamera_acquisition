@@ -60,7 +60,7 @@ def validate_recording_config(recording_config, logging_level):
     for camera_config in recording_config["cameras"].values():
         if "fps" in camera_config.keys() and (
             camera_config["brand"] == "azure"
-            or camera_config["trigger_type"] == "microcontroller"
+            or camera_config["trigger"]["trigger_type"] == "microcontroller"
         ):
             logger.warning(
                 "WARNING: fps is deprecated azure cameras (only 30 fps supported) and "
