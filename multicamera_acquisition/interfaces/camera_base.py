@@ -70,6 +70,17 @@ def get_camera(
 
         cam = UVCCamera(id=id, name=name, config=config)
 
+    elif brand == "purethermal":
+        from multicamera_acquisition.interfaces.camera_purethermal import (
+            PureThermalCamera,
+        )
+        cam = PureThermalCamera(id=id, name=name, config=config)
+        
+    else:
+        raise ValueError(
+            f"Brand {brand} not supported.  Supported brands are: basler, azure, lucid, uvc, purethermal."
+        )
+
     return cam
 
 

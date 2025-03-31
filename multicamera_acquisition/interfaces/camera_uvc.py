@@ -1,6 +1,12 @@
 import logging
+import warnings
 import traceback
-import uvc
+
+try:
+    import uvc
+except ImportError:
+    warnings.warn("uvc not installed. UVC cameras will not be available.")
+
 
 from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
 

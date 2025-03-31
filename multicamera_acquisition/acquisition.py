@@ -552,6 +552,11 @@ def resolve_device_indices(config):
                     dev_idx = camera_dict["id"]
             device_index_dict[camera_name] = dev_idx
 
+    # Resolve any PureThermal cameras
+    for camera_name, camera_dict in config["cameras"].items():
+        if camera_dict["brand"] == "purethermal":
+            device_index_dict[camera_name] = camera_dict["id"]
+
     return device_index_dict
 
 

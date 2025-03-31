@@ -1,0 +1,290 @@
+"""Adapted from https://github.com/soorajsknair93/PureThermal2-FLIR-Lepton3.5-Interfacing-Python"""
+
+import time
+import logging
+import numpy as np
+from queue import Queue
+from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraError
+from .purethermal_uvctypes import *
+
+
+def get_serial_number(dev):
+    """Get the serial number of a device.
+
+    Parameters
+    ----------
+    dev : POINTER(uvc_device)
+        The device to query.
+
+    Returns
+    -------
+    serial_number : str
+        The serial number of the device.
+    """
+    devh = POINTER(uvc_device_handle)()
+    res = libuvc.uvc_open(dev, byref(devh))
+    if res != 0:
+        raise RuntimeError(f"Failed to open device (error code {res})")
+    try:
+        sn = create_string_buffer(32)
+        call_extension_unit(devh, SYS_UNIT_ID, 3, sn, 8)
+        serial_number = sn.raw.rstrip(b'\x00').hex()
+    finally:
+        libuvc.uvc_close(devh)
+    return serial_number
+
+
+def find_purethermal_by_serial_number(ctx, target_serial, logger):
+    """Find a PureThermal camera by its serial number.
+
+    Parameters
+    ----------
+    ctx : POINTER(uvc_context)
+        The UVC context to use for enumerating devices.
+    target_serial : str
+        The serial number of the desired device.
+
+    Returns
+    -------
+    POINTER(uvc_device)
+        A pointer to the matching device.
+    """
+    matching_dev = None
+    devs_ptr = POINTER(POINTER(uvc_device))()
+    logger.debug("Running find_devices")
+    res = libuvc.uvc_find_devices(ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, None)
+    logger.debug("Result of find_devices: %s", res)
+    if res == 0:
+        try:
+            i = 0
+            logger.debug("Starting with index %d", i)
+            while devs_ptr[i]:
+                dev = devs_ptr[i]
+                logger.debug("Found device at index %d", i)
+                sn = get_serial_number(dev, logger)
+                logger.debug("Found device with serial number: %s", sn)
+                if sn == target_serial:
+                    matching_dev = dev
+                    libuvc.uvc_ref_device(matching_dev) 
+                else:
+                    libuvc.uvc_unref_device(dev)
+                i += 1
+        finally:
+            libuvc.uvc_free_device_list(devs_ptr, 0)
+
+    if not matching_dev:
+        raise RuntimeError(f"No device found with serial number: {target_serial}")
+    return matching_dev
+
+
+def list_purethermal_serial_numbers():
+    """List the serial numbers of all PureThermal cameras connected to the system.
+
+    Enumerates UVC devices that match PT_USB_VID and PT_USB_PID.
+    These are configured to seek Lepton3.5 cameras with the PureThermal 2 board.
+
+    Returns
+    -------
+    list of str
+    """
+    serials = []
+    ctx = POINTER(uvc_context)()
+    libuvc.uvc_init(byref(ctx), 0)
+    devs_ptr = POINTER(POINTER(uvc_device))()
+    res = libuvc.uvc_find_devices(ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, None)
+    if res == 0:
+        try:
+            i = 0
+            while devs_ptr[i]:
+                dev = devs_ptr[i]
+                serials.append(get_serial_number(dev, logger))
+                i += 1
+        finally:
+            libuvc.uvc_free_device_list(devs_ptr, 1)
+    libuvc.uvc_exit(ctx)
+    return serials
+
+
+class PureThermalCamera(BaseCamera):
+    FPS = 9
+    BUF_SIZE = 2
+
+    def __init__(self, id=None, name=None, config=None):
+        """Encapsulates a connection to a pure thermal camera.
+
+        Parameters
+        ----------
+        id : str
+            - Serial number of the camera to connect to.
+        name : str (default: None)
+            A human-readable name for the camera (e.g., 'top', 'side').
+        config : dict (default: None)
+            A dictionary of camera parameters; uses default_camera_config() if None.
+        """
+        assert id is not None, "Camera ID must be provided."
+        self.serial_number = id
+
+        super().__init__(id=id, name=name, config=config, fps=self.FPS)
+
+        # Load a default config if needed (mostly for testing, least common)
+        if self.config is None:
+            self.config = PureThermalCamera.default_camera_config().copy()
+
+        self.q = Queue(self.BUF_SIZE)
+        self.PTR_PY_FRAME_CALLBACK = CFUNCTYPE(None, POINTER(uvc_frame), c_void_p)(self._py_frame_callback)
+        self.ctx = POINTER(uvc_context)()
+        self.dev = POINTER(uvc_device)()
+        self.devh = POINTER(uvc_device_handle)()
+        self.ctrl = uvc_stream_ctrl()
+
+    @staticmethod
+    def default_camera_config():
+        """Generate a default config for a Basler camera."""
+        return {
+            "brand": "purethermal",
+            "display": {"display_frames": False, "display_range": (0, 255)},
+            "ffc_mode": "auto", # options are {"auto", "start", "none"}
+        }
+
+    @staticmethod
+    def default_writer_config(fps, writer_type="ffmpeg"):
+        from multicamera_acquisition.writer import FFMPEG_Writer
+        writer_config = FFMPEG_Writer.default_writer_config(fps, vid_type="mono16")
+        return writer_config
+
+    # TODO
+    def init(self):
+        """
+        Initializes, opens, and configures the camera.
+
+        This is automatically called if the camera is opened
+        using a `with` clause.
+        """
+        # Try to find the logger
+        try:
+            self.logger = logging.getLogger(f"{self.name}_acqLoop")
+        except AttributeError:
+            self.logger = logging.getLogger()
+
+        list_purethermal_serial_numbers(self.logger)
+
+
+        # open and configure camera
+        self.logger.debug("Commence opening PureThermal camera")
+        try:
+            self.logger.debug("Creating uvc context")
+            libuvc.uvc_init(byref(self.ctx), 0)
+            self.logger.debug("Finding device with serial number %s", self.serial_number)
+            self._find_device()
+            
+            return
+            #find_purethermal_by_serial_number(self.ctx, self.serial_number, self.logger)
+            #self.logger.debug("Opening device")
+            res = libuvc.uvc_open(self.dev, byref(self.devh))
+            self.logger.debug("Result of uvc_open: %s", res)
+
+            # configure camera
+            if self.config["ffc_mode"] == "auto":
+                set_auto_ffc(self.devh)
+            else:
+                set_manual_ffc(self.devh)
+                if self.config["ffc_mode"] == "start":
+                    perform_manual_ffc(self.devh)
+
+            frame_formats = uvc_get_frame_formats_by_guid(self.devh, VS_FMT_GUID_Y16)
+            libuvc.uvc_get_stream_ctrl_format_size(self.devh, byref(self.ctrl), UVC_FRAME_FORMAT_Y16,
+                                                    frame_formats[0].wWidth, frame_formats[0].wHeight,
+                                                    int(1e7 / frame_formats[0].dwDefaultFrameInterval))
+        except:
+            libuvc.uvc_unref_device(self.dev)
+            libuvc.uvc_exit(self.ctx)
+            raise CameraError(f"Error opening pure thermal camera {self.serial_number}")
+        print("init done")
+
+
+
+    def _find_device(self):
+        self.logger.debug("Starting find_device")
+
+        found_dev = False
+        devs_ptr = POINTER(POINTER(uvc_device))()
+        self.logger.debug("Running find_devices")
+        res = libuvc.uvc_find_devices(self.ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, None)
+        self.logger.debug("Result of find_devices: %s", res)
+
+        if res == 0:
+            try:
+                i = 0
+                self.logger.debug("Starting with index %d", i)
+                while devs_ptr[i] and not found_dev:
+                    self.dev = devs_ptr[i]
+                    self.logger.debug("Found device at index %d", i)
+                    sn = get_serial_number(self.dev, self.logger)
+                    logger.debug("Found device with serial number: %s", sn)
+                    if sn == self.serial_number:
+                        found_dev = True
+                    else:
+                        libuvc.uvc_unref_device(self.dev)
+                    i += 1
+            finally:
+                libuvc.uvc_free_device_list(devs_ptr, 0)
+
+        # if not matching_dev:
+        #     raise RuntimeError(f"No device found with serial number: {target_serial}")
+        # return matching_dev
+
+
+    def _py_frame_callback(self, frame, userptr):
+        array_pointer = cast(frame.contents.data, POINTER(c_uint16 * (frame.contents.width * frame.contents.height)))
+        data = np.frombuffer(
+            array_pointer.contents, dtype=np.dtype(np.uint16)
+        ).reshape(frame.contents.height, frame.contents.width)
+        if frame.contents.data_bytes != (2 * frame.contents.width * frame.contents.height):
+            return
+        if not self.q.full():
+            self.q.put(data)
+
+    def start(self):
+        """Start streaming images"""
+        libuvc.uvc_start_streaming(self.devh, byref(self.ctrl), self.PTR_PY_FRAME_CALLBACK, None, 0)
+        self.running = True
+
+    def stop(self):
+        """Stop streaming images"""
+        libuvc.uvc_stop_streaming(self.devh)
+        self.running = False
+
+    def close(self):
+        """Stops grabbing, closes the camera, and deletes the camera object.
+        Automatically called if the camera is opening using a `with` clause.
+        """
+        self.stop()
+        libuvc.uvc_unref_device(self.dev)
+        libuvc.uvc_exit(self.ctx)
+
+    # TODO: generate timestamp in _py_frame_callback
+    def get_array(self, timeout=None, get_timestamp=False):
+        """
+        Retrieves a radiometric image from the PureThermal camera as a NumPy array.
+
+        Parameters
+        ----------
+        timeout : float or None
+            How long to wait for a frame (seconds). None means block indefinitely.
+        get_timestamp : bool
+            If True, also return a timestamp for the captured frame.
+
+        Returns
+        -------
+        frame : numpy.ndarray
+            The captured image data.
+        timestamp : int or None
+            Returns a timestamp if get_timestamp=True; otherwise None.
+        """
+        if timeout is None:
+            timeout = 10000
+
+        timestamp = time.time() if get_timestamp else None
+        img_array = np.copy(self.q.get(True, timeout))
+        return img_array, timestamp
+

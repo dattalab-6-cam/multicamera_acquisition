@@ -182,6 +182,11 @@ def create_full_camera_default_config(partial_config, fps):
             default_cam_conf = UVCCamera.default_camera_config().copy()
             default_writer_conf = UVCCamera.default_writer_config(fps).copy()
             defaults = {**default_cam_conf, "writer": default_writer_conf}
+        elif cam_config["brand"] == "purethermal":
+            from multicamera_acquisition.interfaces.camera_purethermal import PureThermalCamera
+            default_cam_conf = PureThermalCamera.default_camera_config().copy()
+            default_writer_conf = PureThermalCamera.default_writer_config(fps).copy()
+            defaults = {**default_cam_conf, "writer": default_writer_conf}
         else:
             raise NotImplementedError
 

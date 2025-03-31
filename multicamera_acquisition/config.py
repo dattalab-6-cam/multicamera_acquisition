@@ -52,6 +52,7 @@ def validate_recording_config(recording_config, logging_level):
             "basler_emulated",
             "azure",
             "uvc",
+            "purethermal",
         ]:
             raise ValueError(
                 f"Unsupported camera brand: {recording_config['cameras'][camera_name]['brand']}"
@@ -68,9 +69,9 @@ def validate_recording_config(recording_config, logging_level):
                 "for Basler cameras where 'trigger_type'=='microcontrolelr'"
             )
 
-    # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
-    if recording_config["globals"]["fps"] % 30 != 0:
-        raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
+    # # Ensure that the requested frame rate is a multiple of the azure's 30 fps rate
+    # if recording_config["globals"]["fps"] % 30 != 0:
+    #     raise ValueError("Framerate must be a multiple of the Azure's frame rate (30)")
 
     ### FPS checks ###
     # Warn user if writers don't have fps params
