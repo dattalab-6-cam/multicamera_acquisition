@@ -8,7 +8,7 @@ from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraErr
 from .purethermal_uvctypes import *
 
 
-def _get_serial_number(devh):
+def get_serial_number(devh):
     """Get the serial number of a device.
 
     Parameters
@@ -63,8 +63,6 @@ def find_purethermal_by_serial_number(ctx, target_serial):
             
         finally:
             libuvc.uvc_free_device_list(devs_ptr, 1)
-        print(get_serial_number(devh))
-        print(found_dev) 
         return devh
 
 
@@ -133,11 +131,11 @@ class PureThermalCamera(BaseCamera):
 
     @staticmethod
     def default_camera_config():
-        """Generate a default config for a Basler camera."""
+        """Generate a default config for a PureThermal camera."""
         return {
             "brand": "purethermal",
             "display": {"display_frames": False, "display_range": (0, 255)},
-            "ffc_mode": "auto", # options are {"auto", "start", "none"}
+            "ffc_mode": "auto", # options are {"auto", "start", "none"},
         }
 
     @staticmethod
@@ -167,8 +165,16 @@ class PureThermalCamera(BaseCamera):
             self.ctx = POINTER(uvc_context)()
             libuvc.uvc_init(byref(self.ctx), 0)
 
-            self.logger.debug("Finding device with serial number %s", self.serial_number)
+            # self.logger.debug("Finding device with serial number %s", self.serial_number)
             self.devh = find_purethermal_by_serial_number(self.ctx, self.serial_number)
+            # self.logger.debug("Found device with serial number %s", self.serial_number)
+
+            # self.devh = POINTER(uvc_device_handle)()
+            # devs_ptr = POINTER(POINTER(uvc_device))()
+            # res = libuvc.uvc_find_devices(self.ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, 0)
+            # dev = devs_ptr[1]
+            # libuvc.uvc_open(dev, byref(self.devh))
+            # libuvc.uvc_free_device_list(devs_ptr, 1)
 
             # configure camera
             if self.config["ffc_mode"] == "auto":
@@ -182,14 +188,19 @@ class PureThermalCamera(BaseCamera):
             libuvc.uvc_get_stream_ctrl_format_size(self.devh, byref(self.ctrl), UVC_FRAME_FORMAT_Y16,
                                                     frame_formats[0].wWidth, frame_formats[0].wHeight,
                                                     int(1e7 / frame_formats[0].dwDefaultFrameInterval))
+            self.logger.debug(f"Set frame format for {self.serial_number}: width = {frame_formats[0].wWidth}")
+            self.logger.debug(f"Set frame format for {self.serial_number}: height = {frame_formats[0].wHeight}")
+            self.logger.debug(f"Set frame format for {self.serial_number}: interval = {frame_formats[0].dwDefaultFrameInterval}")
+
         except:
-            libuvc.uvc_unref_device(self.dev)
+            libuvc.uvc_close(self.devh)
             libuvc.uvc_exit(self.ctx)
             raise CameraError(f"Error opening pure thermal camera {self.serial_number}")
         print("init done")
 
 
     def _py_frame_callback(self, frame, userptr):
+        self.logger.debug("Received frame from PureThermal camera %s", self.serial_number)
         array_pointer = cast(frame.contents.data, POINTER(c_uint16 * (frame.contents.width * frame.contents.height)))
         data = np.frombuffer(
             array_pointer.contents, dtype=np.dtype(np.uint16)
@@ -202,6 +213,8 @@ class PureThermalCamera(BaseCamera):
     def start(self):
         """Start streaming images"""
         libuvc.uvc_start_streaming(self.devh, byref(self.ctrl), self.PTR_PY_FRAME_CALLBACK, None, 0)
+        self.logger.debug("Started streaming PureThermal camera %s", self.serial_number)
+        self.logger.debug(get_serial_number(self.devh))
         self.running = True
 
     def stop(self):
@@ -241,5 +254,15 @@ class PureThermalCamera(BaseCamera):
 
         timestamp = time.time() if get_timestamp else None
         img_array = np.copy(self.q.get(True, timeout))
-        return img_array, timestamp
+        linestatus = None
+        return img_array, linestatus, timestamp
 
+
+def cKelvin_to_celsius(arr):
+    """Convert from units of 0.01 Kelvin to Celsius."""
+    return (arr - 27315) / 100.0
+    
+
+def celsius_to_cKelvin(arr):
+    """Convert from Celsius to units of 0.01 Kelvin."""
+    return (arr * 100.0) + 27315

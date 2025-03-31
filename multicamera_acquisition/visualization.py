@@ -219,7 +219,7 @@ def format_frame(frame, display_size, display_range, is_depth):
     # int16 should be azure data
     if is_depth:
         # Convert frame to turbo/jet colormap
-        frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)
+        frame = cv2.applyColorMap(frame, cv2.COLORMAP_TURBO)[:,:,::-1]
 
     return PIL.Image.fromarray(frame)
 

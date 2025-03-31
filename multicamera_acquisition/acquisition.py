@@ -871,7 +871,12 @@ def refactor_acquire_video(
 
             # Get a writer process (TODO: this is a pretty thin wrapper around the class init's, and maybe we could just call the class init's directly here for clarity.)
             if camera_dict["brand"] != "azure":
-                video_file_name = Path(basename + f"{cam_append_str}.mp4")
+                if camera_dict["writer"]["video_codec"] == "ffv1":
+                    ext = "avi"
+                else:
+                    ext = "mp4"
+
+                video_file_name = Path(basename + f"{cam_append_str}.{ext}")
                 metadata_file_name = Path(basename + f"{cam_append_str}.metadata.csv")
 
                 # Create a writer queue (used to send frames from the AcuqisitionLoop process to the Writer process)
