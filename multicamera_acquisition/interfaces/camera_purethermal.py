@@ -8,33 +8,26 @@ from multicamera_acquisition.interfaces.camera_base import BaseCamera, CameraErr
 from .purethermal_uvctypes import *
 
 
-def get_serial_number(dev):
+def _get_serial_number(devh):
     """Get the serial number of a device.
 
     Parameters
     ----------
-    dev : POINTER(uvc_device)
-        The device to query.
+    devh : POINTER(uvc_device_handle)
+        Handle of the device to query (should already be opened).
 
     Returns
     -------
     serial_number : str
         The serial number of the device.
     """
-    devh = POINTER(uvc_device_handle)()
-    res = libuvc.uvc_open(dev, byref(devh))
-    if res != 0:
-        raise RuntimeError(f"Failed to open device (error code {res})")
-    try:
-        sn = create_string_buffer(32)
-        call_extension_unit(devh, SYS_UNIT_ID, 3, sn, 8)
-        serial_number = sn.raw.rstrip(b'\x00').hex()
-    finally:
-        libuvc.uvc_close(devh)
+    sn = create_string_buffer(32)
+    call_extension_unit(devh, SYS_UNIT_ID, 3, sn, 8)
+    serial_number = sn.raw.rstrip(b'\x00').hex()
     return serial_number
 
 
-def find_purethermal_by_serial_number(ctx, target_serial, logger):
+def find_purethermal_by_serial_number(ctx, target_serial):
     """Find a PureThermal camera by its serial number.
 
     Parameters
@@ -46,35 +39,33 @@ def find_purethermal_by_serial_number(ctx, target_serial, logger):
 
     Returns
     -------
-    POINTER(uvc_device)
-        A pointer to the matching device.
+    devh: POINTER(uvc_device_handle)
+        The device handle of the matching device.
     """
-    matching_dev = None
+    found_dev = False
+    devh = POINTER(uvc_device_handle)()
     devs_ptr = POINTER(POINTER(uvc_device))()
-    logger.debug("Running find_devices")
     res = libuvc.uvc_find_devices(ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, None)
-    logger.debug("Result of find_devices: %s", res)
     if res == 0:
         try:
             i = 0
-            logger.debug("Starting with index %d", i)
-            while devs_ptr[i]:
-                dev = devs_ptr[i]
-                logger.debug("Found device at index %d", i)
-                sn = get_serial_number(dev, logger)
-                logger.debug("Found device with serial number: %s", sn)
-                if sn == target_serial:
-                    matching_dev = dev
-                    libuvc.uvc_ref_device(matching_dev) 
-                else:
-                    libuvc.uvc_unref_device(dev)
-                i += 1
-        finally:
-            libuvc.uvc_free_device_list(devs_ptr, 0)
+            while devs_ptr[i] and not found_dev:
+                res = libuvc.uvc_open(devs_ptr[i], byref(devh))
+                if res != 0:
+                    raise RuntimeError(f"Failed to open device (error code {res})")
 
-    if not matching_dev:
-        raise RuntimeError(f"No device found with serial number: {target_serial}")
-    return matching_dev
+                sn = get_serial_number(devh)
+                if sn == target_serial:
+                    found_dev = True
+                else:
+                    libuvc.uvc_close(devh)
+                i += 1
+            
+        finally:
+            libuvc.uvc_free_device_list(devs_ptr, 1)
+        print(get_serial_number(devh))
+        print(found_dev) 
+        return devh
 
 
 def list_purethermal_serial_numbers():
@@ -97,12 +88,18 @@ def list_purethermal_serial_numbers():
             i = 0
             while devs_ptr[i]:
                 dev = devs_ptr[i]
-                serials.append(get_serial_number(dev, logger))
+                devh = POINTER(uvc_device_handle)()
+                res = libuvc.uvc_open(dev, byref(devh))
+                if res != 0:
+                    raise RuntimeError(f"Failed to open device (error code {res})")
+                serials.append(get_serial_number(devh))
+                libuvc.uvc_close(devh)
                 i += 1
         finally:
             libuvc.uvc_free_device_list(devs_ptr, 1)
     libuvc.uvc_exit(ctx)
     return serials
+
 
 
 class PureThermalCamera(BaseCamera):
@@ -132,9 +129,6 @@ class PureThermalCamera(BaseCamera):
 
         self.q = Queue(self.BUF_SIZE)
         self.PTR_PY_FRAME_CALLBACK = CFUNCTYPE(None, POINTER(uvc_frame), c_void_p)(self._py_frame_callback)
-        self.ctx = POINTER(uvc_context)()
-        self.dev = POINTER(uvc_device)()
-        self.devh = POINTER(uvc_device_handle)()
         self.ctrl = uvc_stream_ctrl()
 
     @staticmethod
@@ -166,22 +160,15 @@ class PureThermalCamera(BaseCamera):
         except AttributeError:
             self.logger = logging.getLogger()
 
-        list_purethermal_serial_numbers(self.logger)
-
-
         # open and configure camera
         self.logger.debug("Commence opening PureThermal camera")
         try:
             self.logger.debug("Creating uvc context")
+            self.ctx = POINTER(uvc_context)()
             libuvc.uvc_init(byref(self.ctx), 0)
+
             self.logger.debug("Finding device with serial number %s", self.serial_number)
-            self._find_device()
-            
-            return
-            #find_purethermal_by_serial_number(self.ctx, self.serial_number, self.logger)
-            #self.logger.debug("Opening device")
-            res = libuvc.uvc_open(self.dev, byref(self.devh))
-            self.logger.debug("Result of uvc_open: %s", res)
+            self.devh = find_purethermal_by_serial_number(self.ctx, self.serial_number)
 
             # configure camera
             if self.config["ffc_mode"] == "auto":
@@ -200,38 +187,6 @@ class PureThermalCamera(BaseCamera):
             libuvc.uvc_exit(self.ctx)
             raise CameraError(f"Error opening pure thermal camera {self.serial_number}")
         print("init done")
-
-
-
-    def _find_device(self):
-        self.logger.debug("Starting find_device")
-
-        found_dev = False
-        devs_ptr = POINTER(POINTER(uvc_device))()
-        self.logger.debug("Running find_devices")
-        res = libuvc.uvc_find_devices(self.ctx, byref(devs_ptr), PT_USB_VID, PT_USB_PID, None)
-        self.logger.debug("Result of find_devices: %s", res)
-
-        if res == 0:
-            try:
-                i = 0
-                self.logger.debug("Starting with index %d", i)
-                while devs_ptr[i] and not found_dev:
-                    self.dev = devs_ptr[i]
-                    self.logger.debug("Found device at index %d", i)
-                    sn = get_serial_number(self.dev, self.logger)
-                    logger.debug("Found device with serial number: %s", sn)
-                    if sn == self.serial_number:
-                        found_dev = True
-                    else:
-                        libuvc.uvc_unref_device(self.dev)
-                    i += 1
-            finally:
-                libuvc.uvc_free_device_list(devs_ptr, 0)
-
-        # if not matching_dev:
-        #     raise RuntimeError(f"No device found with serial number: {target_serial}")
-        # return matching_dev
 
 
     def _py_frame_callback(self, frame, userptr):
@@ -259,7 +214,7 @@ class PureThermalCamera(BaseCamera):
         Automatically called if the camera is opening using a `with` clause.
         """
         self.stop()
-        libuvc.uvc_unref_device(self.dev)
+        libuvc.uvc_close(self.devh)
         libuvc.uvc_exit(self.ctx)
 
     # TODO: generate timestamp in _py_frame_callback
