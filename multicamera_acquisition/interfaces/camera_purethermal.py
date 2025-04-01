@@ -30,13 +30,14 @@ def list_purethermal_serial_numbers():
                 dev = devs_ptr[i]
                 devh = POINTER(uvc_device_handle)()
                 res = libuvc.uvc_open(dev, byref(devh))
-                if res != 0:
-                    raise RuntimeError(f"Failed to open device (error code {res})")
-                sn = create_string_buffer(32)
-                call_extension_unit(devh, SYS_UNIT_ID, 3, sn, 8)
-                serial_number = sn.raw.rstrip(b'\x00').hex()
+                if res == 0:
+                    sn = create_string_buffer(32)
+                    call_extension_unit(devh, SYS_UNIT_ID, 3, sn, 8)
+                    serial_number = sn.raw.rstrip(b'\x00').hex()
+                    libuvc.uvc_close(devh)
+                else:
+                    serial_number = None
                 serials.append(serial_number)
-                libuvc.uvc_close(devh)
                 i += 1
         finally:
             libuvc.uvc_free_device_list(devs_ptr, 1)
@@ -72,7 +73,7 @@ class PureThermalCamera(BaseCamera):
 
         # initialize other variables
         self.q = Queue(self.BUF_SIZE)
-        self.PTR_PY_FRAME_CALLBACK = CFUNCTYPE(None, POINTER(uvc_frame), c_void_p)(self.py_frame_callback)
+        self.PTR_PY_FRAME_CALLBACK = CFUNCTYPE(None, POINTER(uvc_frame), c_void_p)(self._py_frame_callback)
         self.ctx = POINTER(uvc_context)()
         self.devh = POINTER(uvc_device_handle)()
         self.ctrl = uvc_stream_ctrl()
@@ -156,7 +157,7 @@ class PureThermalCamera(BaseCamera):
             libuvc.uvc_close(self.devh)
             libuvc.uvc_exit(self.ctx)
             raise CameraError(f"Error opening pure thermal camera {self.serial_number}")
-        print("init done")
+
 
 
     def _py_frame_callback(self, frame, userptr):
@@ -174,7 +175,6 @@ class PureThermalCamera(BaseCamera):
         """Start streaming images"""
         libuvc.uvc_start_streaming(self.devh, byref(self.ctrl), self.PTR_PY_FRAME_CALLBACK, None, 0)
         self.logger.debug("Started streaming PureThermal camera %s", self.serial_number)
-        self.logger.debug(get_serial_number(self.devh))
         self.running = True
 
     def stop(self):
