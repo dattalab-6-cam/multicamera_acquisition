@@ -435,7 +435,7 @@ def find_serial_ports():
     result = []
     for port in ports:
         try:
-            s = serial.Serial(port)
+            s = serial.Serial(port, timeout=0.1, exclusive=True)
             s.close()
             result.append(port)
         except (OSError, serial.SerialException):
