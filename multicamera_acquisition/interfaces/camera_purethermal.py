@@ -141,6 +141,7 @@ class PureThermalCamera(BaseCamera):
             if self.config["ffc_mode"] == "auto":
                 set_auto_ffc(self.devh)
             else:
+                self.logger.debug("setting manual ffc")
                 set_manual_ffc(self.devh)
                 if self.config["ffc_mode"] == "start":
                     perform_manual_ffc(self.devh)

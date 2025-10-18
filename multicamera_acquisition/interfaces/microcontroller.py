@@ -506,7 +506,10 @@ class Microcontroller(object):
                 for c in config["cameras"].values()
                 if c["brand"] in ["basler", "flir"]
             ]
-            basler_exposure_time = max(exposure_times)
+            if len(exposure_times) == 0:
+                basler_exposure_time = 0
+            else:
+                basler_exposure_time = max(exposure_times)
         else:
             # TODO: this needs to guess at an fps? might not really work..
             self.config = self.default_microcontroller_config()

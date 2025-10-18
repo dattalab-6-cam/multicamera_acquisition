@@ -17,6 +17,7 @@ ALL_CAM_PARAMS = [
     "exposure",
     "brand",
     "fps",
+    "ffc_mode",
 ]
 
 # Not exhaustive, but any lower-level ffmpeg or nvc params
