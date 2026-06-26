@@ -262,6 +262,7 @@ pip3 install .
 ```
 
 #### Windows
+Install Windows Studio 2019 Community: https://aka.ms/vs/16/release/vs_community.exe
 Follow the guide in the official documentation [here](https://github.com/NVIDIA/VideoProcessingFramework). We have tested install with Visual Studio 2019, and [installing CUDA Toolkit via Conda](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html#conda). This is much easier than trying to install the binaries yourself or (god forbid) compile it.
 >[!IMPORTANT]
 >The final step of the VPF install process is to "Install from the root directory of this repository indicating the location of the compiled FFMPEG in a Powershell console." After cloning the repo to a reasonable location, you will need to initiate conda in Windows Powershell before you can actually do the install correctly — otherwise you will be installing into your base environment instead of into your conda environment that we created a few steps ago. The steps to do this are as follows:
