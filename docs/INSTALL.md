@@ -288,7 +288,7 @@ Then update src/TC/CMakeLists.txt to remove unsupported compute architectures:
 * run `nvcc --list-gpu-arch` in the terminal
 * comment out any unsupported values in the list under `CMAKE_CUDA_ARCHITECTURES`
 
->Then you can install the package:
+Then you can install the package:
 > ```
 > cd [to the cloned the VPF repo]
 > pip install .
