@@ -279,8 +279,10 @@ Follow the guide in the official documentation [here](https://github.com/NVIDIA/
 > ```
 > Note that this will **only** work with forward slashes as shown (despite the fact that Windows uses backslashes).
 >
->Next, you will need to fix the pyproject.toml for VPF. Change the setuptools line to read `"setuptools>=42,<81"` to avoid an issue with the now-deprecated module `pkg_resources`.
->
+>Next, you will need to fix the pyproject.toml for VPF:
+>* Change the setuptools line to read `"setuptools>=42,<81,"` to avoid an issue with the now-deprecated module `pkg_resources`.
+> * Change the cmake line to read `"cmake>=3.21,<3.30",`
+
 >Then you can install the package:
 > ```
 > cd [to the cloned the VPF repo]
