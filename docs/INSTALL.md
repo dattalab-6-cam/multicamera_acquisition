@@ -278,6 +278,10 @@ Follow the guide in the official documentation [here](https://github.com/NVIDIA/
 > $env:SKBUILD_CONFIGURE_OPTIONS="-DTC_FFMPEG_ROOT=C:/path/to/your/ffmpeg/installation/ffmpeg/"
 > ```
 > Note that this will **only** work with forward slashes as shown (despite the fact that Windows uses backslashes).
+>
+>Next, you will need to fix the pyproject.toml for VPF. Change the setuptools line to read `"setuptools>=42,<81"` to avoid an issue with the now-deprecated module `pkg_resources`.
+>
+>Then you can install the package:
 > ```
 > cd [to the cloned the VPF repo]
 > pip install .
