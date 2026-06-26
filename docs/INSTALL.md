@@ -34,7 +34,7 @@ sudo apt-get install -y libsoundio1
 
 #### Windows
 - Install [Git for Windows](https://gitforwindows.org/)
-- Download the latest build of ffmpeg with shared libraries. For example, `ffmpeg-release-full-shared.7z` from [here](https://www.gyan.dev/ffmpeg/builds/). Unzip it, rename the resulting folder to something reasonable like `ffmpeg`, move it to a reasonable location, and add the path to the `bin` folder within ffmpeg to your Windows Path (e.g. `C:\path\to\ffmpeg\bin`) ([instructions](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14))).
+- Download the ~latest~ version 6.1 shared build of ffmpeg with shared libraries. ~For example, `ffmpeg-release-full-shared.7z` from [here](https://www.gyan.dev/ffmpeg/builds/).~ Get it here: [ffmpeg-n6.1.1-329-g0bd31a8f91-win64-gpl-shared-6.1](https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-07-31-12-50/ffmpeg-n6.1.1-329-g0bd31a8f91-win64-gpl-shared-6.1.zip)  Unzip it, rename the resulting folder to something reasonable like `ffmpeg`, move it to a reasonable location, and add the path to the `bin` folder within ffmpeg to your Windows Path (e.g. `C:\path\to\ffmpeg\bin`) ([instructions](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14))).
 
 ***
 
@@ -226,6 +226,7 @@ bash ./patch.sh
 
 #### Windows
 The same patch is required, but it is a bit more involved to install: https://github.com/keylase/nvidia-patch/tree/master/win. That said, we have had success using it.
+[Update June 2026: the NVIDIA driver that I have isn't on the patch list! Maybe I don't need to patch it...?]
 
 ***
 <!-- TODO: Test this part, NVIDIA VPF not tested on laptop-->
@@ -279,9 +280,13 @@ Follow the guide in the official documentation [here](https://github.com/NVIDIA/
 > ```
 > Note that this will **only** work with forward slashes as shown (despite the fact that Windows uses backslashes).
 >
+>UPDATED June 2026:
 >Next, you will need to fix the pyproject.toml for VPF:
 >* Change the setuptools line to read `"setuptools>=42,<81,"` to avoid an issue with the now-deprecated module `pkg_resources`.
-> * Change the cmake line to read `"cmake>=3.21,<3.30",`
+>* Change the cmake line to read `"cmake>=3.21,<3.30",`
+Then update src/TC/CMakeLists.txt to remove unsupported compute architectures:
+* run `nvcc --list-gpu-arch` in the terminal
+* comment out any unsupported values in the list under `CMAKE_CUDA_ARCHITECTURES`
 
 >Then you can install the package:
 > ```
