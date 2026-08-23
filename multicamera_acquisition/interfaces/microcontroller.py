@@ -412,9 +412,30 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
     state_change_pins = state_change_pins[sort_inds]
     state_change_states = state_change_states[sort_inds]
 
+    # If in ephys mode, go back and remove all the state changes for the lights, and just leave them on the whole time
+    # (obv would be easier to not put them in in the first place, but I don't want to re-factor all the code above right now...)
+    if "ephys_mode" in config and config["ephys_mode"]:
+        light_pins = flatten([config[f"{group}_light_pins"] for group in capture_groups.keys()])
+        for pin in light_pins:
+            light_inds = np.where(state_change_pins == pin)[0]
+            state_change_pins = np.delete(state_change_pins, light_inds)
+            state_change_times = np.delete(state_change_times, light_inds)
+            state_change_states = np.delete(state_change_states, light_inds)
+
+    #     # add state changes to turn on all the lights at the beginning of the cycle
+        state_change_pins = np.concatenate([light_pins, state_change_pins])
+        state_change_times = np.concatenate([np.zeros(len(light_pins)).astype(np.int64), state_change_times])
+        state_change_states = np.concatenate([np.ones(len(light_pins)).astype(np.int64), state_change_states])
+
+
     # confirm that times are within one cycle
+    logger.debug(f"Light pins: {[config[f'{group}_light_pins'] for group in capture_groups.keys()]}")
+    logger.debug(f"Camera pins: {[config[f'{group}_camera_pins'] for group in capture_groups.keys()]}")
+    logger.debug(f"State change pins: {state_change_pins}")
+    logger.debug(f"State change states: {state_change_states}")
     logger.debug(f"State change times: {state_change_times}")
-    if np.any(state_change_times >= cycle_duration):
+    logger.debug(f"Cycle duration: {cycle_duration}")
+    if np.any(state_change_times > cycle_duration):
         raise ValueError(
             "Some state change times are greater than the acquisition cycle duration!"
         )
@@ -529,7 +550,9 @@ class Microcontroller(object):
 
             # dict of camera groups and cameras within them eg, {"top": ["top", "side1",...], "bottom": ["bottom"]}
             capture_groups = config["microcontroller"]["capture_groups"]
-            
+
+            if "ephys_mode" in self.config and self.config["ephys_mode"]:
+                self.logger.info("Ephys mode enabled for microcontroller. Light state changes will be ignored, and lights will be left on throughout the acquisition.")
 
         else:
             # TODO: this needs to guess at an fps? might not really work..
