@@ -18,7 +18,7 @@ is as follows.
 "READY" over the serial connection once per second.
 
 2) The microcontroller will wait for instructions from the python script, which should 
-consist of a sequence 10 lines (each ending with "\n"), as follows:
+consist of a sequence 11 lines (each ending with "\n"), as follows:
 
     (1) STX (Start of Text) character, aka b'\x02'
     (2) integer specifying number of acquisition cycles to perform
@@ -27,9 +27,10 @@ consist of a sequence 10 lines (each ending with "\n"), as follows:
     (5) comma separated list of output pins for the random bit sequence
     (6) integer specifying number of cycles between each update of the random bit
     (7) comma separated list of deterministic output state-change times in microseconds
-    (8) comma separated list of deterministic output pins corresponding to the times in (8)
-    (9) comma separated states (0 or 1) corresponding to the times in (8)
-    (10) ETX (End of Text) character, aka b'\x03'
+    (8) comma separated list of deterministic output pins corresponding to the times in (7)
+    (9) comma separated list of states (0 or 1 for digitalWrite, or 0-256 for analogWrite) corresponding to the times in (7)
+    (10) NEW: comma separated list of integers specifying whether to use digitalWrite (0) or analogWrite (1) for the corresponding pins in (7)
+    (11) ETX (End of Text) character, aka b'\x03'
 
 (3) After the microcontroller has seen a correctly formatted data packet, it will send 
 the string "RECEIVED" over the serial connection and then immediately begin performing 
@@ -189,7 +190,8 @@ void reportPinState(uint16_t pin, uint8_t state, unsigned long time)
  * @param cycles_per_random_update The number of cycles between each update of the random bit.
  * @param state_change_times An array of times in microseconds when the deterministic output pins should change states.
  * @param state_change_pins An array of deterministic output pins to change states.
- * @param state_change_states An array of states (0 or 1) corresponding to the times in state_change_times.
+ * @param state_change_states An array of states (0 or 1 for digitalWrite, 0-256 for analogWrite) corresponding to the times in state_change_times.
+ * @param state_change_modes An array of modes (0 for digitalWrite, 1 for analogWrite) corresponding to the times in state_change_times.
  * @param num_state_changes The number of state changes to perform.
  **/
 void acquisitionLoop(
@@ -203,6 +205,7 @@ void acquisitionLoop(
     unsigned long *state_change_times,
     uint16_t *state_change_pins,
     unsigned long *state_change_states,
+    uint16_t *state_change_modes,
     int num_state_changes)
 {
     // Initialize the input pins
@@ -258,7 +261,20 @@ void acquisitionLoop(
             if (elapsed_cycle_time >= state_change_times[step_index])
             {
                 // Change the state of the current pin
-                digitalWrite(state_change_pins[step_index], state_change_states[step_index]);
+                if state_change_modes[step_index] == 0
+                {
+                    digitalWrite(state_change_pins[step_index], state_change_states[step_index]);
+                }
+                else if (state_change_modes[step_index] == 1)
+                {
+                    analogWrite(state_change_pins[step_index], state_change_states[step_index]);
+                }
+                // else
+                // {
+                //     Serial.write("ERROR: Invalid state change mode\n");
+                //     return;
+                // }
+                // digitalWrite(state_change_pins[step_index], state_change_states[step_index]);
                 step_index++;
             }
         }
@@ -377,6 +393,11 @@ void loop()
             unsigned long state_change_states[MAX_OUTPUT_STATE_CHANGES];
             line = Serial.readStringUntil('\n');
             parseLine(line.c_str(), state_change_states, MAX_OUTPUT_STATE_CHANGES, nullptr);
+            
+            // Read the state change modes (digitalWrite or analogWrite)
+            uint16_t state_change_modes[MAX_OUTPUT_STATE_CHANGES];
+            line = Serial.readStringUntil('\n');
+            parseLine(line.c_str(), state_change_modes, MAX_OUTPUT_STATE_CHANGES, nullptr);
 
             // Read the last character
             char lastChar = Serial.readStringUntil('\n')[0];
@@ -401,6 +422,7 @@ void loop()
                     state_change_times,
                     state_change_pins,
                     state_change_states,
+                    state_change_modes,
                     num_state_changes);
             }
 

@@ -232,6 +232,11 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
                 List of pins connected to {group} lights.
             - {group}_light_dur
                 Duration of {group} light pulses in microseconds.
+            - optional: {group}_light_pwms
+                Dictionary of pins and PWM values for lights that should be dimmed. 
+                Keys are pins, values are PWM values (0-255).
+                If no key is provided for a light pin, it will be turned on with digitalWrite.
+                (And if {group}_light_pwms is not provided, all lights will be turned on with digitalWrite.)
         - inter_group_offset
             Gap between between shutoff of the lights of one group, and the onset of the next
             camera group's triggers (ignored if `n_azures>0` and `basler_fps>30`).
@@ -362,6 +367,7 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
         prev_group = group
 
     # Prepare to send the state timings to the arduino
+    # We first populate lists without worrying about the order of the state changes, and then sort them by time at the end.
     state_change_times = []
     for group in capture_groups.keys():
         state_change_times.extend([
@@ -422,11 +428,20 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
             state_change_times = np.delete(state_change_times, light_inds)
             state_change_states = np.delete(state_change_states, light_inds)
 
-    #     # add state changes to turn on all the lights at the beginning of the cycle
+        # add state changes to turn on all the lights at the beginning of the cycle
         state_change_pins = np.concatenate([light_pins, state_change_pins])
         state_change_times = np.concatenate([np.zeros(len(light_pins)).astype(np.int64), state_change_times])
         state_change_states = np.concatenate([np.ones(len(light_pins)).astype(np.int64), state_change_states])
 
+
+    # Create a list of modes for each state change (0 for digitalWrite, 1 for analogWrite)
+    state_change_modes = np.zeros_like(state_change_states)  # default is 0 -> digitalWrite
+    for group in capture_groups.keys():
+        if f"{group}_light_pwms" in config:
+            for pin, pwm in config[f"{group}_light_pwms"].items():
+                light_inds = np.where(state_change_pins == pin)[0]
+                state_change_modes[light_inds] = 1
+                state_change_states[light_inds] = pwm
 
     # confirm that times are within one cycle
     logger.debug(f"Light pins: {[config[f'{group}_light_pins'] for group in capture_groups.keys()]}")
@@ -434,6 +449,7 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
     logger.debug(f"State change pins: {state_change_pins}")
     logger.debug(f"State change states: {state_change_states}")
     logger.debug(f"State change times: {state_change_times}")
+    logger.debug(f"State change modes: {state_change_modes}")
     logger.debug(f"Cycle duration: {cycle_duration}")
     if np.any(state_change_times > cycle_duration):
         raise ValueError(
@@ -450,7 +466,7 @@ def generate_output_schedule(config, n_azures, capture_groups, basler_fps):
             config["trigger_plot_figsize"],
         )
 
-    return state_change_times, state_change_pins, state_change_states, cycle_duration
+    return state_change_times, state_change_pins, state_change_states, state_change_modes, cycle_duration
 
 
 def find_serial_ports():
@@ -573,6 +589,7 @@ class Microcontroller(object):
             self.state_change_times,
             self.state_change_pins,
             self.state_change_states,
+            self.state_change_modes,
             self.cycle_duration,
         ) = generate_output_schedule(self.config, n_azures, capture_groups, basler_fps)
 
@@ -671,6 +688,7 @@ class Microcontroller(object):
             ",".join(map(str, self.state_change_times)).encode(),
             ",".join(map(str, self.state_change_pins)).encode(),
             ",".join(map(str, self.state_change_states)).encode(),
+            ",".join(map(str, self.state_change_modes)).encode(),
             ETX,
         )
 
