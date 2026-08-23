@@ -219,7 +219,18 @@ void acquisitionLoop(
     // Initialize the deterministic output pins
     for (int i = 0; i < num_state_changes; i++)
     {
-        pinMode(state_change_pins[i], OUTPUT);
+        // digital pins: set mode to output
+        if (state_change_modes[i] == 0)
+        {
+          pinMode(state_change_pins[i], OUTPUT);
+        }
+
+        // analog pins: increase analog write freq. to not make horrible noise.
+        // (don't need to set pinMode, as Teensy analogWrite auto-sets a secret separate pin mode)
+        if (state_change_modes[i] == 1)
+        {
+          analogWriteFrequency(state_change_pins[i], 146484);  // "ideal" freq for cpu 600 mhz that is above mouse upper hearing limit
+        }
     }
 
     // Initialize indexes
@@ -261,7 +272,7 @@ void acquisitionLoop(
             if (elapsed_cycle_time >= state_change_times[step_index])
             {
                 // Change the state of the current pin
-                if state_change_modes[step_index] == 0
+                if (state_change_modes[step_index] == 0)
                 {
                     digitalWrite(state_change_pins[step_index], state_change_states[step_index]);
                 }
