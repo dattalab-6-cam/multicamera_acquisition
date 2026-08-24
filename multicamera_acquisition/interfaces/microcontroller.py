@@ -547,8 +547,10 @@ class Microcontroller(object):
         # Try to find the main logger
         try:
             self.logger = logging.getLogger("main_acq_logger")
+            self.logger.debug("Microcontroller logger initialized as main_acq_logger.")
         except:
             self.logger = logging.getLogger("microcontroller_logger")
+            self.logger.debug("Microcontroller logger initialized as microcontroller_logger.")
 
         # extract relevant config parameters
         if config is not None:
@@ -677,6 +679,9 @@ class Microcontroller(object):
 
         # calculate number of acquisition cycles
         num_cycles = int(recording_duration_s * 1e6 / self.cycle_duration)
+
+        self.logger.debug(f"Random output pins: {self.config['random_output_pins']}")
+        self.logger.debug(f"Input pins: {self.config['input_pins']}")
 
         lines_to_send = (
             STX,

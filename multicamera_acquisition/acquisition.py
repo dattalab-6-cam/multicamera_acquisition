@@ -430,7 +430,7 @@ def end_processes(acquisition_loops, writers, disp, writer_timeout=60):
             logger.debug(
                 f"joining acquisition loop ({acquisition_loop.camera_config['name']})",
             )
-            acquisition_loop.join(timeout=1)
+            acquisition_loop.join(timeout=10)
             # acquisition_loop.join(timeout=60 * 60)
 
             # If still alive, terminate it
