@@ -278,8 +278,16 @@ class BaslerCamera(BaseCamera):
             pass
 
         # Set gamma
-        self.logger.debug(f'Gamma is {self.config["gamma"]}')
-        self.cam.Gamma.SetValue(self.config["gamma"])
+        requested_gamma = float(self.config["gamma"])
+        self.logger.debug(f'Gamma is {requested_gamma}')
+        self.cam.Gamma.SetValue(requested_gamma)
+
+        actual_gamma = self.cam.Gamma.GetValue()
+        self.logger.debug(
+            "Requested gamma=%s, actual camera gamma=%s",
+            requested_gamma,
+            actual_gamma,
+        )
 
         # Set exposure time
         self.cam.ExposureAuto.SetValue("Off")
