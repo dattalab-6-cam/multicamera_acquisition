@@ -372,32 +372,42 @@ class NVC_Writer(BaseWriter):
 
         if data.dtype != np.uint8:
             raise TypeError(
-                f"Expected uint8 frame from Mono8 camera; got {data.dtype}"
+                f"Expected uint8 frame; got {data.dtype}"
             )
 
-        # Initialize or validate the reusable NV12 buffer.
         if self.nv12_placeholder is None:
             self.img_dims = tuple(data.shape)
-            self.nv12_placeholder = grey2nv12(data)
+            height, width = self.img_dims
 
-        else:
-            if tuple(data.shape) != tuple(self.img_dims):
+            if height % 2 != 0 or width % 2 != 0:
                 raise ValueError(
-                    f"Frame shape changed from {self.img_dims} to {data.shape}"
+                    f"NV12 requires even dimensions; got {width}x{height}"
                 )
 
-            # Important: perform the grayscale-to-NV12 conversion on every frame.
-            grey2nv12(data, output=self.nv12_placeholder)
+            self.nv12_placeholder = np.empty(
+                (height + height // 2, width),
+                dtype=np.uint8,
+            )
 
-        # The buffer created above is contiguous, but this makes the requirement
-        # explicit before passing it to PyNvCodec.
-        nv12_array = np.ascontiguousarray(self.nv12_placeholder)
+        elif tuple(data.shape) != tuple(self.img_dims):
+            raise ValueError(
+                f"Frame shape changed from {self.img_dims} to {data.shape}"
+            )
+
+        # Apply the conversion to every frame, reusing the NV12 buffer.
+        nv12_array = grey2nv12(
+            data,
+            output=self.nv12_placeholder,
+        )
+
+        if not nv12_array.flags["C_CONTIGUOUS"]:
+            nv12_array = np.ascontiguousarray(nv12_array)
 
         try:
             success = self.pipe.EncodeSingleFrame(
                 nv12_array,
                 self.encFrame,
-                sync=True,
+                sync=False,
             )
         except Exception:
             self.logger.error(
@@ -407,12 +417,8 @@ class NVC_Writer(BaseWriter):
             raise
 
         if success:
+            # Copy the packet before the next encoder call overwrites encFrame.
             self.encFile.write(bytearray(self.encFrame))
-        else:
-            self.logger.warning(
-                "PyNvCodec returned success=False while encoding frame "
-                f"{self.frames_received}"
-            )
             
     def close_video(self):
         # Flush the PyNvCodec encoder
