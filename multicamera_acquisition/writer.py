@@ -339,73 +339,47 @@ class NVC_Writer(BaseWriter):
         self._current_vid_muxing = False
         self.logger.debug("Pipe created")
 
-    # def append(self, data):
-    #     # Cast to uint8
-    #     data = data.astype(np.uint8)
-
-    #     # Convert to nv12, which is dims X by Y*1.5
-    #     if self.nv12_placeholder is None:
-    #         nv12_array = grey2nv12(data)
-    #         self.img_dims = data.shape
-    #         self.nv12_placeholder = nv12_array
-    #     else:
-    #         nv12_array = self.nv12_placeholder
-    #         nv12_array[: self.img_dims[0], : self.img_dims[1]] = data
-
-    #     try:
-    #         success = self.pipe.EncodeSingleFrame(nv12_array, self.encFrame, sync=False)
-    #     except Exception as e:
-    #         success = False
-    #         self.logger.debug(f"failed to create frame: {e}")
-
-    #     if success:
-    #         encByteArray = bytearray(self.encFrame)
-    #         self.encFile.write(encByteArray)
-
     def append(self, data):
-        data = np.asarray(data)
-
-        if data.ndim != 2:
-            raise ValueError(
-                f"Expected a 2D grayscale frame; got shape {data.shape}"
-            )
-
-        if data.dtype != np.uint8:
-            raise TypeError(
-                f"Expected uint8 frame; got {data.dtype}"
-            )
-
         if self.nv12_placeholder is None:
-            self.img_dims = tuple(data.shape)
-            height, width = self.img_dims
+            if data.ndim != 2:
+                raise ValueError(
+                    f"Expected a 2D grayscale frame; got shape {data.shape}"
+                )
+
+            if data.dtype != np.uint8:
+                raise TypeError(
+                    f"Expected uint8 frame; got {data.dtype}"
+                )
+
+            height, width = data.shape
 
             if height % 2 != 0 or width % 2 != 0:
                 raise ValueError(
                     f"NV12 requires even dimensions; got {width}x{height}"
                 )
 
+            self.img_dims = data.shape
+
+            # Allocate NV12 buffer directly.
             self.nv12_placeholder = np.empty(
                 (height + height // 2, width),
                 dtype=np.uint8,
             )
 
-        elif tuple(data.shape) != tuple(self.img_dims):
+            # Initialize the neutral chroma plane once.
+            self.nv12_placeholder[height:, :] = 128
+
+        elif data.shape != self.img_dims:
             raise ValueError(
                 f"Frame shape changed from {self.img_dims} to {data.shape}"
             )
 
-        # Apply the conversion to every frame, reusing the NV12 buffer.
-        nv12_array = grey2nv12(
-            data,
-            output=self.nv12_placeholder,
-        )
-
-        if not nv12_array.flags["C_CONTIGUOUS"]:
-            nv12_array = np.ascontiguousarray(nv12_array)
+        # Copy full-range grayscale data into the Y plane.
+        self.nv12_placeholder[: self.img_dims[0], :] = data
 
         try:
             success = self.pipe.EncodeSingleFrame(
-                nv12_array,
+                self.nv12_placeholder,
                 self.encFrame,
                 sync=False,
             )
@@ -417,24 +391,27 @@ class NVC_Writer(BaseWriter):
             raise
 
         if success:
-            # Copy the packet before the next encoder call overwrites encFrame.
             self.encFile.write(bytearray(self.encFrame))
-            
+
     def close_video(self):
         # Flush the PyNvCodec encoder
+        self.logger.debug("Flushing encoder stream")
         if self.pipe is not None:
             self.flush_enc_stream()
+        self.logger.debug("Done flushing stream.")
 
         # Close the video file
         if self.encFile is not None:
             if not self.encFile.closed:
                 self.encFile.close()
+        self.logger.debug("Closed video file")
 
         # Reset the pipe to None so that it can be reinitialized
         self.pipe = None
 
         # Set the video to be muxed if requested
         if self.config["auto_remux_videos"] and not self._current_vid_muxing:
+            self.logger.debug(f"Starting muxing for {self.video_file_name}")
             self._mux_video(self.video_file_name)
 
     def flush_enc_stream(self):
@@ -453,7 +430,7 @@ class NVC_Writer(BaseWriter):
         # Create a muxer process
         self.logger.debug(f"Creating muxer process for {video_file_name}")
         success_event = mp.Event()
-        muxer = VideoMuxer(video_file_name, success_event)
+        muxer = VideoMuxer(video_file_name, success_event, self.logger)
 
         # Start the muxer process
         muxer.start()
@@ -473,6 +450,7 @@ class NVC_Writer(BaseWriter):
         if self.config["auto_remux_videos"] and hasattr(self, "muxer_processes"):
             self.logger.debug("Joining muxer processes")
             for vid, muxer in zip(self.vids_muxed, self.muxer_processes):
+                self.logger.debug(f"Joining muxer for {vid}")
                 muxer.join()
                 if not muxer.success.is_set():
                     warnings.warn(f"Failed to mux {muxer.video_file_name}")
@@ -484,7 +462,7 @@ class NVC_Writer(BaseWriter):
 
 
 class VideoMuxer(mp.Process):
-    def __init__(self, target_file, success_event):
+    def __init__(self, target_file, success_event, logger):
         super().__init__()
         if not isinstance(target_file, Path):
             target_file = Path(target_file)
@@ -492,6 +470,8 @@ class VideoMuxer(mp.Process):
         self.success = success_event
         self.video_file_name = target_file
         self._validate_target_file()
+        self.logger = logger
+        self.logger.debug(f"Initialized VideoMuxer for {self.video_file_name}")
 
     def _validate_target_file(self):
         if self.video_file_name.suffix != ".mp4":
@@ -538,13 +518,15 @@ class VideoMuxer(mp.Process):
         #     "mp4",
         #     str(tmp_file_name),
         # ]
+
+        # New command that tells h264 that luma will be full range, but we dont have to convert ahead of time
         command = [
             "ffmpeg",
             "-nostdin",
             "-y",
             "-hide_banner",
             "-loglevel",
-            "info",
+            "warning",
             "-f",
             "h264",
             "-i",
@@ -554,25 +536,16 @@ class VideoMuxer(mp.Process):
             "-c:v",
             "copy",
             "-bsf:v",
-            "h264_metadata=video_full_range_flag=0",
+            "h264_metadata=video_full_range_flag=1",
             "-color_range",
-            "tv",
+            "pc",
             "-f",
             "mp4",
             str(tmp_file_name),
         ]
 
         # # Run the muxing once the video is ready (ie released by the writer)
-        # self._mux_pipe = subprocess.Popen(command)
-
-        # # Wait for the muxing to finish
-        # self._mux_pipe.wait()
-
-        # # NB: don't try to delete / rename the files here, it throws weird permission errors.
-
-        # # TODO: check exit code of subproc, if error, dont delete the original file
-        # # Declare success!
-        # self.success.set()
+        self.logger.debug(f"Running muxing command: {' '.join(command)}")
         try:
             self._mux_pipe = subprocess.run(
                 command,
@@ -582,6 +555,8 @@ class VideoMuxer(mp.Process):
                 text=True,
                 check=False,
             )
+            self.logger.debug(f"FFmpeg output: {self._mux_pipe.stdout}")
+            self.logger.debug(f"FFmpeg error output: {self._mux_pipe.stderr}")
 
             if self._mux_pipe.returncode != 0:
                 print(
@@ -842,86 +817,3 @@ def get_writer(
         raise ValueError(f"Unrecognized writer type: {writer_type}")
     return writer
 
-
-# def grey2nv12(frame):
-#     """Convert greyscale image to nv12"""
-#     # Convert grayscale to Y channel in YUV
-#     Y = frame.astype(np.uint8)
-
-#     # U and V channels are set to 128 (for a grayscale image, chroma channels remain constant)
-#     U = np.full((frame.shape[0] // 2, frame.shape[1] // 2), 128, dtype=np.uint8)
-#     V = np.full((frame.shape[0] // 2, frame.shape[1] // 2), 128, dtype=np.uint8)
-
-#     # Interleave U and V for NV12 format
-#     UV = np.empty((U.shape[0], U.shape[1] * 2), dtype=np.uint8)
-#     UV[:, 0::2] = U
-#     UV[:, 1::2] = V
-
-#     # Stack Y and UV to create the NV12 format
-#     nv12 = np.vstack((Y, UV))
-
-#     return nv12
-
-FULL_TO_LIMITED_Y = np.rint(
-    16.0 + np.arange(256, dtype=np.float32) * (219.0 / 255.0)
-).astype(np.uint8)
-
-def grey2nv12(frame, output=None):
-    """Convert an 8-bit grayscale frame to limited-range NV12.
-
-    Parameters
-    ----------
-    frame : np.ndarray
-        2D uint8 grayscale image with even height and width.
-
-    output : np.ndarray, optional
-        Existing NV12 output buffer to reuse. If None, a new buffer is
-        allocated.
-
-    Returns
-    -------
-    np.ndarray
-        NV12 image with shape (height * 3 // 2, width).
-    """
-    frame = np.asarray(frame)
-
-    if frame.ndim != 2:
-        raise ValueError(
-            f"Expected a 2D grayscale image; got shape {frame.shape}"
-        )
-
-    if frame.dtype != np.uint8:
-        raise TypeError(
-            f"Expected uint8 input for Mono8 data; got {frame.dtype}"
-        )
-
-    height, width = frame.shape
-
-    if height % 2 != 0 or width % 2 != 0:
-        raise ValueError(
-            f"NV12 requires even dimensions; got {width}x{height}"
-        )
-
-    expected_shape = (height + height // 2, width)
-
-    if output is None:
-        output = np.empty(expected_shape, dtype=np.uint8)
-    else:
-        if output.dtype != np.uint8:
-            raise TypeError(
-                f"NV12 output must be uint8; got {output.dtype}"
-            )
-
-        if output.shape != expected_shape:
-            raise ValueError(
-                f"Expected output shape {expected_shape}; "
-                f"got {output.shape}"
-            )
-
-    # Convert full-range grayscale [0, 255] to limited-range luma [16, 235].
-    output[:height, :] = FULL_TO_LIMITED_Y[frame]
-
-    # Neutral chroma for grayscale: U = 128, V = 128.
-    output[height:, :] = 128
-
-    return output
